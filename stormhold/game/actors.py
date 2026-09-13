@@ -1,0 +1,362 @@
+"""Characters and creatures.
+
+There are no classes. A character is four numbers, whatever they are carrying,
+and whatever spells they have found the books for. A heavily armoured character
+who put everything into Strength plays like a warrior; one who put it into
+Intelligence and bought tomes plays like a mage. Nothing enforces it.
+"""
+
+import random
+
+from ..common.constants import (
+    STATS, START_STAT, MAX_LEVEL, CARRY_PER_STRENGTH, encumbrance_for,
+    xp_for_level, clamp, SLOTS, RING_SLOTS, TICKS_PER_TURN,
+)
+from .items import Item
+from .monsters import MONSTERS, scaled
+
+_next_actor_id = [1]
+
+
+def new_actor_id():
+    _next_actor_id[0] += 1
+    return _next_actor_id[0]
+
+
+def stat_bonus(value):
+    """Classic modifier curve: 10 is average and worth nothing."""
+    return (value - 10) // 2
+
+
+class Actor:
+    def __init__(self, x=0, y=0):
+        self.id = new_actor_id()
+        self.x = x
+        self.y = y
+        self.depth = 0
+        self.hp = 1
+        self.max_hp = 1
+        self.dead = False
+        self.facing = 4
+        self.next_at = 0            # game time at which it may act again
+        self.effects = {}           # name -> expiry tick
+        self.kind = "actor"
+        self.name = "?"
+
+    # -------------------------------------------------------------- effects -
+    def add_effect(self, name, until, value=None):
+        cur = self.effects.get(name)
+        payload = (until, value)
+        if cur is None or cur[0] < until:
+            self.effects[name] = payload
+
+    def has(self, name):
+        return name in self.effects
+
+    def effect_value(self, name, default=0):
+        e = self.effects.get(name)
+        return default if e is None else (e[1] if e[1] is not None else default)
+
+    def expire_effects(self, now):
+        gone = [k for k, (until, _) in self.effects.items() if until <= now]
+        for k in gone:
+            del self.effects[k]
+        return gone
+
+
+class Player(Actor):
+    def __init__(self, name, stats=None, colour=0):
+        super().__init__()
+        self.kind = "player"
+        self.name = name
+        self.colour = colour
+        self.stats = dict.fromkeys(STATS, START_STAT)
+        if stats:
+            self.stats.update({k: v for k, v in stats.items() if k in STATS})
+        self.level = 1
+        self.xp = 0
+        self.gold = 120
+        self.bank = 0
+        self.equipment = {s: None for s in SLOTS}
+        self.inventory = []
+        self.spells = set()
+        self.deepest = 0
+        self.deaths = 0
+        self.kills = 0
+
+        self.memory = {}            # depth -> bytearray of seen tiles
+        self.fov = set()
+        self.pending_tiles = []
+        self.pending = None         # the action the scheduler is waiting for
+        self.idle_noted = False
+        self.resting = False
+
+        self.recalc()
+        self.hp = self.max_hp
+        self.mana = self.max_mana
+
+    # ------------------------------------------------------------ derived ---
+    def stat(self, name):
+        """Base stat plus whatever your gear and potions are adding."""
+        value = self.stats.get(name, 10)
+        for item in self.equipment.values():
+            if not item:
+                continue
+            bonus = item.base.get("bonus")
+            if bonus and bonus[0] == name:
+                value += bonus[1]
+        if name == "strength" and self.has("might"):
+            value += 4
+        return max(1, value)
+
+    def recalc(self):
+        con = self.stat("constitution")
+        intel = self.stat("intelligence")
+        self.max_hp = 8 + con + (self.level - 1) * (2 + max(1, con // 4))
+        self.max_mana = intel + (self.level - 1) * max(1, intel // 4)
+        for item in self.equipment.values():
+            if not item:
+                continue
+            self.max_hp += item.base.get("hp_bonus", 0)
+            self.max_mana += item.base.get("mana_bonus", 0)
+        self.max_hp = max(1, self.max_hp)
+        self.max_mana = max(0, self.max_mana)
+        self.hp = min(getattr(self, "hp", self.max_hp), self.max_hp)
+        self.mana = min(getattr(self, "mana", self.max_mana), self.max_mana)
+
+    @property
+    def armour_class(self):
+        ac = stat_bonus(self.stat("dexterity"))
+        for item in self.equipment.values():
+            if item:
+                ac += item.ac()
+        ac += self.effect_value("shield_spell", 0)
+        ac += self.effect_value("stoneskin", 0)
+        return ac
+
+    @property
+    def to_hit(self):
+        bonus = self.level // 2 + stat_bonus(self.stat("dexterity"))
+        weapon = self.equipment.get("weapon")
+        if weapon:
+            bonus += weapon.to_hit()
+        return bonus
+
+    def damage_roll(self, rng):
+        weapon = self.equipment.get("weapon")
+        if weapon and weapon.base.get("dmg"):
+            n, s = weapon.damage()
+            dmg = sum(rng.randint(1, s) for _ in range(n)) + weapon.enchant
+        else:
+            dmg = rng.randint(1, 3)          # bare hands
+        dmg += stat_bonus(self.stat("strength"))
+        return max(1, dmg)
+
+    # -------------------------------------------------------- encumbrance ---
+    @property
+    def carried_weight(self):
+        w = sum(i.weight for i in self.inventory)
+        w += sum(i.weight for i in self.equipment.values() if i)
+        w += self.gold // 10          # a hundred coins to the pound
+        return w
+
+    @property
+    def capacity(self):
+        return self.stat("strength") * CARRY_PER_STRENGTH
+
+    @property
+    def encumbrance(self):
+        if self.has("feather"):
+            return "Unencumbered", 1.0
+        return encumbrance_for(self.carried_weight, self.capacity)
+
+    def action_cost(self, base):
+        """How long an action takes this character, all things considered."""
+        _, mult = self.encumbrance
+        if mult is None:
+            return None                       # too loaded to move at all
+        cost = base * mult
+        if self.has("haste"):
+            cost *= 0.5
+        if self.has("slowed"):
+            cost *= 2.0
+        weapon = self.equipment.get("weapon")
+        if weapon and base >= TICKS_PER_TURN:
+            cost *= weapon.base.get("speed", 100) / 100.0
+        return max(10, int(cost))
+
+    # ------------------------------------------------------------ progress --
+    def add_xp(self, amount):
+        self.xp += amount
+        gained = []
+        while self.level < MAX_LEVEL and self.xp >= xp_for_level(self.level):
+            self.level += 1
+            before_hp, before_mana = self.max_hp, self.max_mana
+            self.recalc()
+            self.hp += self.max_hp - before_hp
+            self.mana += self.max_mana - before_mana
+            gained.append(self.level)
+        return gained
+
+    # ----------------------------------------------------------- inventory --
+    def add_item(self, item):
+        if item.stackable:
+            for slot in self.inventory:
+                if slot.key == item.key and slot.stackable:
+                    slot.qty += item.qty
+                    return True
+        if len(self.inventory) >= 30:
+            return False
+        self.inventory.append(item)
+        return True
+
+    def find_item(self, item_id):
+        for it in self.inventory:
+            if it.id == item_id:
+                return it
+        for it in self.equipment.values():
+            if it and it.id == item_id:
+                return it
+        return None
+
+    def remove_item(self, item, qty=1):
+        if item not in self.inventory:
+            return None
+        if item.stackable and item.qty > qty:
+            item.qty -= qty
+            clone = Item(item.key, qty=qty)
+            return clone
+        self.inventory.remove(item)
+        return item
+
+    def equip(self, item):
+        """Put something on. Returns (ok, message)."""
+        slot = item.slot
+        if not slot:
+            return False, f"You cannot wear {item.name()}."
+        req = item.base.get("str_req")
+        if req and self.stat("strength") < req:
+            return False, f"You are not strong enough to use that (needs Strength {req})."
+        if slot in RING_SLOTS:
+            slot = "ring_left" if self.equipment["ring_left"] is None else "ring_right"
+        current = self.equipment.get(slot)
+        if current and current.cursed:
+            current.known = True
+            return False, f"You cannot remove the {current.name()} - it is stuck fast."
+        if current:
+            self.inventory.append(current)
+        if item in self.inventory:
+            self.inventory.remove(item)
+        self.equipment[slot] = item
+        self.recalc()
+        if item.cursed:
+            item.known = True
+            return True, f"You put on {item.name()}. A chill runs up your arm - it is cursed."
+        return True, f"You are now using {item.name()}."
+
+    def unequip(self, slot):
+        item = self.equipment.get(slot)
+        if not item:
+            return False, "Nothing there."
+        if item.cursed:
+            item.known = True
+            return False, f"The {item.name()} will not come off."
+        if len(self.inventory) >= 30:
+            return False, "Your pack is full."
+        self.equipment[slot] = None
+        self.inventory.append(item)
+        self.recalc()
+        return True, f"You put away {item.name()}."
+
+    def ammo_for(self, weapon):
+        want = weapon.base.get("missile")
+        if not want:
+            return None
+        for it in self.inventory:
+            if it.base.get("ammo") == want and it.qty > 0:
+                return it
+        return None
+
+    # ---------------------------------------------------------------- save --
+    def to_save(self):
+        return {
+            "name": self.name, "colour": self.colour, "stats": self.stats,
+            "level": self.level, "xp": self.xp, "gold": self.gold, "bank": self.bank,
+            "hp": self.hp, "mana": self.mana,
+            "inventory": [i.to_dict() for i in self.inventory],
+            "equipment": {k: (v.to_dict() if v else None) for k, v in self.equipment.items()},
+            "spells": sorted(self.spells),
+            "deepest": self.deepest, "deaths": self.deaths, "kills": self.kills,
+        }
+
+    def load_save(self, d):
+        self.stats.update(d.get("stats", {}))
+        self.colour = d.get("colour", self.colour)
+        self.level = d.get("level", 1)
+        self.xp = d.get("xp", 0)
+        self.gold = d.get("gold", 120)
+        self.bank = d.get("bank", 0)
+        self.inventory = [Item.from_dict(x) for x in d.get("inventory", [])]
+        self.equipment = {s: None for s in SLOTS}
+        for slot, raw in (d.get("equipment") or {}).items():
+            if raw and slot in self.equipment:
+                self.equipment[slot] = Item.from_dict(raw)
+        self.spells = set(d.get("spells", []))
+        self.deepest = d.get("deepest", 0)
+        self.deaths = d.get("deaths", 0)
+        self.kills = d.get("kills", 0)
+        self.recalc()
+        self.hp = clamp(d.get("hp", self.max_hp), 1, self.max_hp)
+        self.mana = clamp(d.get("mana", self.max_mana), 0, self.max_mana)
+
+
+class Monster(Actor):
+    def __init__(self, key, x, y, depth, rng):
+        super().__init__(x, y)
+        tpl = MONSTERS[key]
+        s = scaled(tpl, depth)
+        self.kind = "monster"
+        self.key = key
+        self.tpl = tpl
+        self.name = tpl["name"]
+        self.sprite = tpl["sprite"]
+        self.depth = depth
+        self.max_hp = self.hp = s["hp"]
+        self.armour_class = s["ac"]
+        self.to_hit = s["hit"]
+        self.dmg_bonus = s["dmg_bonus"]
+        self.xp_value = s["xp"]
+        self.speed = tpl["speed"]
+        self.ai = tpl["ai"]
+        self.boss = key in ("warden_of_ash", "vaelrik")
+        self.target_id = None
+        self.last_seen = None
+        self.path = None
+        self.path_goal = None
+
+    def damage_roll(self, rng):
+        n, s = self.tpl["dmg"]
+        return max(1, sum(rng.randint(1, s) for _ in range(n)) + self.dmg_bonus)
+
+    def action_cost(self, base):
+        cost = base * self.speed / 100.0
+        if self.has("slowed"):
+            cost *= 2.0
+        if self.has("haste"):
+            cost *= 0.5
+        return max(10, int(cost))
+
+
+def make_monster(key, x, y, depth, rng):
+    return Monster(key, x, y, depth, rng)
+
+
+class NPC(Actor):
+    def __init__(self, spec):
+        super().__init__(spec["x"], spec["y"])
+        self.kind = "npc"
+        self.name = spec["name"]
+        self.sprite = spec["sprite"]
+        self.shop = spec["shop"]
+        self.max_hp = self.hp = 1
+        self.next_at = 1 << 60          # townsfolk never take a turn

@@ -1,197 +1,208 @@
 # Stormhold
 
-A co-operative dungeon crawl for the family, built to be played over a home
-network. One computer runs the keep; everyone else opens a web address. There is
-nothing to install on the other machines — no client, no accounts, no internet.
+A turn-based co-operative dungeon crawl for the family, played over the home
+network. One computer hosts; everyone else joins from the same program. It runs
+on Windows, macOS and a Raspberry Pi 400.
 
-It is a fresh, original game written in the spirit of the early-90s Windows
-shareware roguelikes: a town with shops, a staircase down into a twenty-level
-dungeon, a pack full of loot, and a party that has to stick together.
+It is an original game written in the spirit of the early-90s Windows
+shareware roguelikes: a town of seven trades, a staircase into twenty-five
+floors of keep, a pack that fills up with things you cannot yet identify, and a
+party that has to stay together.
 
 ```
-   ┌─ Aldershade ─────────────────────────────────────────────┐
-   │  Doran the Smith   ▓▓▓▓   the keep gate   ▓▓▓▓  Sister   │
-   │  Wren, Apothecary            ↓                   Halli   │
+   Aldershade
+   ┌──────────────────────────────────────────────────────────┐
+   │  Bolgar  Hesta  Pell        ▲ the keep gate       Ulric   │
+   │                                                  Halli   │
+   │                    the strongroom                        │
    └──────────────────────────────────────────────────────────┘
-                twenty levels down, two bosses, one way home
+        twenty-five floors down, two things worth fearing
 ```
 
 ## Running it
 
-You need [Node.js](https://nodejs.org) 18 or newer on the machine that will host
-the game. Nothing else — the server has **no dependencies at all**.
+You need Python 3.8 or newer. The only dependency is pygame.
+
+**Windows** — double-click `play.bat`.
+**macOS, Linux, Raspberry Pi** — run `./play.sh`.
+
+Either script installs pygame the first time and then starts the game. If you
+would rather do it by hand:
 
 ```sh
-node server/index.js
+python -m pip install pygame-ce
+python -m stormhold
 ```
 
-It prints the addresses to use:
+### Playing together
 
+One person clicks **Host a game**. The message log then shows the address the
+others need, something like `192.168.1.24`. Everybody else starts the same
+program, types that address into **Server address**, and clicks **Join a game**.
+
+To leave a server running without a game window on it - handy on a Pi tucked
+behind the telly:
+
+```sh
+python -m stormhold --serve
 ```
-   ====================================================
-     S T O R M H O L D   -   the keep is open
-   ====================================================
-
-   On this computer:      http://localhost:3000
-
-   From other machines on the same network:
-     en0        http://192.168.1.24:3000
-
-   Open that address in any browser. Nothing to install.
-```
-
-Everyone else on the same wifi opens that `192.168.x.x` address in a browser —
-a laptop, a tablet, an old iPad, whatever is in the house. Pick a name, pick a
-class, and you are in the same dungeon.
-
-### Options
 
 | Flag | What it does |
 | --- | --- |
-| `--port=3000` | Port to listen on. |
-| `--host=0.0.0.0` | Interface to bind. The default serves the whole network. |
-| `--seed=12345` | Fix the world seed so the dungeon is the same every run. |
-| `--help` | Print usage. |
+| `--serve` | Run a server with no game window. |
+| `--port 7777` | Port to use. |
+| `--seed 12345` | Fix the world seed, so the keep is the same every time. |
+| `--save PATH` | Where to keep characters (default `data/party.json`). |
+| `--fullscreen` | Start full screen. |
 
-Stop the server with `Ctrl+C`; every character is saved on the way out.
+## How it plays
 
-## Playing
+**It is turn-based.** Nothing in the keep moves until you do. There is no
+timer, no twitch, and no penalty for thinking. A seven-year-old can take as
+long as they like over a decision.
+
+With several players the floor keeps one clock. Everyone's actions cost time
+and slot into the same order, and the floor will run about two turns ahead of
+somebody who has not moved yet before it stops and says **"Waiting for Mia…"**.
+Pausing to think costs nobody anything. If a player genuinely wanders off, after
+three quarters of a minute their character simply holds still and the rest of
+the party carries on without them.
+
+There is nothing to be fair about in town, so nobody ever waits there.
+
+### Keys
 
 | Key | Action |
 | --- | --- |
-| Arrows / `W A S D` | Move. Walk into a monster to attack it. |
-| `Space` or click | Attack in the direction you face. Bows and staves fire. |
-| `1` `2` `3` | Your three class abilities. |
-| `E` or right-click | Stairs, shopkeepers, and helping a downed friend up. |
-| `Q` | Drink the healing potion that best fits the wound. |
-| `I` | Open your pack. Click an item to equip, drink or read it. |
-| `M` | Show or hide the small map. |
-| `Enter` | Chat with the party. |
-| `F` | Full screen. |
+| Arrows, numpad, or `W A S D` | Move. Walk into something to attack it. |
+| Numpad `7 9 1 3` | The diagonals. |
+| `5` or `.` | Wait one turn. |
+| `G` or `,` | Pick up what is under you. |
+| `I` | Pack: wear, wield, drink, read, drop. |
+| `Z` | Cast a spell. |
+| `F` | Fire a bow or crossbow at the nearest enemy. |
+| `>` / `<` | Take a staircase you are standing on. |
+| `C` | Character sheet. |
+| `Enter` | Talk to the party. |
+| Click the map | Step that way, or attack what you clicked. |
+| `F1` | Help. `Esc` closes a window or opens the menu. |
 
-On a tablet, a thumb-stick and buttons appear as soon as you touch the screen.
+### There are no character classes
 
-### The three classes
+You get four numbers and sixteen points to spread across them.
 
-- **Warrior** — tough and fearless. *Cleave* hits everything around you,
-  *Bulwark* halves incoming damage, *Charge* closes the gap and knocks a monster
-  backwards.
-- **Ranger** — quick, fights at range. *Volley* looses three arrows, *Snare*
-  pins something in place, *Dash* leaps out of trouble.
-- **Mage** — fragile, but throws fire and patches the party up. *Firebolt*
-  bursts on impact, *Frost Nova* freezes everything nearby, *Mend* heals every
-  friend around you.
+- **Strength** carries armour and swings it hard.
+- **Dexterity** hits more often and is harder to hit.
+- **Intelligence** is your mana and the spells you may learn.
+- **Constitution** is health, and how fast it comes back.
 
-### Co-operation is the point
+Put it all in Strength and you are a warrior. Put it in Intelligence and buy
+tomes and you are a mage. Nothing stops you changing your mind later; the
+character you end up with is the one your choices made.
 
-- **Nobody dies alone.** At zero health you are *down*, not dead. A friend
-  standing next to you holds `E` for three seconds and you are back up. You have
-  just over a minute before it becomes permanent, so there is real tension
-  without anyone losing an evening's progress.
-- **Experience is shared** with everyone nearby, so there is no reason to steal
-  kills from a younger sibling.
-- **The party travels together.** Stand on the stairs and press `E`: it starts a
-  five-second countdown and then moves *everyone on the level*, so nobody gets
-  lost or left behind.
-- **A wipe is not a disaster.** If the whole party goes down, Sister Halli drags
-  you home to Aldershade and charges a tenth of your gold for the trouble.
-- **The dungeon gets harder with more players** — monsters are tougher and more
-  numerous with a bigger party, so three people is not three times as easy.
+Magic is learned from books. The Gilded Retort sells tomes and they turn up in
+the keep. Read one and the spell is yours for good - if you are experienced and
+clever enough for it. There are twenty-seven spells across five schools.
 
-### Town
+### Weight is a real decision
 
-The keep gate is at the top of the road, north of the square.
+Everything has a weight, including your gold: a hundred coins weigh a pound.
+Carry too much and every step takes longer, which means every monster on the
+floor gets more turns than you do. That is what the **strongroom** is for, and
+why plate armour is not obviously better than leather.
 
-- **Doran the Smith** — weapons and armour. His stock refreshes each time the
-  party comes home, and gets better as you go deeper.
-- **Wren the Apothecary** — potions and scrolls.
-- **Sister Halli** — a full heal and cure, for coin.
+### Things you find are not labelled
 
-### Going deep
+A potion is "a cloudy red potion" until you drink one or pay Ulric to identify
+it, and which colour is which is shuffled every new world. Some rings are
+cursed and will not come off until the temple breaks the binding. Weapons and
+armour hide their enchantment until you learn it.
 
-Twenty levels. *The Warden of Ash* waits on level 10 and *Vaelrik, the
-Storm-Bound* on level 20. Themes shift as you descend — the Cellars, the Flooded
-Vaults, the Bone Gallery, the Deep Warrens, and finally the Stormworks. Some
-levels hide a vault: a sealed room with far better loot and far worse company.
+### Death
 
-When you come back to town the keep gate remembers the deepest level your party
-has reached, so you never have to walk back down through cleared floors.
+You die properly. You drop your pack where you fell, lose a fifth of the gold
+you were carrying and a tenth of your experience, and wake on the temple floor
+in Aldershade. The rest of the party fights on without you, and your pack is
+still lying there if somebody can reach it.
 
-## Characters are saved
+## Town
 
-Characters persist in `data/players.json`, keyed by name and class, and save on
-disconnect, on shutdown, and every thirty seconds. Next time the server starts,
-the lobby offers everyone their character back. Delete that file to start the
-family over.
+| Who | What they do |
+| --- | --- |
+| Bolgar the Weaponsmith | Weapons, arrows and quarrels. |
+| Hesta the Armourer | Armour, shields, helms and boots. |
+| Pell's General Store | Rations, torches, lanterns, packs. |
+| The Gilded Retort | Potions, scrolls, and tomes to learn spells from. |
+| Ulric the Sage | Tells you what a thing really is. |
+| Temple of the Quiet Hour | Heals, cures, and breaks curses. |
+| The Strongroom | Holds your gold so you do not have to carry it. |
 
-## Project layout
+The keep gate is at the head of the north road. It remembers the deepest floor
+your party has reached, so you never re-walk ground you have cleared.
+
+## Performance on a Pi 400
+
+The game only redraws when something changes, and because it is turn-based
+nothing changes unless somebody acts. All the artwork is drawn once at start-up
+into 32-pixel tiles and blitted from there. A Pi 400 hosting for three players
+spends almost all of its time idle.
+
+## Where things are
 
 ```
-server/
-  index.js        http + static files + the tick loop
-  ws.js           a small RFC 6455 WebSocket server (this is why there are no deps)
-  net.js          sessions, the wire protocol, per-player fog of war
-  persist.js      character saves
+stormhold/
+  __main__.py        start here
+  common/            constants, field of view, shared vocabulary
   game/
-    world.js      the simulation: turns, combat, loot, shops, descending
-    level.js      dungeon generation and the town
-    actors.js     players, monsters, derived stats
-    ai.js         monster behaviour and A* pathfinding
-    combat.js     to-hit, damage, knockback, status effects
-    items.js      item tables, affixes, the loot generator
-    monsters.js   the bestiary
-shared/           code used by both sides: constants, protocol, rng, field of view
-client/
-  index.html      lobby and game shell
-  css/style.css   the chrome
-  js/
-    main.js       boot and the frame loop
-    render.js     canvas renderer, lighting, minimap
-    sprites.js    every sprite, drawn in code — there are no image files
-    ui.js         sidebar, pack, shops
-    audio.js      all sound effects, synthesised in the browser
-    input.js      keyboard, mouse, touch
-    net.js        websocket client with reconnect
-test/             unit and network tests
+    world.py         the clock, the scheduler, and every action
+    level.py         the keep, and Aldershade
+    actors.py        characters and creatures
+    items.py         weight, curses, identification
+    spells.py        the spell list
+    monsters.py      the bestiary
+    combat.py        to-hit, damage, knockback
+    ai.py            monster behaviour and pathfinding
+  net/
+    server.py        authoritative server
+    client.py        socket client
+    protocol.py      length-prefixed JSON
+  ui/
+    app.py           menus, character creation, the play screen
+    art.py           every sprite, drawn in code
+    palette.py       the sixteen colours and the dithering
+    widgets.py       window chrome
+tests/               33 tests
+tools/contact_sheet.py   renders every sprite to one PNG
 ```
 
-All artwork is drawn at runtime from rectangles on a pixel grid, and every sound
-is synthesised with WebAudio, so the whole game is the source you see here.
+## The artwork
+
+There are no image files. Every tile, creature and item is drawn at start-up
+from rectangles, restricted to the sixteen VGA colours that a Windows 3.1 icon
+was allowed, with ordered dithering for anything in between and a hard black
+outline around everything. `python tools/contact_sheet.py sheet.png` renders
+the lot to one picture.
 
 ## Tests
 
 ```sh
-npm test
+python -m unittest discover -s tests
 ```
 
-34 tests covering level connectivity at every depth, field of view,
-pathfinding, combat maths, levelling, inventory and equipment, the revive and
-party-wipe rules, descending together, shops, projectiles, fog of war, and the
-WebSocket implementation (handshake, all three frame length encodings, UTF-8,
-ordering, concurrent clients).
-
-## Troubleshooting
-
-**Other computers cannot connect.** The host's firewall is the usual culprit —
-allow Node to accept incoming connections on the port. Make sure everyone is on
-the same wifi, and that it is not a "guest" network, which usually blocks
-devices from seeing each other.
-
-**"Port 3000 is already in use."** Run `node server/index.js --port=3001`.
-
-**The page looks stale after an update.** Reload with `Ctrl+Shift+R`.
-
-**Someone's screen is frozen.** The client reconnects on its own within a few
-seconds. If not, reload the page; the character is safe on the server.
+Thirty-three tests covering every floor's connectivity, field of view,
+pathfinding, encumbrance, the turn scheduler (including that the world does not
+move on its own, that it waits for a player who has not acted, and that an
+absent player cannot strand the party), combat maths, curses, identification,
+death, shops and the wire protocol.
 
 ## A note on the inspiration
 
-This project was prompted by a copy of *Castle of the Winds* (Rick Saada, 1993).
-That game is its author's work, and its art, text and names belong to him, so
-nothing was taken from it: no resources were extracted from the binary, and none
-of its content appears here. Stormhold is a new game with its own town, its own
-bestiary, its own items and its own artwork, written because that *kind* of game
-is worth having again — and this one lets you play it with your kids in the next
+This was prompted by a copy of *Castle of the Winds* (Rick Saada, 1993). That
+game is its author's work: nothing was taken from it, no resources were pulled
+out of the binary, and none of its artwork, text, items, spells or creatures
+appear here. What is borrowed is the shape of the thing - turn-based, class-
+less, weight that matters, a town you keep coming back to - because that shape
+is worth having again, and this one you can play with your kids in the next
 room.
 
 ## Licence

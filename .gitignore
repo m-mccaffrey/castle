@@ -1,4 +1,11 @@
-node_modules/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
 data/*.json
+data/*.sav
 *.log
 .DS_Store
+build/
+dist/
+*.egg-info/

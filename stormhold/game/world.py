@@ -1,0 +1,1308 @@
+"""The world, and the clock that drives it.
+
+Stormhold is turn-based. Nothing moves until somebody acts. Each floor keeps
+its own clock measured in ticks, and every creature holds a time at which it
+may act again. The scheduler repeatedly wakes whichever creature is due next.
+
+With several players that raises the obvious question: what happens while one
+of them is thinking? The answer here is that the floor's clock may run ahead of
+a player who has not acted, but only by GRACE_TICKS - about two turns. Past
+that the floor stops and reports who everyone is waiting for. A pause for
+thought costs nobody anything; wandering off does not let the world run away.
+"""
+
+import random
+import time
+
+from ..common.constants import (
+    T, DIRS, TOWN_DEPTH, MAX_DEPTH, GRACE_TICKS, MOVE_COST, ATTACK_COST,
+    CAST_COST, PICKUP_COST, DROP_COST, EQUIP_COST, QUAFF_COST, READ_COST,
+    STAIRS_COST, REST_COST, FREE_COST, SIGHT_DUNGEON, SIGHT_TOWN, REGEN_TICKS,
+    DEATH_GOLD_PENALTY, DEATH_XP_PENALTY, RESURRECT_HP_FRACTION,
+    chebyshev, clamp, is_solid,
+)
+from ..common.fov import compute_fov, has_los, line_between
+from .level import generate_dungeon, generate_town
+from .actors import Player, NPC, make_monster, stat_bonus
+from .items import Item, Appearances, generate_item, generate_gold, BASES
+from .monsters import spawn_table
+from .spells import SPELLS, can_learn
+from . import combat, ai
+
+
+class World:
+    def __init__(self, seed=None):
+        self.seed = seed if seed is not None else random.randrange(1 << 30)
+        self.rng = random.Random(self.seed)
+        self.appearances = Appearances(self.seed)
+        self.levels = {}
+        self.players = {}
+        self.events = []
+        self.party_deepest = 1
+        self.shop_stock = {}
+        self.get_level(TOWN_DEPTH)
+
+    # ====================================================== levels ==========
+    def get_level(self, depth):
+        level = self.levels.get(depth)
+        if level is not None:
+            return level
+        if depth == TOWN_DEPTH:
+            level = generate_town(self.seed)
+            for spec in level.npcs:
+                npc = NPC(spec)
+                npc.depth = depth
+                level.place(npc)
+        else:
+            level = generate_dungeon(depth, self.seed)
+            self.populate(level)
+        level.clock = 0
+        level.waiting_on = None
+        self.levels[depth] = level
+        return level
+
+    def clock_for(self, depth):
+        level = self.levels.get(depth)
+        return level.clock if level else 0
+
+    def populate(self, level):
+        rng = self.rng
+        table = spawn_table(level.depth)
+        party = max(1, len(self.players))
+        count_mult = 1 + (party - 1) * 0.3
+        tough_mult = 1 + (party - 1) * 0.45
+
+        for x, y, vault in level.spawns:
+            if not level.walkable(x, y):
+                continue
+            if rng.random() > 0.85 * count_mult:
+                continue
+            key = self._weighted(table)
+            m = make_monster(key, x, y, level.depth, rng)
+            m.max_hp = int(m.max_hp * tough_mult)
+            m.hp = m.max_hp
+            m.xp_value = int(m.xp_value * (1 + (party - 1) * 0.22))
+            level.place(m)
+
+        for x, y, rich in level.loot_spots:
+            if not level.passable(x, y):
+                continue
+            if rng.random() < 0.42:
+                level.add_ground_item(x, y, self._gold_item(generate_gold(level.depth, rng)))
+            else:
+                level.add_ground_item(x, y, generate_item(level.depth, rng, rich))
+
+        if level.boss_key:
+            bx, by = level.find_floor(level.boss_room["cx"], level.boss_room["cy"])
+            boss = make_monster(level.boss_key, bx, by, level.depth, rng)
+            boss.max_hp = int(boss.max_hp * (1 + (party - 1) * 0.5))
+            boss.hp = boss.max_hp
+            level.place(boss)
+            level.boss = boss
+
+    def _weighted(self, pairs):
+        total = sum(w for _, w in pairs)
+        r = self.rng.random() * total
+        for value, w in pairs:
+            r -= w
+            if r <= 0:
+                return value
+        return pairs[-1][0]
+
+    def _gold_item(self, amount):
+        it = Item("gold_pile")
+        it.gold_amount = amount
+        return it
+
+    # ====================================================== events ==========
+    def msg(self, text, kind="info", to=None, depth=None):
+        self.events.append({"t": "msg", "text": text, "kind": kind,
+                            "to": to.id if to is not None else None,
+                            "depth": depth})
+
+    def float_text(self, x, y, depth, text, kind):
+        self.events.append({"t": "float", "x": x, "y": y, "depth": depth,
+                            "text": text, "kind": kind})
+
+    def fx(self, kind, x, y, depth):
+        self.events.append({"t": "fx", "kind": kind, "x": x, "y": y, "depth": depth})
+
+    def sound(self, name, x, y, depth):
+        self.events.append({"t": "snd", "name": name, "x": x, "y": y, "depth": depth})
+
+    def set_tile(self, level, x, y, tile):
+        level.set(x, y, tile)
+        self.events.append({"t": "tile", "depth": level.depth, "x": x, "y": y, "tile": tile})
+        for p in self.players.values():
+            if p.depth != level.depth:
+                continue
+            mem = p.memory.get(level.depth)
+            if mem and mem[y * level.w + x]:
+                p.pending_tiles.extend((x, y, tile))
+
+    # ====================================================== players =========
+    def add_player(self, name, stats=None, colour=0, save=None):
+        town = self.get_level(TOWN_DEPTH)
+        p = Player(name, stats, colour)
+        if save:
+            p.load_save(save)
+        else:
+            self.give_starting_kit(p)
+        p.depth = TOWN_DEPTH
+        p.x, p.y = town.find_free(*town.spawn_point)
+        p.next_at = town.clock
+        self.players[p.id] = p
+        town.place(p)
+        self.party_deepest = max(self.party_deepest, p.deepest or 1)
+        self.update_fov(p, force=True)
+        return p
+
+    def give_starting_kit(self, p):
+        """Everyone leaves town with the same modest kit, whatever their stats."""
+        for key in ("shortsword", "leather"):
+            it = Item(key)
+            it.known = True
+            p.equipment[it.slot] = it
+        p.add_item(Item("potion_heal", qty=2))
+        p.add_item(Item("food", qty=3))
+        p.add_item(Item("torch", qty=2))
+        self.appearances.identify("potion_heal")
+        p.recalc()
+        p.hp, p.mana = p.max_hp, p.max_mana
+
+    def remove_player(self, pid):
+        p = self.players.pop(pid, None)
+        if not p:
+            return
+        level = self.levels.get(p.depth)
+        if level:
+            level.remove(p)
+
+    def players_on(self, depth):
+        return [p for p in self.players.values() if p.depth == depth]
+
+    # ====================================================== scheduler =======
+    def submit(self, player, action):
+        """Queue a player's chosen action, then let the floor run."""
+        if player.dead:
+            return
+        player.pending = action
+        self.run_level(player.depth)
+
+    def run_level(self, depth, max_actions=800):
+        """Advance one floor until it needs a decision from somebody."""
+        level = self.levels.get(depth)
+        if level is None:
+            return
+        level.waiting_on = None
+
+        # Waiting on a companion only matters where something is hunting you.
+        # On a cleared floor - and in town - people come and go as they please.
+        threatened = any(a.kind == "monster" and not a.dead
+                         for a in level.actors.values())
+
+        for _ in range(max_actions):
+            ready = None
+            blocked = None
+            for a in list(level.actors.values()):
+                if a.dead or a.kind == "npc":
+                    continue
+                if a.kind == "player" and a.pending is None:
+                    if threatened:
+                        if blocked is None or a.next_at < blocked.next_at:
+                            blocked = a
+                    else:
+                        # Nothing can hurt them, so do not let them hold the
+                        # floor up - and do not let them bank turns either.
+                        if a.next_at < level.clock:
+                            a.next_at = level.clock
+                    continue
+                if ready is None or a.next_at < ready.next_at:
+                    ready = a
+
+            if ready is None:
+                self._set_waiting(level, blocked.id if blocked else None)
+                return
+
+            # Do not let the floor run further than GRACE_TICKS ahead of
+            # somebody who still owes us an action.
+            if blocked is not None and ready.next_at - blocked.next_at > GRACE_TICKS:
+                self._set_waiting(level, blocked.id)
+                return
+
+            level.clock = max(level.clock, ready.next_at)
+            was_on = ready.depth
+            cost = self.act(level, ready)
+            if cost is None:
+                cost = MOVE_COST
+            if ready.depth != was_on:
+                # Taking the stairs moved them to another floor, which already
+                # set their next action time against that floor's clock. This
+                # floor's clock means nothing to them now.
+                continue
+            ready.next_at = level.clock + max(1, int(cost))
+            self.after_action(level, ready)
+
+        self._set_waiting(level, None)
+
+    def _set_waiting(self, level, actor_id):
+        if level.waiting_on != actor_id:
+            level.waiting_on = actor_id
+            level.waiting_since = time.time() if actor_id else None
+
+    def nudge_idle(self, idle_seconds=45.0):
+        """Let the party carry on when somebody has genuinely wandered off.
+
+        The floor waits for whoever is thinking, which is right - but a child
+        who goes to find a snack should not strand everybody else. After a
+        while that character simply holds still, taking a turn at a time, and
+        the game goes on without them.
+        """
+        nudged = []
+        now = time.time()
+        for level in self.levels.values():
+            waiting = getattr(level, "waiting_on", None)
+            since = getattr(level, "waiting_since", None)
+            if not waiting or since is None or now - since < idle_seconds:
+                continue
+            player = self.players.get(waiting)
+            if player is None or player.pending is not None:
+                continue
+            if not player.idle_noted:
+                player.idle_noted = True
+                self.msg(f"{player.name} is standing still.", "info", depth=level.depth)
+            # Hold still, a turn at a time, until the floor is no longer
+            # waiting on them. One turn is rarely enough: they may be several
+            # behind, and the party should not crawl forward a second at a time.
+            for _ in range(40):
+                player.pending = {"a": "wait"}
+                self.run_level(level.depth)
+                if level.waiting_on != player.id or player.dead:
+                    break
+            level.waiting_since = now
+            nudged.append(player.id)
+        return nudged
+
+    def act(self, level, actor):
+        if actor.kind == "monster":
+            return ai.take_turn(self, level, actor)
+        action = actor.pending
+        actor.pending = None
+        if actor.kind == "player" and action.get("a") != "wait":
+            actor.idle_noted = False
+        if action is None:
+            return MOVE_COST
+        return self.do_player_action(level, actor, action)
+
+    def after_action(self, level, actor):
+        """Per-action upkeep: burning, poison, natural healing, expiry."""
+        now = level.clock
+        for name in list(actor.effects.keys()):
+            until, value = actor.effects[name]
+            if name in ("burning", "poisoned") and not actor.dead:
+                combat.apply_damage(self, actor, max(1, value or 2), None)
+                self.fx(name, actor.x, actor.y, level.depth)
+                if actor.dead:
+                    return
+        gone = actor.expire_effects(now)
+        for name in gone:
+            if actor.kind == "player":
+                self.msg(f"Your {name.replace('_', ' ')} fades.", "info", to=actor)
+
+        if actor.kind == "player" and not actor.dead:
+            # Slow natural recovery, measured in ticks rather than turns so
+            # that dawdling in heavy armour does not heal you faster.
+            actor.regen_credit = getattr(actor, "regen_credit", 0) + MOVE_COST
+            if actor.regen_credit >= REGEN_TICKS:
+                actor.regen_credit = 0
+                con = actor.stat("constitution")
+                if actor.hp < actor.max_hp:
+                    actor.hp = min(actor.max_hp, actor.hp + 1 + max(0, stat_bonus(con)))
+                if actor.mana < actor.max_mana:
+                    actor.mana = min(actor.max_mana, actor.mana + 1)
+
+    # ====================================================== vision ==========
+    def memory_for(self, p, level):
+        mem = p.memory.get(level.depth)
+        if mem is None:
+            mem = bytearray(level.w * level.h)
+            p.memory[level.depth] = mem
+        return mem
+
+    def light_radius(self, p, level):
+        if level.is_town:
+            return SIGHT_TOWN
+        base = SIGHT_DUNGEON
+        for item in list(p.equipment.values()) + p.inventory:
+            if item and item.base.get("light"):
+                base = max(base, SIGHT_DUNGEON + item.base["light"])
+        if p.has("truesight"):
+            base += 6
+        return base
+
+    def update_fov(self, p, force=False):
+        level = self.levels.get(p.depth)
+        if level is None:
+            return
+        key = (p.x, p.y, p.depth, self.light_radius(p, level))
+        if not force and getattr(p, "_fov_key", None) == key:
+            return
+        p._fov_key = key
+        compute_fov(level, p.x, p.y, key[3], p.fov)
+        mem = self.memory_for(p, level)
+        for i in p.fov:
+            if not mem[i]:
+                mem[i] = 1
+                p.pending_tiles.extend((i % level.w, i // level.w, level.tiles[i]))
+
+    def resend_level(self, p):
+        """Queue every tile this player remembers, for a fresh client map."""
+        level = self.levels.get(p.depth)
+        if level is None:
+            return
+        mem = self.memory_for(p, level)
+        p.pending_tiles = []
+        for i, seen in enumerate(mem):
+            if seen:
+                p.pending_tiles.extend((i % level.w, i // level.w, level.tiles[i]))
+
+    # ====================================================== actions =========
+    def do_player_action(self, level, p, action):
+        """Carry out one chosen action. Returns the ticks it cost."""
+        kind = action.get("a")
+        handler = getattr(self, f"_act_{kind}", None)
+        if handler is None:
+            return FREE_COST
+        return handler(level, p, action)
+
+    # ---- movement --------------------------------------------------------
+    def _act_move(self, level, p, action):
+        dx = clamp(int(action.get("dx", 0)), -1, 1)
+        dy = clamp(int(action.get("dy", 0)), -1, 1)
+        if dx == 0 and dy == 0:
+            return self._act_wait(level, p, action)
+
+        p.facing = ai._dir_index(dx, dy)
+        nx, ny = p.x + dx, p.y + dy
+        if not level.in_bounds(nx, ny):
+            return FREE_COST
+
+        tile = level.get(nx, ny)
+        if tile == T.DOOR:
+            self.set_tile(level, nx, ny, T.DOOR_OPEN)
+            self.sound("door", nx, ny, level.depth)
+            self.msg("You open the door.", "info", to=p)
+            return p.action_cost(MOVE_COST) or MOVE_COST
+
+        other = level.actor_at(nx, ny)
+        if other is not None and other.kind == "monster" and not other.dead:
+            combat.melee(self, p, other)
+            self.sound("swing", p.x, p.y, level.depth)
+            return p.action_cost(ATTACK_COST) or ATTACK_COST
+        if other is not None and other.kind == "npc":
+            self.events.append({"t": "shop", "to": p.id, "npc": other.id,
+                                "shop": other.shop, "name": other.name})
+            return FREE_COST
+        if other is not None:
+            return FREE_COST                    # a companion is in the way
+
+        if not level.walkable(nx, ny, p.id):
+            return FREE_COST
+        if dx and dy and is_solid(level.get(p.x + dx, p.y)) and is_solid(level.get(p.x, p.y + dy)):
+            return FREE_COST                    # no squeezing through corners
+
+        cost = p.action_cost(MOVE_COST)
+        if cost is None:
+            self.msg("You are carrying far too much to move.", "warn", to=p)
+            return FREE_COST
+
+        level.move_actor(p, nx, ny)
+        if tile in (T.WATER, T.RUBBLE):
+            cost = int(cost * 1.5)
+        self.update_fov(p)
+        self.describe_floor(level, p)
+        return cost
+
+    def describe_floor(self, level, p):
+        pile = level.items_at(p.x, p.y)
+        if not pile:
+            return
+        names = [i.name(self.appearances) for i in pile]
+        if len(names) == 1:
+            self.msg(f"You see {names[0]} here.", "loot", to=p)
+        else:
+            self.msg(f"You see several things here: {', '.join(names)}.", "loot", to=p)
+
+    def _act_wait(self, level, p, action):
+        return p.action_cost(REST_COST) or REST_COST
+
+    # ---- fighting --------------------------------------------------------
+    def _act_attack(self, level, p, action):
+        dx = clamp(int(action.get("dx", 0)), -1, 1)
+        dy = clamp(int(action.get("dy", 0)), -1, 1)
+        if dx or dy:
+            p.facing = ai._dir_index(dx, dy)
+        fx, fy = DIRS[p.facing]
+        target = level.actor_at(p.x + fx, p.y + fy)
+        self.sound("swing", p.x, p.y, level.depth)
+        if target is not None and target.kind == "monster" and not target.dead:
+            combat.melee(self, p, target)
+        else:
+            self.msg("You swing at nothing.", "info", to=p)
+        return p.action_cost(ATTACK_COST) or ATTACK_COST
+
+    def _act_shoot(self, level, p, action):
+        weapon = p.equipment.get("weapon")
+        if not weapon or not weapon.base.get("missile"):
+            self.msg("You have nothing to shoot with.", "warn", to=p)
+            return FREE_COST
+        ammo = p.ammo_for(weapon)
+        if ammo is None:
+            self.msg(f"You are out of {weapon.base['missile']}s.", "warn", to=p)
+            return FREE_COST
+
+        tx, ty = int(action.get("x", p.x)), int(action.get("y", p.y))
+        rng_limit = weapon.base.get("rng", 7)
+        if chebyshev(p.x, p.y, tx, ty) > rng_limit:
+            self.msg("That is out of range.", "warn", to=p)
+            return FREE_COST
+
+        ammo.qty -= 1
+        if ammo.qty <= 0:
+            p.inventory.remove(ammo)
+        self.sound("shoot", p.x, p.y, level.depth)
+
+        hit_actor = None
+        path = line_between(p.x, p.y, tx, ty)
+        for (cx, cy) in path:
+            if is_solid(level.get(cx, cy)):
+                break
+            occupant = level.actor_at(cx, cy)
+            if occupant is not None and occupant.kind == "monster" and not occupant.dead:
+                hit_actor = occupant
+                break
+            self.fx("bolt", cx, cy, level.depth)
+
+        if hit_actor is not None:
+            n, s = weapon.damage()
+            dmg = sum(self.rng.randint(1, s) for _ in range(n)) + weapon.enchant
+            dmg += stat_bonus(p.stat("dexterity")) // 2
+            hit, crit = combat.attack_roll(self.rng, p.to_hit, hit_actor.armour_class)
+            if hit:
+                combat.apply_damage(self, hit_actor, dmg * (2 if crit else 1), p, crit=crit)
+                self.msg(f"Your shot hits the {hit_actor.name} for {dmg}.", "combat", to=p)
+            else:
+                self.msg(f"Your shot goes wide of the {hit_actor.name}.", "combat", to=p)
+        else:
+            self.msg("Your shot clatters away into the dark.", "info", to=p)
+        return p.action_cost(ATTACK_COST) or ATTACK_COST
+
+    # ---- objects ---------------------------------------------------------
+    def _act_pickup(self, level, p, action):
+        pile = level.items_at(p.x, p.y)
+        if not pile:
+            self.msg("There is nothing here to pick up.", "info", to=p)
+            return FREE_COST
+        item = pile[0]
+        if item.kind == "gold":
+            p.gold += item.gold_amount
+            level.take_ground_item(p.x, p.y, item)
+            self.msg(f"You pick up {item.gold_amount} gold pieces.", "loot", to=p)
+            self.sound("gold", p.x, p.y, level.depth)
+            return p.action_cost(PICKUP_COST) or PICKUP_COST
+        if not p.add_item(item):
+            self.msg("Your pack is full.", "warn", to=p)
+            return FREE_COST
+        level.take_ground_item(p.x, p.y, item)
+        self.msg(f"You pick up {item.name(self.appearances)}.", "loot", to=p)
+        self.sound("pickup", p.x, p.y, level.depth)
+        return p.action_cost(PICKUP_COST) or PICKUP_COST
+
+    def _act_drop(self, level, p, action):
+        item = p.find_item(int(action.get("id", 0)))
+        if item is None or item not in p.inventory:
+            return FREE_COST
+        dropped = p.remove_item(item, int(action.get("qty", item.qty)))
+        level.add_ground_item(p.x, p.y, dropped)
+        self.msg(f"You drop {dropped.name(self.appearances)}.", "info", to=p)
+        return p.action_cost(DROP_COST) or DROP_COST
+
+    def _act_equip(self, level, p, action):
+        item = p.find_item(int(action.get("id", 0)))
+        if item is None:
+            return FREE_COST
+        ok, message = p.equip(item)
+        self.msg(message, "info" if ok else "warn", to=p)
+        self.events.append({"t": "inv", "to": p.id})
+        return (p.action_cost(EQUIP_COST) or EQUIP_COST) if ok else FREE_COST
+
+    def _act_unequip(self, level, p, action):
+        ok, message = p.unequip(action.get("slot", ""))
+        self.msg(message, "info" if ok else "warn", to=p)
+        self.events.append({"t": "inv", "to": p.id})
+        return (p.action_cost(EQUIP_COST) or EQUIP_COST) if ok else FREE_COST
+
+    def _act_use(self, level, p, action):
+        item = p.find_item(int(action.get("id", 0)))
+        if item is None:
+            return FREE_COST
+        kind = item.kind
+        if kind == "potion":
+            return self.quaff(level, p, item)
+        if kind == "scroll":
+            return self.read_scroll(level, p, item, action)
+        if item.spell:
+            return self.read_book(level, p, item)
+        if item.slot:
+            return self._act_equip(level, p, {"id": item.id})
+        if kind == "food":
+            p.remove_item(item, 1)
+            self.msg("You eat a ration. It is not exciting, but it helps.", "info", to=p)
+            combat.heal(self, p, 3)
+            self.events.append({"t": "inv", "to": p.id})
+            return QUAFF_COST
+        self.msg("You are not sure what to do with that.", "info", to=p)
+        return FREE_COST
+
+    def quaff(self, level, p, item):
+        use = item.base.get("use")
+        power = item.base.get("power", 0)
+        now = level.clock
+        self.appearances.identify(item.key)
+        self.sound("drink", p.x, p.y, level.depth)
+        name = item.base["name"]
+
+        if use == "heal":
+            got = combat.heal(self, p, power)
+            self.msg(f"You drink the {name}. You feel better ({got} healed).", "good", to=p)
+        elif use == "mana":
+            p.mana = min(p.max_mana, p.mana + power)
+            self.msg(f"You drink the {name}. Your head clears.", "good", to=p)
+        elif use == "haste":
+            p.add_effect("haste", now + power * 10)
+            self.msg("Everything around you seems to slow down.", "good", to=p)
+        elif use == "might":
+            p.add_effect("might", now + power * 10)
+            self.msg("Your arms feel like oak.", "good", to=p)
+        elif use == "cure":
+            for bad in ("poisoned", "burning", "slowed", "afraid"):
+                p.effects.pop(bad, None)
+            self.msg("A clean warmth runs through you.", "good", to=p)
+        elif use == "sight":
+            p.add_effect("truesight", now + power * 10)
+            self.update_fov(p, force=True)
+            self.msg("The dark loosens its grip.", "good", to=p)
+        elif use == "poison":
+            p.add_effect("poisoned", now + 600, 4)
+            self.msg("That was a mistake. Your stomach turns.", "bad", to=p)
+        p.remove_item(item, 1)
+        p.recalc()
+        self.events.append({"t": "inv", "to": p.id})
+        return p.action_cost(QUAFF_COST) or QUAFF_COST
+
+    def read_scroll(self, level, p, item, action):
+        use = item.base.get("use")
+        now = level.clock
+        self.appearances.identify(item.key)
+        self.sound("magic", p.x, p.y, level.depth)
+        consumed = True
+
+        if use == "map":
+            self.reveal_level(p, level)
+            self.msg("The plan of this floor unfolds in your mind.", "good", to=p)
+        elif use == "identify":
+            target = p.find_item(int(action.get("target", 0)))
+            if target is None:
+                self.msg("Nothing to identify. Pick an item first.", "warn", to=p)
+                consumed = False
+            else:
+                target.known = True
+                self.appearances.identify(target.key)
+                self.msg(f"It is {target.name(self.appearances)}.", "good", to=p)
+        elif use == "recall":
+            self.msg(f"{p.name} tears open the way home.", "good", depth=level.depth)
+            for ally in self.players_on(level.depth):
+                self.move_player_to(ally, TOWN_DEPTH)
+        elif use == "blink":
+            spot = self.random_safe_spot(level, p)
+            if spot:
+                level.move_actor(p, *spot)
+                self.update_fov(p, force=True)
+                self.msg("The world lurches, and you are somewhere else.", "good", to=p)
+            else:
+                consumed = False
+        elif use == "uncurse":
+            freed = 0
+            for slot, worn in p.equipment.items():
+                if worn and worn.cursed:
+                    worn.cursed = False
+                    freed += 1
+            self.msg("A weight lifts." if freed else "Nothing here is cursed.",
+                     "good" if freed else "info", to=p)
+        elif use == "enchant":
+            target = p.find_item(int(action.get("target", 0)))
+            if target is None or not target.slot:
+                self.msg("Choose a weapon or piece of armour to enchant.", "warn", to=p)
+                consumed = False
+            else:
+                target.enchant += 1
+                target.known = True
+                if target.cursed and target.enchant >= 0:
+                    target.cursed = False
+                p.recalc()
+                self.msg(f"Your {target.base['name']} glows. It is now {target.name(self.appearances)}.", "good", to=p)
+        elif use == "firestorm":
+            self.fx("firestorm", p.x, p.y, level.depth)
+            power = item.base.get("power", 25)
+            for m in combat.enemies_near(level, p.x, p.y, 3):
+                combat.apply_damage(self, m, power + self.rng.randint(0, 8), p)
+            self.msg("Fire roars outward.", "good", to=p)
+        elif use == "fear":
+            for m in combat.enemies_near(level, p.x, p.y, 6):
+                m.add_effect("afraid", now + 400)
+            self.msg("A wave of dread rolls out from you.", "good", to=p)
+
+        if consumed:
+            p.remove_item(item, 1)
+            self.events.append({"t": "inv", "to": p.id})
+            return p.action_cost(READ_COST) or READ_COST
+        return FREE_COST
+
+    def read_book(self, level, p, item):
+        spell = item.spell
+        ok, why = can_learn(spell, p.level, p.stat("intelligence"))
+        if not ok:
+            self.msg(why, "warn", to=p)
+            return FREE_COST
+        if spell in p.spells:
+            self.msg(f"You already know {spell}.", "info", to=p)
+            return FREE_COST
+        p.spells.add(spell)
+        p.remove_item(item, 1)
+        self.msg(f"You study the tome. {spell} is yours.", "good", to=p)
+        self.sound("levelup", p.x, p.y, level.depth)
+        self.events.append({"t": "inv", "to": p.id})
+        return p.action_cost(READ_COST * 2) or READ_COST
+
+    def reveal_level(self, p, level):
+        mem = self.memory_for(p, level)
+        for i in range(len(mem)):
+            if level.tiles[i] == T.VOID or mem[i]:
+                continue
+            mem[i] = 1
+            p.pending_tiles.extend((i % level.w, i // level.w, level.tiles[i]))
+
+    def random_safe_spot(self, level, p):
+        for _ in range(200):
+            x = self.rng.randint(1, level.w - 2)
+            y = self.rng.randint(1, level.h - 2)
+            if not level.walkable(x, y, p.id):
+                continue
+            if combat.enemies_near(level, x, y, 4):
+                continue
+            return (x, y)
+        return None
+
+    # ---- spells ----------------------------------------------------------
+    def _act_cast(self, level, p, action):
+        name = action.get("spell")
+        spell = SPELLS.get(name)
+        if spell is None or name not in p.spells:
+            self.msg("You do not know that spell.", "warn", to=p)
+            return FREE_COST
+        if p.mana < spell["mana"]:
+            self.msg("You have not the mana for that.", "warn", to=p)
+            return FREE_COST
+
+        tx = int(action.get("x", p.x))
+        ty = int(action.get("y", p.y))
+        rng_limit = spell.get("rng", 0)
+        if rng_limit and chebyshev(p.x, p.y, tx, ty) > rng_limit:
+            self.msg("That is beyond your reach.", "warn", to=p)
+            return FREE_COST
+
+        p.mana -= spell["mana"]
+        now = level.clock
+        self.sound("magic", p.x, p.y, level.depth)
+        power = p.level
+
+        # --- damage -------------------------------------------------------
+        if spell.get("dmg"):
+            n, s, per = spell["dmg"]
+            def roll():
+                return sum(self.rng.randint(1, s) for _ in range(n)) + int(per * power)
+
+            targets = []
+            if spell.get("burst"):
+                radius = spell["burst"]
+                centre = (p.x, p.y) if rng_limit == 0 else (tx, ty)
+                self.fx("blast", centre[0], centre[1], level.depth)
+                targets = combat.enemies_near(level, centre[0], centre[1], radius)
+            elif spell.get("pierce"):
+                for (cx, cy) in line_between(p.x, p.y, tx, ty):
+                    if is_solid(level.get(cx, cy)):
+                        break
+                    self.fx("bolt", cx, cy, level.depth)
+                    occ = level.actor_at(cx, cy)
+                    if occ is not None and occ.kind == "monster" and not occ.dead:
+                        targets.append(occ)
+            elif spell.get("chain"):
+                first = level.actor_at(tx, ty)
+                if first is not None and first.kind == "monster":
+                    targets.append(first)
+                    for extra in combat.enemies_near(level, tx, ty, 4):
+                        if extra not in targets and len(targets) < spell["chain"]:
+                            targets.append(extra)
+            else:
+                occ = level.actor_at(tx, ty)
+                if occ is not None and occ.kind == "monster" and not occ.dead:
+                    targets.append(occ)
+                for (cx, cy) in line_between(p.x, p.y, tx, ty):
+                    self.fx("bolt", cx, cy, level.depth)
+
+            if not targets:
+                self.msg("Your magic finds nothing.", "info", to=p)
+            for m in targets:
+                dmg = roll()
+                if spell.get("undead_bonus") and m.tpl.get("undead"):
+                    dmg = int(dmg * 1.5)
+                self.fx("hit", m.x, m.y, level.depth)
+                combat.apply_damage(self, m, dmg, p)
+                if not m.dead:
+                    if spell.get("burn"):
+                        m.add_effect("burning", now + 400, 4)
+                    if spell.get("slow"):
+                        m.add_effect("slowed", now + 400)
+            if targets:
+                self.msg(f"You cast {name}.", "good", to=p)
+
+        # --- healing ------------------------------------------------------
+        if spell.get("heal"):
+            n, s, per = spell["heal"]
+            amount = sum(self.rng.randint(1, s) for _ in range(n)) + int(per * power)
+            if spell.get("party"):
+                for ally in combat.players_near(level, p.x, p.y, spell.get("rng", 4)):
+                    combat.heal(self, ally, amount)
+                    self.fx("heal", ally.x, ally.y, level.depth)
+                self.msg(f"You cast {name}. Everyone nearby is mended.", "good", to=p)
+            else:
+                target = level.actor_at(tx, ty)
+                if target is None or target.kind != "player":
+                    target = p
+                combat.heal(self, target, amount)
+                self.fx("heal", target.x, target.y, level.depth)
+                self.msg(f"You cast {name}.", "good", to=p)
+
+        # --- everything else ----------------------------------------------
+        if spell.get("cure"):
+            for bad in ("poisoned", "burning", "afraid", "slowed"):
+                p.effects.pop(bad, None)
+        if spell.get("ac"):
+            dur = spell.get("dur", 40) * 10
+            key = "stoneskin" if name == "Stoneskin" else "shield_spell"
+            if spell.get("party"):
+                for ally in combat.players_near(level, p.x, p.y, spell.get("rng", 4)):
+                    ally.add_effect(key, now + dur, spell["ac"])
+            else:
+                p.add_effect(key, now + dur, spell["ac"])
+            self.msg(f"You cast {name}.", "good", to=p)
+        if spell.get("halve"):
+            p.add_effect("sanctuary", now + spell.get("dur", 30) * 10)
+            self.msg("A stillness settles over you.", "good", to=p)
+        if spell.get("haste"):
+            p.add_effect("haste", now + spell.get("dur", 40) * 10)
+            self.msg("You quicken.", "good", to=p)
+        if spell.get("feather"):
+            p.add_effect("feather", now + spell.get("dur", 90) * 10)
+            self.msg("Your burden stops mattering.", "good", to=p)
+        if spell.get("truesight"):
+            p.add_effect("truesight", now + spell.get("dur", 60) * 10)
+            self.update_fov(p, force=True)
+        if spell.get("detect"):
+            p.add_effect(f"detect_{spell['detect']}", now + spell.get("dur", 80) * 10)
+            self.msg(f"You sense the {spell['detect']} on this floor.", "good", to=p)
+        if spell.get("reveal"):
+            self.reveal_level(p, level)
+            self.msg("The whole floor lies open in your mind.", "good", to=p)
+        if spell.get("identify"):
+            target = p.find_item(int(action.get("target", 0)))
+            if target is not None:
+                target.known = True
+                self.appearances.identify(target.key)
+                self.msg(f"It is {target.name(self.appearances)}.", "good", to=p)
+            else:
+                self.msg("Choose something in your pack first.", "warn", to=p)
+        if spell.get("blink"):
+            spot = self.random_safe_spot(level, p)
+            if spot:
+                level.move_actor(p, *spot)
+                self.update_fov(p, force=True)
+                self.msg("You blink away.", "good", to=p)
+        if spell.get("passwall"):
+            fx, fy = DIRS[p.facing]
+            opened = 0
+            for step in range(1, 4):
+                cx, cy = p.x + fx * step, p.y + fy * step
+                if level.get(cx, cy) == T.WALL:
+                    self.set_tile(level, cx, cy, T.FLOOR)
+                    opened += 1
+            self.msg("Stone flows aside." if opened else "There is no wall there.",
+                     "good" if opened else "warn", to=p)
+        if spell.get("recall"):
+            self.msg(f"{p.name} opens the road home.", "good", depth=level.depth)
+            for ally in self.players_on(level.depth):
+                self.move_player_to(ally, TOWN_DEPTH)
+
+        p.recalc()
+        return p.action_cost(CAST_COST) or CAST_COST
+
+    # ---- stairs ----------------------------------------------------------
+    def _act_stairs(self, level, p, action):
+        tile = level.get(p.x, p.y)
+        if tile == T.STAIRS_DOWN:
+            target = max(1, self.party_deepest) if level.is_town else p.depth + 1
+            if target > MAX_DEPTH:
+                self.msg("There is nothing deeper than this.", "info", to=p)
+                return FREE_COST
+            self.msg(f"{p.name} goes down.", "info", depth=level.depth)
+            self.move_player_to(p, target)
+            return p.action_cost(STAIRS_COST) or STAIRS_COST
+        if tile == T.STAIRS_UP:
+            target = p.depth - 1
+            if target < TOWN_DEPTH:
+                return FREE_COST
+            self.msg(f"{p.name} climbs up.", "info", depth=level.depth)
+            self.move_player_to(p, target)
+            return p.action_cost(STAIRS_COST) or STAIRS_COST
+        self.msg("There are no stairs here.", "info", to=p)
+        return FREE_COST
+
+    def move_player_to(self, p, depth):
+        old = self.levels.get(p.depth)
+        if old:
+            old.remove(p)
+        level = self.get_level(depth)
+        going_down = depth > p.depth
+        anchor = level.up_at if going_down else (level.down_at or level.spawn_point or level.up_at)
+        p.depth = depth
+        p.x, p.y = level.find_free(anchor[0], anchor[1], 12)
+        p.next_at = level.clock
+        p.pending = None
+        level.place(p)
+        if depth > 0:
+            p.deepest = max(p.deepest, depth)
+            self.party_deepest = max(self.party_deepest, depth)
+        if depth == TOWN_DEPTH:
+            self.shop_stock.clear()
+        self.update_fov(p, force=True)
+        self.resend_level(p)
+        self.events.append({"t": "level", "to": p.id})
+        if level.boss_key and getattr(level, "boss", None) and not level.boss.dead:
+            entry = level.boss.tpl.get("entry")
+            if entry:
+                self.msg(entry, "bad", to=p)
+
+    # ---- monsters acting -------------------------------------------------
+    def monster_ranged(self, level, m, target):
+        kind = m.tpl.get("bolt", "spark")
+        for (cx, cy) in line_between(m.x, m.y, target.x, target.y):
+            if is_solid(level.get(cx, cy)):
+                return
+            self.fx("bolt", cx, cy, level.depth)
+            if (cx, cy) == (target.x, target.y):
+                break
+        self.sound("shoot", m.x, m.y, level.depth)
+        hit, crit = combat.attack_roll(self.rng, m.to_hit, target.armour_class)
+        if not hit:
+            self.msg(f"The {m.name}'s shot misses you.", "combat", to=target)
+            return
+        dmg = m.damage_roll(self.rng)
+        combat.apply_damage(self, target, dmg * (2 if crit else 1), m, crit=crit)
+        self.msg(f"The {m.name} hits you for {dmg}.", "hurt", to=target)
+        if m.tpl.get("burn") and not target.dead:
+            target.add_effect("burning", level.clock + 400, 4)
+
+    def boss_special(self, level, m, target):
+        roll = self.rng.random()
+        if m.tpl.get("summons") and roll < 0.4:
+            self.msg(f"{m.name} calls for his guard!", "bad", depth=level.depth)
+            for _ in range(2):
+                sx, sy = level.find_free(m.x + self.rng.randint(-3, 3),
+                                         m.y + self.rng.randint(-3, 3), 6)
+                if not level.walkable(sx, sy):
+                    continue
+                key = self.rng.choice(m.tpl["summons"])
+                add = make_monster(key, sx, sy, level.depth, self.rng)
+                add.next_at = level.clock + 100
+                add.target_id = target.id
+                level.place(add)
+                self.fx("blast", sx, sy, level.depth)
+            return
+        self.msg(f"{m.name} brings the ground up under you!", "bad", depth=level.depth)
+        self.fx("blast", m.x, m.y, level.depth)
+        self.sound("slam", m.x, m.y, level.depth)
+        for victim in combat.players_near(level, m.x, m.y, 3):
+            combat.apply_damage(self, victim, m.damage_roll(self.rng) + 4, m)
+            if not victim.dead:
+                combat.knock_back(self, m, victim, m.tpl.get("knockback", 1))
+
+    # ---- death -----------------------------------------------------------
+    def kill(self, target, source=None):
+        if target.dead:
+            return
+        level = self.levels.get(target.depth)
+        target.dead = True
+
+        if target.kind == "monster":
+            target.hp = 0
+            if level:
+                level.remove(target)
+                self.fx("death", target.x, target.y, level.depth)
+                self.sound("die", target.x, target.y, level.depth)
+                if self.rng.random() < (1.0 if target.boss else 0.35):
+                    drops = 5 if target.boss else 1
+                    for _ in range(drops):
+                        level.add_ground_item(target.x, target.y,
+                                              generate_item(target.depth, self.rng, target.boss))
+                if self.rng.random() < (1.0 if target.boss else 0.5):
+                    mult = 10 if target.boss else 1
+                    level.add_ground_item(target.x, target.y,
+                                          self._gold_item(generate_gold(target.depth, self.rng) * mult))
+            nearby = [p for p in self.players_on(target.depth)
+                      if not p.dead and chebyshev(p.x, p.y, target.x, target.y) <= 12]
+            if nearby:
+                share = max(1, int(target.xp_value / max(1, len(nearby) * 0.8)))
+                for p in nearby:
+                    for lvl in p.add_xp(share):
+                        self.msg(f"{p.name} reaches level {lvl}.", "good", depth=target.depth)
+                        self.sound("levelup", p.x, p.y, target.depth)
+            if source is not None and source.kind == "player":
+                source.kills += 1
+            self.msg(f"The {target.name} dies.", "kill", depth=target.depth)
+            if target.boss:
+                self.msg(f"{target.name} falls!", "good", depth=target.depth)
+                if target.key == "vaelrik":
+                    self.msg("The storm over Aldershade breaks. The keep is yours.",
+                             "good", depth=target.depth)
+                    for p in self.players_on(target.depth):
+                        p.won = True
+            return
+
+        # --- a player has died ---------------------------------------------
+        self.msg(f"{target.name} has been killed!", "bad", depth=target.depth)
+        self.sound("death", target.x, target.y, target.depth)
+        if level:
+            # You drop what you were carrying where you fell. Your worn gear
+            # comes with you; the pack does not.
+            for item in list(target.inventory):
+                level.add_ground_item(target.x, target.y, item)
+            target.inventory.clear()
+            if target.gold > 0:
+                lost = int(target.gold * DEATH_GOLD_PENALTY)
+                if lost:
+                    level.add_ground_item(target.x, target.y, self._gold_item(lost))
+                    target.gold -= lost
+            level.remove(target)
+
+        target.deaths += 1
+        target.xp = max(0, int(target.xp * (1 - DEATH_XP_PENALTY)))
+        target.effects.clear()
+        target.dead = False
+        target.recalc()
+        target.hp = max(1, int(target.max_hp * RESURRECT_HP_FRACTION))
+        target.mana = target.max_mana // 2
+        # Say it before moving them: the arrival message must not come first.
+        self.events.append({"t": "died", "to": target.id})
+        self.msg("You wake on the flagstones of the temple. Your pack is gone, "
+                 "and so is some of what you knew.", "bad", to=target)
+        self.move_player_to(target, TOWN_DEPTH)
+        self.events.append({"t": "inv", "to": target.id})
+
+    # ====================================================== shops ===========
+    def stock_for(self, shop):
+        """What a trader has on the shelves. Restocked when the party comes home."""
+        cached = self.shop_stock.get(shop)
+        if cached is not None:
+            return cached
+        rng = random.Random(self.rng.randrange(1 << 30))
+        depth = max(1, self.party_deepest)
+        items = []
+
+        if shop == "weaponsmith":
+            pool = [k for k, b in BASES.items()
+                    if b.get("slot") == "weapon" and b.get("depth", 0) <= depth + 2]
+            rng.shuffle(pool)
+            for key in pool[:7]:
+                it = Item(key, enchant=1 if rng.random() < 0.25 else 0)
+                it.known = True
+                items.append(it)
+            items.append(Item("arrow", qty=20))
+            items.append(Item("bolt", qty=20))
+        elif shop == "armourer":
+            pool = [k for k, b in BASES.items()
+                    if b.get("slot") in ("torso", "head", "shield", "arms", "feet", "legs", "back", "waist")
+                    and b.get("depth", 0) <= depth + 2]
+            rng.shuffle(pool)
+            for key in pool[:8]:
+                it = Item(key, enchant=1 if rng.random() < 0.2 else 0)
+                it.known = True
+                items.append(it)
+        elif shop == "general":
+            for key in ("food", "torch", "lantern", "pack", "sack"):
+                items.append(Item(key, qty=5 if key in ("food", "torch") else 1))
+        elif shop == "magic":
+            for key in ("potion_heal", "potion_mana", "scroll_map", "scroll_ident", "scroll_teleport"):
+                it = Item(key, qty=2)
+                it.known = True
+                items.append(it)
+            extra = [k for k, b in BASES.items()
+                     if b.get("kind") in ("potion", "scroll") and b.get("depth", 0) <= depth + 1
+                     and not b.get("bad")]
+            rng.shuffle(extra)
+            for key in extra[:3]:
+                it = Item(key)
+                it.known = True
+                items.append(it)
+            from .spells import spells_for_sale, book_value
+            for name in spells_for_sale(depth, rng, 4):
+                book = Item("scroll_map", spell=name)
+                book.base = dict(BASES["scroll_map"])
+                book.base["name"] = f"Tome of {name}"
+                book.base["value"] = book_value(name)
+                book.base["icon"] = "book_red"
+                book.base["wt"] = 30
+                book.base["kind"] = "book"
+                book.known = True
+                items.append(book)
+        elif shop == "temple":
+            for key in ("potion_heal", "potion_cure", "scroll_uncurse"):
+                it = Item(key, qty=2)
+                it.known = True
+                items.append(it)
+
+        self.shop_stock[shop] = items
+        return items
+
+    def shop_price(self, item, selling=False):
+        value = item.value()
+        return max(1, int(value * 0.4)) if selling else max(1, value)
+
+    def _act_buy(self, level, p, action):
+        shop = action.get("shop")
+        stock = self.stock_for(shop)
+        item = next((i for i in stock if i.id == int(action.get("id", 0))), None)
+        if item is None:
+            return FREE_COST
+        price = self.shop_price(item)
+        if p.gold < price:
+            self.msg("You cannot afford that.", "warn", to=p)
+            return FREE_COST
+        take = item
+        if item.stackable and item.qty > 1:
+            take = Item(item.key, qty=1)
+            take.known = True
+            price = self.shop_price(take)
+            item.qty -= 1
+        else:
+            stock.remove(item)
+        if not p.add_item(take):
+            self.msg("Your pack is full.", "warn", to=p)
+            return FREE_COST
+        p.gold -= price
+        self.appearances.identify(take.key)
+        self.msg(f"You buy {take.name(self.appearances)} for {price} gold.", "loot", to=p)
+        self.sound("buy", p.x, p.y, level.depth)
+        self.events.append({"t": "inv", "to": p.id})
+        self.events.append({"t": "shop", "to": p.id, "npc": action.get("npc"),
+                            "shop": shop, "name": action.get("name", "")})
+        return FREE_COST
+
+    def _act_sell(self, level, p, action):
+        item = p.find_item(int(action.get("id", 0)))
+        if item is None or item not in p.inventory:
+            return FREE_COST
+        price = self.shop_price(item, selling=True)
+        p.remove_item(item, item.qty)
+        p.gold += price
+        self.msg(f"You sell {item.name(self.appearances)} for {price} gold.", "loot", to=p)
+        self.sound("gold", p.x, p.y, level.depth)
+        self.events.append({"t": "inv", "to": p.id})
+        self.events.append({"t": "shop", "to": p.id, "npc": action.get("npc"),
+                            "shop": action.get("shop"), "name": action.get("name", "")})
+        return FREE_COST
+
+    def _act_service(self, level, p, action):
+        """The temple, the sage and the strongroom."""
+        what = action.get("what")
+
+        if what == "identify":
+            item = p.find_item(int(action.get("id", 0)))
+            if item is None:
+                return FREE_COST
+            price = 60 + p.level * 10
+            if p.gold < price:
+                self.msg(f"Ulric wants {price} gold for that.", "warn", to=p)
+                return FREE_COST
+            p.gold -= price
+            item.known = True
+            self.appearances.identify(item.key)
+            self.msg(f"Ulric turns it over. It is {item.name(self.appearances)}.", "good", to=p)
+            self.events.append({"t": "inv", "to": p.id})
+
+        elif what == "heal":
+            price = 30 + p.level * 12
+            if p.gold < price:
+                self.msg(f"The offering is {price} gold.", "warn", to=p)
+                return FREE_COST
+            p.gold -= price
+            p.hp = p.max_hp
+            p.mana = p.max_mana
+            for bad in ("poisoned", "burning", "slowed", "afraid"):
+                p.effects.pop(bad, None)
+            self.msg("You are made whole again.", "good", to=p)
+            self.sound("heal", p.x, p.y, level.depth)
+
+        elif what == "uncurse":
+            price = 150 + p.level * 20
+            if p.gold < price:
+                self.msg(f"That rite costs {price} gold.", "warn", to=p)
+                return FREE_COST
+            freed = [w for w in p.equipment.values() if w and w.cursed]
+            if not freed:
+                self.msg("Nothing you carry is cursed.", "info", to=p)
+                return FREE_COST
+            p.gold -= price
+            for w in freed:
+                w.cursed = False
+            self.msg("The binding breaks.", "good", to=p)
+
+        elif what == "deposit":
+            amount = max(0, min(int(action.get("amount", 0)), p.gold))
+            p.gold -= amount
+            p.bank += amount
+            self.msg(f"You deposit {amount} gold. The strongroom holds {p.bank}.", "info", to=p)
+
+        elif what == "withdraw":
+            amount = max(0, min(int(action.get("amount", 0)), p.bank))
+            p.bank -= amount
+            p.gold += amount
+            self.msg(f"You withdraw {amount} gold.", "info", to=p)
+
+        self.events.append({"t": "inv", "to": p.id})
+        return FREE_COST
+
+    # ====================================================== snapshot ========
+    def snapshot_for(self, viewer):
+        """Everything this character can see, ready to put on the wire."""
+        level = self.levels.get(viewer.depth)
+        if level is None:
+            return None
+
+        detect_mon = viewer.has("detect_monsters")
+        detect_item = viewer.has("detect_items")
+
+        actors = []
+        for a in level.actors.values():
+            if a.dead:
+                continue
+            visible = (a.y * level.w + a.x) in viewer.fov
+            if not visible and a.kind == "player":
+                visible = True                      # companions are always on the map
+            if not visible and a.kind == "monster" and detect_mon:
+                visible = True
+            if not visible:
+                continue
+            entry = {
+                "id": a.id, "k": a.kind, "x": a.x, "y": a.y, "f": a.facing,
+                "hp": max(0, int(a.hp)), "mhp": a.max_hp, "n": a.name,
+            }
+            if a.kind == "player":
+                entry["c"] = a.colour
+                entry["lv"] = a.level
+                weapon = a.equipment.get("weapon")
+                entry["w"] = weapon.base.get("icon") if weapon else None
+                entry["sh"] = bool(a.equipment.get("shield"))
+                entry["hm"] = bool(a.equipment.get("head"))
+                entry["rb"] = bool(a.equipment.get("torso") and
+                                   a.equipment["torso"].key == "robe")
+            else:
+                entry["s"] = a.sprite
+                if getattr(a, "boss", False):
+                    entry["bo"] = 1
+            if a.effects:
+                entry["fx"] = list(a.effects.keys())
+            actors.append(entry)
+
+        items = []
+        for (x, y), pile in level.ground.items():
+            if not pile:
+                continue
+            if (y * level.w + x) not in viewer.fov and not detect_item:
+                continue
+            top = pile[-1]
+            items.append({"x": x, "y": y, "icon": top.base.get("icon", "gold"),
+                          "n": top.name(self.appearances), "many": len(pile) > 1})
+
+        return {
+            "clock": level.clock,
+            "depth": viewer.depth,
+            "waiting": level.waiting_on,
+            "actors": actors,
+            "items": items,
+            "you": self.self_view(viewer),
+            "party": [{"id": p.id, "n": p.name, "hp": max(0, int(p.hp)), "mhp": p.max_hp,
+                       "lv": p.level, "d": p.depth, "c": p.colour}
+                      for p in self.players.values()],
+        }
+
+    def self_view(self, p):
+        enc_name, enc_mult = p.encumbrance
+        return {
+            "id": p.id, "name": p.name, "level": p.level, "xp": p.xp,
+            "hp": max(0, int(p.hp)), "max_hp": p.max_hp,
+            "mana": int(p.mana), "max_mana": p.max_mana,
+            "gold": p.gold, "bank": p.bank, "depth": p.depth,
+            "ac": p.armour_class, "to_hit": p.to_hit,
+            "stats": {k: p.stat(k) for k in p.stats},
+            "base_stats": dict(p.stats),
+            "weight": p.carried_weight, "capacity": p.capacity,
+            "encumbrance": enc_name,
+            "effects": {k: v[0] for k, v in p.effects.items()},
+            "spells": sorted(p.spells),
+            "deepest": p.deepest, "kills": p.kills, "deaths": p.deaths,
+            "clock": self.clock_for(p.depth),
+        }
+
+    def inventory_view(self, p):
+        return {
+            "items": [self.item_view(i) for i in p.inventory],
+            "equipment": {slot: (self.item_view(i) if i else None)
+                          for slot, i in p.equipment.items()},
+            "gold": p.gold, "bank": p.bank,
+            "weight": p.carried_weight, "capacity": p.capacity,
+        }
+
+    def item_view(self, item, shop=False):
+        return {
+            "id": item.id, "key": item.key,
+            "name": item.name(self.appearances, shop=shop),
+            "icon": self.appearances.icon_for(item.key, item.base),
+            "desc": item.describe(self.appearances),
+            "slot": item.slot, "kind": item.kind, "qty": item.qty,
+            "weight": item.weight, "value": item.value(),
+            "cursed": item.cursed and item.known,
+            "spell": item.spell,
+        }
+
+    def shop_view(self, p, shop, npc_id, name):
+        stock = self.stock_for(shop)
+        return {
+            "shop": shop, "npc": npc_id, "name": name,
+            "stock": [dict(self.item_view(i, shop=True), price=self.shop_price(i)) for i in stock],
+            "sell": [dict(self.item_view(i), price=self.shop_price(i, selling=True))
+                     for i in p.inventory],
+            "gold": p.gold, "bank": p.bank,
+            "heal_price": 30 + p.level * 12,
+            "identify_price": 60 + p.level * 10,
+            "uncurse_price": 150 + p.level * 20,
+        }

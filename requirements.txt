@@ -1,0 +1,4 @@
+# Stormhold needs exactly one thing. Either of these works:
+#   pygame-ce  (recommended - actively maintained, same `import pygame`)
+#   pygame     (the classic package)
+pygame-ce>=2.4
