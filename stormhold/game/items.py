@@ -126,9 +126,9 @@ POTION_LOOKS = [
     "oily brown", "milky white", "deep crimson",
 ]
 SCROLL_LOOKS = [
-    "ZELGO MER", "VENZAR BORGAVVE", "THARR", "KIRJE", "ELBIB YLOH",
-    "VERR YED HORRE", "VE FORBRYDERNE", "HACKEM MUCHE", "PRIRUTSENIE",
-    "GHOTI", "XIXAXA XOXAXA", "NR 9",
+    "KHORAM VELT", "ASHEN TALLY", "OBRIN DAUGHE", "SEVEN SEVEN OAK",
+    "MULLIGRUB", "TESSERAINE", "HOLLOW BELL", "QUARRENDON",
+    "FIMBUL WEND", "GRIST AND GALL", "NINE OF SPARROWS", "UNDERWHELM",
 ]
 RING_LOOKS = [
     "plain iron", "twisted silver", "jade", "obsidian", "coral",
@@ -181,14 +181,19 @@ class Appearances:
         kind = base.get("kind")
         look = self.look.get(key)
         if kind == "potion":
-            return f"a {look} potion"
+            return f"{article(look)} {look} potion"
         if kind == "scroll":
             return f'a scroll headed "{look}"'
         if kind == "ring":
-            return f"a {look} ring"
+            return f"{article(look)} {look} ring"
         if kind == "amulet":
-            return f"a {look} amulet"
+            return f"{article(look)} {look} amulet"
         return base["name"]
+
+
+def article(word):
+    """a or an, depending on how the next word starts."""
+    return "an" if word[:1].lower() in "aeiou" else "a"
 
 
 def pluralise(label, qty):
@@ -293,8 +298,17 @@ class Item:
         return out
 
     def describe(self, appearances=None):
-        """The detail line shown when an item is selected."""
+        """The detail line shown when an item is selected.
+
+        Anything still unidentified gives away nothing but its weight - the
+        whole point of paying Ulric is that you cannot read it off the label.
+        """
         b = self.base
+        hidden = (appearances is not None
+                  and b.get("kind") in ("potion", "scroll", "ring", "amulet")
+                  and not appearances.is_known(self.key))
+        if hidden:
+            return f"unidentified, {self.weight / 10:.1f} lb"
         bits = []
         if b.get("dmg"):
             n, s = b["dmg"]
