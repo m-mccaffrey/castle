@@ -11,6 +11,7 @@ import random
 from ..common.constants import (
     STATS, START_STAT, MAX_LEVEL, CARRY_PER_STRENGTH, encumbrance_for,
     xp_for_level, clamp, SLOTS, RING_SLOTS, TICKS_PER_TURN,
+    BULK_PER_STRENGTH, BARE_HANDS_WEIGHT, BARE_HANDS_BULK,
 )
 from .items import Item
 from .monsters import MONSTERS, scaled
@@ -161,14 +162,71 @@ class Player(Actor):
         return w
 
     @property
+    def carried_bulk(self):
+        """Bulk strapped to you, not worn by you.
+
+        Armour conforms to the body and does not count; a pack, a purse and
+        anything carried loose in your hands does.
+        """
+        # Things stowed in a pack press down against each other, so what is
+        # inside counts for half. The pack and purse themselves count in full.
+        b = sum(i.bulk for i in self.inventory) // 2
+        for slot in ("pack", "purse"):
+            worn = self.equipment.get(slot)
+            if worn:
+                b += worn.base.get("bulk", 0)
+        b += self.gold // 400
+        return b
+
+    @property
     def capacity(self):
         return self.stat("strength") * CARRY_PER_STRENGTH
 
     @property
+    def bulk_capacity(self):
+        return self.stat("strength") * BULK_PER_STRENGTH
+
+    @property
+    def pack(self):
+        """The container the loose items live in, if you are wearing one."""
+        return self.equipment.get("pack")
+
+    def pack_limits(self):
+        """(weight, bulk) the pack can hold - or what two hands can, without one."""
+        pack = self.pack
+        if pack is None:
+            return BARE_HANDS_WEIGHT, BARE_HANDS_BULK
+        return (pack.base.get("capacity", 600),
+                pack.base.get("bulk_capacity", 250))
+
+    def pack_load(self):
+        """(weight, bulk) currently in the pack."""
+        return (sum(i.weight for i in self.inventory),
+                sum(i.bulk for i in self.inventory))
+
+    def room_for(self, item):
+        """Can this go in the pack? Returns (ok, reason)."""
+        max_w, max_b = self.pack_limits()
+        used_w, used_b = self.pack_load()
+        if used_w + item.weight > max_w:
+            where = "your pack" if self.pack else "your hands"
+            return False, f"There is no more room in {where} for that weight."
+        if used_b + item.bulk > max_b:
+            where = "your pack" if self.pack else "your hands"
+            return False, f"That is too bulky to fit in {where}."
+        return True, ""
+
+    @property
     def encumbrance(self):
+        """Whichever is worse, the load or the bulk."""
         if self.has("feather"):
             return "Unencumbered", 1.0
-        return encumbrance_for(self.carried_weight, self.capacity)
+        by_weight = encumbrance_for(self.carried_weight, self.capacity)
+        by_bulk = encumbrance_for(self.carried_bulk, self.bulk_capacity)
+        for tier in (by_weight, by_bulk):
+            if tier[1] is None:
+                return tier
+        return by_weight if by_weight[1] >= by_bulk[1] else by_bulk
 
     def action_cost(self, base):
         """How long an action takes this character, all things considered."""
@@ -199,16 +257,37 @@ class Player(Actor):
         return gained
 
     # ----------------------------------------------------------- inventory --
-    def add_item(self, item):
+    def add_item(self, item, force=False):
+        if not force:
+            ok, _ = self.room_for(item)
+            if not ok:
+                return False
         if item.stackable:
             for slot in self.inventory:
-                if slot.key == item.key and slot.stackable:
+                if slot.key == item.key and slot.stackable and not slot.custom_name:
                     slot.qty += item.qty
                     return True
-        if len(self.inventory) >= 30:
+        if len(self.inventory) >= 40:
             return False
         self.inventory.append(item)
         return True
+
+    def sort_pack(self):
+        """Group the pack the way a tidy person would: by what things are."""
+        order = {"weapon": 0, "armour": 1, "container": 2, "potion": 3,
+                 "scroll": 4, "book": 5, "food": 6, "light": 7,
+                 "ring": 8, "amulet": 9, "treasure": 10, "gold": 11}
+
+        def key(item):
+            kind = item.kind
+            if item.slot in ("torso", "head", "shield", "arms", "feet",
+                             "legs", "back", "waist", "bracers"):
+                kind = "armour"
+            elif item.slot == "weapon":
+                kind = "weapon"
+            return (order.get(kind, 12), item.name(None).lower())
+
+        self.inventory.sort(key=key)
 
     def find_item(self, item_id):
         for it in self.inventory:
@@ -229,8 +308,11 @@ class Player(Actor):
         self.inventory.remove(item)
         return item
 
-    def equip(self, item):
-        """Put something on. Returns (ok, message)."""
+    def equip(self, item, prefer_slot=None):
+        """Put something on. Returns (ok, message).
+
+        prefer_slot lets the player drop a ring onto the hand they meant.
+        """
         slot = item.slot
         if not slot:
             return False, f"You cannot wear {item.name()}."
@@ -238,7 +320,10 @@ class Player(Actor):
         if req and self.stat("strength") < req:
             return False, f"You are not strong enough to use that (needs Strength {req})."
         if slot in RING_SLOTS:
-            slot = "ring_left" if self.equipment["ring_left"] is None else "ring_right"
+            if prefer_slot in RING_SLOTS:
+                slot = prefer_slot
+            else:
+                slot = "ring_left" if self.equipment["ring_left"] is None else "ring_right"
         current = self.equipment.get(slot)
         if current and current.cursed:
             current.known = True
@@ -261,8 +346,10 @@ class Player(Actor):
         if item.cursed:
             item.known = True
             return False, f"The {item.name()} will not come off."
-        if len(self.inventory) >= 30:
-            return False, "Your pack is full."
+        if slot != "pack":
+            ok, why = self.room_for(item)
+            if not ok:
+                return False, why
         self.equipment[slot] = None
         self.inventory.append(item)
         self.recalc()

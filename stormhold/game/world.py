@@ -159,7 +159,7 @@ class World:
 
     def give_starting_kit(self, p):
         """Everyone leaves town with the same modest kit, whatever their stats."""
-        for key in ("shortsword", "leather"):
+        for key in ("shortsword", "leather", "pack", "purse"):
             it = Item(key)
             it.known = True
             p.equipment[it.slot] = it
@@ -510,6 +510,10 @@ class World:
             self.msg(f"You pick up {item.gold_amount} gold pieces.", "loot", to=p)
             self.sound("gold", p.x, p.y, level.depth)
             return p.action_cost(PICKUP_COST) or PICKUP_COST
+        ok, why = p.room_for(item)
+        if not ok:
+            self.msg(why, "warn", to=p)
+            return FREE_COST
         if not p.add_item(item):
             self.msg("Your pack is full.", "warn", to=p)
             return FREE_COST
@@ -531,7 +535,7 @@ class World:
         item = p.find_item(int(action.get("id", 0)))
         if item is None:
             return FREE_COST
-        ok, message = p.equip(item)
+        ok, message = p.equip(item, action.get("slot"))
         self.msg(message, "info" if ok else "warn", to=p)
         self.events.append({"t": "inv", "to": p.id})
         return (p.action_cost(EQUIP_COST) or EQUIP_COST) if ok else FREE_COST
@@ -1018,6 +1022,29 @@ class World:
         self.move_player_to(target, TOWN_DEPTH)
         self.events.append({"t": "inv", "to": target.id})
 
+    def _act_sort(self, level, p, action):
+        """Tidy the pack. Costs nothing: it is your own pack."""
+        p.sort_pack()
+        self.msg("You tidy your pack.", "info", to=p)
+        self.events.append({"t": "inv", "to": p.id})
+        return FREE_COST
+
+    def _act_rename(self, level, p, action):
+        """Let a player call a thing whatever they like."""
+        item = p.find_item(int(action.get("id", 0)))
+        if item is None:
+            return FREE_COST
+        raw = str(action.get("name", ""))
+        clean = "".join(ch for ch in raw if ch.isprintable()).strip()[:24]
+        old = item.name(self.appearances)
+        item.custom_name = clean or None
+        if clean:
+            self.msg(f"You will call it {clean} from now on.", "info", to=p)
+        else:
+            self.msg(f"It goes back to being {item.name(self.appearances)}.", "info", to=p)
+        self.events.append({"t": "inv", "to": p.id})
+        return FREE_COST
+
     # ====================================================== shops ===========
     def stock_for(self, shop):
         """What a trader has on the shelves. Restocked when the party comes home."""
@@ -1105,6 +1132,14 @@ class World:
             item.qty -= 1
         else:
             stock.remove(item)
+        ok, why = p.room_for(take)
+        if not ok:
+            self.msg(why, "warn", to=p)
+            if take is not item:
+                item.qty += 1
+            else:
+                stock.append(item)
+            return FREE_COST
         if not p.add_item(take):
             self.msg("Your pack is full.", "warn", to=p)
             return FREE_COST
@@ -1257,6 +1292,7 @@ class World:
 
     def self_view(self, p):
         enc_name, enc_mult = p.encumbrance
+        weight = p.carried_weight
         return {
             "id": p.id, "name": p.name, "level": p.level, "xp": p.xp,
             "hp": max(0, int(p.hp)), "max_hp": p.max_hp,
@@ -1265,7 +1301,8 @@ class World:
             "ac": p.armour_class, "to_hit": p.to_hit,
             "stats": {k: p.stat(k) for k in p.stats},
             "base_stats": dict(p.stats),
-            "weight": p.carried_weight, "capacity": p.capacity,
+            "weight": weight, "capacity": p.capacity,
+            "bulk": p.carried_bulk, "bulk_capacity": p.bulk_capacity,
             "encumbrance": enc_name,
             "effects": {k: v[0] for k, v in p.effects.items()},
             "spells": sorted(p.spells),
@@ -1274,12 +1311,19 @@ class World:
         }
 
     def inventory_view(self, p):
+        pack_w, pack_b = p.pack_load()
+        max_w, max_b = p.pack_limits()
         return {
             "items": [self.item_view(i) for i in p.inventory],
             "equipment": {slot: (self.item_view(i) if i else None)
                           for slot, i in p.equipment.items()},
             "gold": p.gold, "bank": p.bank,
             "weight": p.carried_weight, "capacity": p.capacity,
+            "bulk": p.carried_bulk, "bulk_capacity": p.bulk_capacity,
+            "pack_weight": pack_w, "pack_max_weight": max_w,
+            "pack_bulk": pack_b, "pack_max_bulk": max_b,
+            "pack_name": p.pack.name(self.appearances) if p.pack else "Your hands",
+            "encumbrance": p.encumbrance[0],
         }
 
     def item_view(self, item, shop=False):
@@ -1289,7 +1333,8 @@ class World:
             "icon": self.appearances.icon_for(item.key, item.base),
             "desc": item.describe(self.appearances),
             "slot": item.slot, "kind": item.kind, "qty": item.qty,
-            "weight": item.weight, "value": item.value(),
+            "weight": item.weight, "bulk": item.bulk, "value": item.value(),
+            "custom": bool(item.custom_name),
             "cursed": item.cursed and item.known,
             "spell": item.spell,
         }

@@ -847,115 +847,489 @@ class OverlayScene(Scene):
 
 
 class PackScene(OverlayScene):
-    title = "Pack and equipment"
-    size = (760, 560)
+    """The paper doll.
+
+    A figure in the middle, the slots arranged around it with a line drawn to
+    the part of the body each one belongs to, and the pack below. Everything
+    moves by dragging: pack to body to wear it, body to pack to take it off.
+    The totals live in the title bars, one for what you are wearing and one for
+    what you are carrying.
+    """
+
+    size = (940, 690)
+    SLOT_W = 150
+    SLOT_H = 46
 
     def __init__(self, app):
         super().__init__(app)
-        self.list = W.ListBox((0, 0, 10, 10), row_height=36)
-        self.slot_rects = []
-        self.selected_item = None
-        self.buttons = []
+        self.slot_rects = {}
+        self.cell_rects = []
+        self.selected = None
+        self.drag = None            # {"item", "from", "icon", "pos"}
+        self.hover_slot = None
+        self.naming = None          # a TextField while renaming something
+        self.grid_rect = pygame.Rect(0, 0, 10, 10)
+        self.scroll = 0
 
-    def rows(self):
-        return self.app.inventory.get("items", [])
+    # ------------------------------------------------------------ helpers --
+    @property
+    def inv(self):
+        return self.app.inventory
 
+    def items(self):
+        return self.inv.get("items", [])
+
+    def equipment(self):
+        return self.inv.get("equipment", {})
+
+    def item_at(self, pos):
+        """Whatever is under the cursor: (item, source) or (None, None)."""
+        for slot, rect in self.slot_rects.items():
+            if rect.collidepoint(pos):
+                worn = self.equipment().get(slot)
+                if worn:
+                    return worn, ("slot", slot)
+                return None, ("slot", slot)
+        for rect, item in self.cell_rects:
+            if rect.collidepoint(pos):
+                return item, ("pack", None)
+        return None, (None, None)
+
+    def slot_accepts(self, slot, item):
+        want = item.get("slot")
+        if want is None:
+            return False
+        if want in ("ring_left", "ring_right"):
+            return slot in ("ring_left", "ring_right")
+        return slot == want
+
+    # -------------------------------------------------------------- input --
     def handle(self, event):
-        index = self.list.handle(event)
-        if index is not None:
-            self.selected_item = self.rows()[index]
+        if self.naming is not None:
+            self.handle_naming(event)
+            return
+
+        if event.type == pygame.MOUSEWHEEL and self.grid_rect.collidepoint(pygame.mouse.get_pos()):
+            self.scroll = max(0, self.scroll - event.y)
+            return
+
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            for rect, slot, item in self.slot_rects:
-                if rect.collidepoint(event.pos) and item:
-                    self.selected_item = item
-                    self.app.act({"a": "unequip", "slot": slot})
-                    return
-        super().handle(event)
+            item, (source, slot) = self.item_at(event.pos)
+            if item is not None:
+                self.selected = item
+                self.drag = {"item": item, "from": source, "slot": slot,
+                             "pos": event.pos, "moved": False}
+            return
+
+        if event.type == pygame.MOUSEMOTION:
+            if self.drag:
+                self.drag["pos"] = event.pos
+                self.drag["moved"] = True
+                self.hover_slot = None
+                for slot, rect in self.slot_rects.items():
+                    if rect.collidepoint(event.pos):
+                        self.hover_slot = slot
+            return
+
+        if event.type == pygame.MOUSEBUTTONUP and event.button == 1 and self.drag:
+            self.finish_drag(event.pos)
+            return
+
+        for b in self.buttons:
+            action = b.handle(event)
+            if action:
+                self.on_action(action)
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            self.close()
+
+    def finish_drag(self, pos):
+        drag = self.drag
+        self.drag = None
+        self.hover_slot = None
+        item = drag["item"]
+
+        if not drag["moved"]:
+            return                                   # a click, not a drag
+
+        for slot, rect in self.slot_rects.items():
+            if not rect.collidepoint(pos):
+                continue
+            if drag["from"] == "slot" and slot == drag["slot"]:
+                return                               # dropped back where it started
+            if not self.slot_accepts(slot, item):
+                self.app.play.add_message(
+                    f"{item['name']} does not go there.", "warn")
+                return
+            self.app.act({"a": "equip", "id": item["id"], "slot": slot})
+            return
+
+        if self.grid_rect.collidepoint(pos):
+            if drag["from"] == "slot":
+                self.app.act({"a": "unequip", "slot": drag["slot"]})
+            return
+
+    def handle_naming(self, event):
+        self.naming.handle(event)
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_RETURN:
+                self.app.act({"a": "rename", "id": self.naming_id,
+                              "name": self.naming.value})
+                self.naming = None
+            elif event.key == pygame.K_ESCAPE:
+                self.naming = None
 
     def on_action(self, action):
-        item = self.selected_item
+        item = self.selected
         if action == "close":
             self.close()
-        elif item and action in ("use", "drop"):
-            self.app.act({"a": action, "id": item["id"]})
-            if action == "drop":
-                self.selected_item = None
+        elif action == "sort":
+            self.app.act({"a": "sort"})
+            self.scroll = 0
+        elif action == "name" and item:
+            self.naming_id = item["id"]
+            self.naming = W.TextField((0, 0, 260, 26),
+                                      "" if not item.get("custom") else item["name"], 24)
+            self.naming.focused = True
+        elif item and action == "use":
+            self.app.act({"a": "use", "id": item["id"]})
+        elif item and action == "drop":
+            self.app.act({"a": "drop", "id": item["id"]})
+            self.selected = None
 
+    # ------------------------------------------------------------ drawing --
     def draw(self, surf):
         self.app.scene_under.draw(surf)
+        inv = self.inv
+        cp = inv.get("gold", 0)
+        wt, wt_max = inv.get("weight", 0), max(1, inv.get("capacity", 1))
+        bk, bk_max = inv.get("bulk", 0), max(1, inv.get("bulk_capacity", 1))
+        self.title = (f"{self.app.play.you.get('name', 'Pack')}"
+                      f"   Cp: {cp}   Weight: {wt/10:.1f} ({wt_max/10:.0f})"
+                      f"   Bulk: {bk} ({bk_max})")
         client, _ = self.frame(surf)
 
-        left = pygame.Rect(client.x, client.y, 300, client.height - 46)
-        W.text(surf, "Worn", (left.x, left.y), 13, bold=True)
-        self.slot_rects = []
-        equipment = self.app.inventory.get("equipment", {})
-        y = left.y + 20
-        from ..common.constants import SLOTS, SLOT_LABELS
-        for slot in SLOTS:
-            item = equipment.get(slot)
-            rect = pygame.Rect(left.x, y, left.width, 26)
-            W.panel(surf, rect, raised=bool(item), fill=W.FACE if item else (200, 200, 196))
-            W.text(surf, SLOT_LABELS[slot], (rect.x + 6, rect.y + 6), 12, colour=(80, 80, 80))
-            if item:
-                img = self.app.sheet.item(item["icon"])
-                if img:
-                    surf.blit(pygame.transform.smoothscale(img, (20, 20)), (rect.x + 88, rect.y + 3))
-                name = item["name"]
-                colour = (150, 0, 0) if item.get("cursed") else BLACK
-                W.text(surf, name[:26], (rect.x + 112, rect.y + 6), 12, colour=colour)
-            self.slot_rects.append((rect, slot, item))
-            y += 27
+        doll_h = 430
+        doll = pygame.Rect(client.x, client.y, client.width, doll_h)
+        self.draw_doll(surf, doll)
 
-        right = pygame.Rect(client.x + 316, client.y, client.width - 316, client.height - 150)
-        inv = self.app.inventory
-        W.text(surf, f"Carried  ({inv.get('weight', 0)/10:.1f} lb of "
-                     f"{inv.get('capacity', 1)/10:.0f} lb)", (right.x, right.y), 13, bold=True)
-        self.list.rect = pygame.Rect(right.x, right.y + 20, right.width, right.height - 20)
-        sheet = self.app.sheet
-
-        def draw_row(target, item, rect, selected):
-            img = sheet.item(item["icon"])
+        grid_top = doll.bottom + 6
+        self.draw_pack(surf, pygame.Rect(client.x, grid_top,
+                                         client.width, client.bottom - grid_top - 40))
+        self.draw_buttons(surf, client)
+        if self.drag and self.drag["moved"]:
+            img = self.app.sheet.item(self.drag["item"]["icon"])
             if img:
-                target.blit(pygame.transform.smoothscale(img, (26, 26)), (rect.x + 3, rect.y + 4))
-            colour = WHITE if selected else ((150, 0, 0) if item.get("cursed") else BLACK)
-            W.text(target, item["name"][:40], (rect.x + 34, rect.y + 3), 13, colour=colour, bold=True)
-            W.text(target, item["desc"][:52], (rect.x + 34, rect.y + 19), 11,
-                   colour=SILVER if selected else (90, 90, 90))
+                surf.blit(img, (self.drag["pos"][0] - TILE // 2,
+                                self.drag["pos"][1] - TILE // 2))
+        if self.naming is not None:
+            self.draw_naming(surf, client)
 
-        self.list.draw(surf, self.rows(), draw_row)
+    def draw_doll(self, surf, area):
+        """Slots down each side, three across the top, and the figure between."""
+        from ..common.constants import (DOLL_TOP, DOLL_LEFT, DOLL_RIGHT,
+                                        SLOT_LABELS, SLOT_ANCHORS)
+        self.slot_rects = {}
+        sw, sh = self.SLOT_W, self.SLOT_H
 
-        detail = pygame.Rect(right.x, client.bottom - 126, right.width, 78)
-        W.panel(surf, detail, raised=False, fill=(240, 240, 236))
-        item = self.selected_item
-        if item:
-            W.text(surf, item["name"], (detail.x + 8, detail.y + 6), 14, bold=True)
-            for i, line in enumerate(W.wrap(item["desc"], detail.width - 16, 12)):
-                W.text(surf, line, (detail.x + 8, detail.y + 26 + i * 15), 12)
-            W.text(surf, f"worth about {max(1, item['value'] // 2)} gold in town",
-                   (detail.x + 8, detail.bottom - 18), 11, colour=(90, 90, 90))
-        else:
-            W.text(surf, "Pick something up to see what it is.",
-                   (detail.x + 8, detail.y + 8), 13, colour=(90, 90, 90))
+        top_y = area.y
+        gap = (area.width - sw * 3) // 4
+        for i, slot in enumerate(DOLL_TOP):
+            x = area.x + gap + i * (sw + gap)
+            self.slot_rects[slot] = pygame.Rect(x, top_y, sw, sh)
 
-        by = client.bottom - 36
+        col_top = top_y + sh + 8
+        rows = max(len(DOLL_LEFT), len(DOLL_RIGHT))
+        row_h = (area.height - sh - 14) // rows
+        for i, slot in enumerate(DOLL_LEFT):
+            self.slot_rects[slot] = pygame.Rect(area.x, col_top + i * row_h, sw, sh)
+        for i, slot in enumerate(DOLL_RIGHT):
+            self.slot_rects[slot] = pygame.Rect(area.right - sw, col_top + i * row_h, sw, sh)
+
+        gap_area = pygame.Rect(area.x + sw + 20, col_top,
+                               area.width - 2 * sw - 40, area.height - sh - 14)
+        fig_w = int(gap_area.height * 0.46)
+        figure = pygame.Rect(gap_area.centerx - fig_w // 2, gap_area.y,
+                             fig_w, gap_area.height)
+
+        # Leader lines first, so the boxes sit on top of them.
+        for slot, rect in self.slot_rects.items():
+            anchor = SLOT_ANCHORS.get(slot)
+            if not anchor:
+                continue
+            ax = figure.x + int(anchor[0] * figure.width)
+            ay = figure.y + int(anchor[1] * figure.height)
+            if rect.centerx < figure.centerx:
+                start = (rect.right, rect.centery)
+            elif rect.centerx > figure.centerx:
+                start = (rect.left, rect.centery)
+            else:
+                start = (rect.centerx, rect.bottom)
+            worn = self.equipment().get(slot)
+            if worn:
+                self.dashed_line(surf, start, (ax, ay), (150, 40, 40))
+            else:
+                # Just a stub: a full line from every empty slot crosses the
+                # figure and turns the whole window into a cat's cradle.
+                dx, dy = ax - start[0], ay - start[1]
+                length = max(1.0, (dx * dx + dy * dy) ** 0.5)
+                stub = min(26.0, length)
+                self.dashed_line(surf, start,
+                                 (start[0] + dx / length * stub,
+                                  start[1] + dy / length * stub), (175, 175, 170))
+
+        self.draw_figure(surf, gap_area)
+
+        for slot, rect in self.slot_rects.items():
+            self.draw_slot(surf, rect, slot, SLOT_LABELS.get(slot, slot))
+
+    def dashed_line(self, surf, a, b, colour, dash=5):
+        dx, dy = b[0] - a[0], b[1] - a[1]
+        length = max(1.0, (dx * dx + dy * dy) ** 0.5)
+        steps = int(length // dash)
+        for i in range(0, steps, 2):
+            t0, t1 = i / max(1, steps), min(1.0, (i + 1) / max(1, steps))
+            pygame.draw.line(surf, colour,
+                             (a[0] + dx * t0, a[1] + dy * t0),
+                             (a[0] + dx * t1, a[1] + dy * t1))
+
+    def draw_figure(self, surf, area):
+        """An outline of a person, and what they are visibly wearing.
+
+        The space between the two columns is much wider than a person, so the
+        drawing is fitted to a tall narrow box in the middle of it - otherwise
+        every proportion stretches sideways.
+        """
+        ink = (40, 40, 40)
+        height = area.height
+        width = int(height * 0.46)               # roughly human proportions
+        box = pygame.Rect(area.centerx - width // 2, area.y, width, height)
+
+        def px(fx, fy):
+            return (int(box.x + fx * box.width), int(box.y + fy * box.height))
+
+        worn = self.equipment()
+
+        # --- a cloak hangs behind everything else -------------------------
+        if worn.get("back"):
+            pygame.draw.polygon(surf, (96, 64, 140), [
+                px(0.28, 0.24), px(0.72, 0.24), px(0.86, 0.78),
+                px(0.66, 0.72), px(0.34, 0.72), px(0.14, 0.78)])
+            pygame.draw.polygon(surf, ink, [
+                px(0.28, 0.24), px(0.72, 0.24), px(0.86, 0.78),
+                px(0.66, 0.72), px(0.34, 0.72), px(0.14, 0.78)], 2)
+
+        # --- the pack, slung on the back, showing above the shoulders --------
+        if worn.get("pack"):
+            pk_w, pk_h = int(box.width * 0.44), int(box.height * 0.26)
+            pk = pygame.Rect(box.centerx - pk_w // 2, px(0, 0.20)[1], pk_w, pk_h)
+            pygame.draw.rect(surf, (120, 86, 48), pk)
+            pygame.draw.rect(surf, ink, pk, 2)
+            for fx in (0.40, 0.60):                     # shoulder straps
+                pygame.draw.line(surf, (96, 68, 38), px(fx, 0.22), px(fx, 0.44), 3)
+
+        # --- legs and boots ------------------------------------------------
+        for fx in (0.42, 0.58):
+            pygame.draw.line(surf, ink, px(fx, 0.56), px(fx, 0.88), 2)
+        if worn.get("legs"):
+            pygame.draw.polygon(surf, (120, 86, 48), [
+                px(0.38, 0.56), px(0.62, 0.56), px(0.62, 0.76), px(0.38, 0.76)])
+            pygame.draw.polygon(surf, ink, [
+                px(0.38, 0.56), px(0.62, 0.56), px(0.62, 0.76), px(0.38, 0.76)], 2)
+        for fx in (0.42, 0.58):
+            foot = pygame.Rect(px(fx - 0.09, 0.88)[0], px(0, 0.88)[1],
+                               int(box.width * 0.18), int(box.height * 0.05))
+            pygame.draw.rect(surf, (150, 110, 60) if worn.get("feet") else W.FACE, foot)
+            pygame.draw.rect(surf, ink, foot, 2)
+
+        # --- torso ----------------------------------------------------------
+        torso = [px(0.32, 0.22), px(0.68, 0.22), px(0.62, 0.57), px(0.38, 0.57)]
+        pygame.draw.polygon(surf, (128, 138, 152) if worn.get("torso") else W.FACE, torso)
+        pygame.draw.polygon(surf, ink, torso, 2)
+
+        # --- arms, bracers and gauntlets ------------------------------------
+        for side in (-1, 1):
+            sx = 0.50 + side * 0.18
+            ex = 0.50 + side * 0.30
+            pygame.draw.line(surf, ink, px(sx, 0.25), px(ex, 0.42), 2)
+            pygame.draw.line(surf, ink, px(ex, 0.42), px(ex, 0.58), 2)
+            if worn.get("bracers"):
+                pygame.draw.line(surf, (150, 120, 70), px(ex, 0.44), px(ex, 0.50), 5)
+            hand = px(ex, 0.60)
+            if worn.get("arms"):
+                pygame.draw.circle(surf, (120, 130, 145), hand, 6)
+                pygame.draw.circle(surf, ink, hand, 6, 2)
+            else:
+                pygame.draw.circle(surf, W.FACE, hand, 5)
+                pygame.draw.circle(surf, ink, hand, 5, 2)
+            ring = "ring_left" if side < 0 else "ring_right"
+            if worn.get(ring):
+                pygame.draw.circle(surf, (210, 180, 50), px(ex + side * 0.05, 0.62), 3)
+
+        # --- belt -------------------------------------------------------------
+        pygame.draw.line(surf, (130, 90, 45) if worn.get("waist") else ink,
+                         px(0.38, 0.555), px(0.62, 0.555), 5 if worn.get("waist") else 2)
+
+        # --- shield, on the arm rather than floating beside the shoulder -------
+        if worn.get("shield"):
+            sh_w, sh_h = int(box.width * 0.26), int(box.height * 0.18)
+            sh = pygame.Rect(px(0.80, 0.40)[0] - sh_w // 2, px(0, 0.40)[1], sh_w, sh_h)
+            pygame.draw.ellipse(surf, (150, 155, 165), sh)
+            pygame.draw.ellipse(surf, ink, sh, 2)
+            pygame.draw.circle(surf, (110, 60, 50), sh.center, 4)
+
+        # --- weapon, gripped in the other hand ----------------------------------
+        if worn.get("weapon"):
+            hx = px(0.20, 0)[0]
+            top, bottom = px(0, 0.34)[1], px(0, 0.64)[1]
+            pygame.draw.line(surf, (180, 185, 195), (hx, top), (hx, bottom), 5)
+            pygame.draw.line(surf, ink, (hx, top), (hx, bottom), 1)
+            pygame.draw.line(surf, (150, 110, 40), (hx - 7, px(0, 0.58)[1]),
+                             (hx + 7, px(0, 0.58)[1]), 3)
+
+        # --- neck and head ------------------------------------------------------
+        pygame.draw.line(surf, ink, px(0.50, 0.18), px(0.50, 0.22), 2)
+        head_w = int(box.width * 0.26)
+        head_h = int(box.height * 0.13)
+        head = pygame.Rect(box.centerx - head_w // 2, px(0, 0.055)[1], head_w, head_h)
+        pygame.draw.ellipse(surf, W.FACE, head)
+        pygame.draw.ellipse(surf, ink, head, 2)
+        if worn.get("head"):
+            cap = pygame.Rect(head.x - 2, head.y - 3, head.width + 4, head.height // 2 + 3)
+            pygame.draw.rect(surf, (128, 138, 152), cap)
+            pygame.draw.rect(surf, ink, cap, 2)
+        if worn.get("neck"):
+            pygame.draw.circle(surf, (210, 180, 50), px(0.50, 0.235), 4)
+            pygame.draw.circle(surf, ink, px(0.50, 0.235), 4, 1)
+
+        return box
+
+    def draw_slot(self, surf, rect, slot, label):
+        worn = self.equipment().get(slot)
+        highlight = (self.drag and self.hover_slot == slot
+                     and self.slot_accepts(slot, self.drag["item"]))
+        fill = (210, 225, 200) if highlight else (W.FACE if worn else (198, 198, 194))
+        W.panel(surf, rect, raised=bool(worn), fill=fill)
+        W.text(surf, label, (rect.x + 5, rect.y + 3), 10, colour=(90, 90, 90))
+        if worn:
+            img = self.app.sheet.item(worn["icon"])
+            if img:
+                surf.blit(pygame.transform.smoothscale(img, (22, 22)), (rect.x + 5, rect.y + 18))
+            colour = (150, 0, 0) if worn.get("cursed") else BLACK
+            name = worn["name"]
+            f = W.font(11, bold=True)
+            if f.size(name)[0] > rect.width - 36:
+                while f.size(name + "...")[0] > rect.width - 36 and len(name) > 3:
+                    name = name[:-1]
+                name += "..."
+            W.text(surf, name, (rect.x + 31, rect.y + 21), 11, bold=True, colour=colour)
+        if self.selected is not None and worn is not None and worn["id"] == self.selected["id"]:
+            pygame.draw.rect(surf, W.TITLE_A, rect, 2)
+
+    def draw_pack(self, surf, area):
+        inv = self.inv
+        name = inv.get("pack_name", "Pack")
+        pw, pwm = inv.get("pack_weight", 0), max(1, inv.get("pack_max_weight", 1))
+        pb, pbm = inv.get("pack_bulk", 0), max(1, inv.get("pack_max_bulk", 1))
+        bar = pygame.Rect(area.x, area.y, area.width, 18)
+        pygame.draw.rect(surf, W.TITLE_B, bar)
+        W.text(surf, f"{name}   Wt {pw/10:.1f} ({pwm/10:.0f})   Bulk {pb} ({pbm})",
+               (bar.x + 6, bar.y + 2), 12, bold=True, colour=WHITE)
+
+        self.grid_rect = pygame.Rect(area.x, bar.bottom, area.width, area.height - bar.height)
+        W.panel(surf, self.grid_rect, raised=False, fill=(236, 236, 232))
+
+        cell = 74
+        cols = max(1, (self.grid_rect.width - 8) // cell)
+        rows = max(1, (self.grid_rect.height - 8) // cell)
+        items = self.items()
+        max_scroll = max(0, (len(items) + cols - 1) // cols - rows)
+        self.scroll = min(self.scroll, max_scroll)
+
+        self.cell_rects = []
+        clip = surf.get_clip()
+        surf.set_clip(self.grid_rect)
+        for index, item in enumerate(items):
+            row, col = divmod(index, cols)
+            row -= self.scroll
+            if row < 0 or row >= rows + 1:
+                continue
+            r = pygame.Rect(self.grid_rect.x + 4 + col * cell,
+                            self.grid_rect.y + 4 + row * cell, cell - 4, cell - 4)
+            selected = self.selected is not None and item["id"] == self.selected["id"]
+            if selected:
+                pygame.draw.rect(surf, (210, 220, 245), r)
+                pygame.draw.rect(surf, W.TITLE_A, r, 1)
+            img = self.app.sheet.item(item["icon"])
+            if img:
+                surf.blit(img, (r.centerx - TILE // 2, r.y + 2))
+            label = item["name"]
+            f = W.font(10)
+            if f.size(label)[0] > r.width - 2:
+                while f.size(label + "...")[0] > r.width - 2 and len(label) > 3:
+                    label = label[:-1]
+                label += "..."
+            colour = (150, 0, 0) if item.get("cursed") else BLACK
+            img2 = f.render(label, True, colour)
+            surf.blit(img2, (r.centerx - img2.get_width() // 2, r.bottom - 24))
+            qty = item.get("qty", 1)
+            if qty > 1:
+                W.text(surf, f"x{qty}", (r.right - 20, r.y + 2), 10, bold=True)
+            self.cell_rects.append((r, item))
+        surf.set_clip(clip)
+
+        if not items:
+            W.text(surf, "Empty. Drag something in, or press G in the keep to pick things up.",
+                   (self.grid_rect.x + 10, self.grid_rect.y + 10), 12, colour=(120, 120, 120))
+        if max_scroll:
+            W.text(surf, f"{self.scroll + 1}/{max_scroll + 1}  (scroll wheel)",
+                   (self.grid_rect.right - 110, self.grid_rect.bottom - 16), 10,
+                   colour=(120, 120, 120))
+
+    def draw_buttons(self, surf, client):
+        item = self.selected
         label = "Use"
         if item:
             if item.get("slot"):
-                label = "Wear / wield"
+                label = "Wear"
             elif item.get("spell"):
                 label = "Study"
             elif item.get("kind") == "potion":
                 label = "Drink"
             elif item.get("kind") == "scroll":
                 label = "Read"
+        by = client.bottom - 32
         self.buttons = [
-            W.Button((client.x + 316, by, 150, 30), label, "use", enabled=bool(item)),
-            W.Button((client.x + 476, by, 110, 30), "Drop", "drop", enabled=bool(item)),
-            W.Button((client.right - 110, by, 100, 30), "Close", "close"),
+            W.Button((client.x, by, 110, 28), "Sort Pack", "sort"),
+            W.Button((client.x + 118, by, 130, 28), "Name Object", "name", enabled=bool(item)),
+            W.Button((client.x + 256, by, 100, 28), label, "use", enabled=bool(item)),
+            W.Button((client.x + 364, by, 90, 28), "Drop", "drop", enabled=bool(item)),
+            W.Button((client.right - 90, by, 90, 28), "Close", "close"),
         ]
         for b in self.buttons:
             b.draw(surf)
-        W.text(surf, "Click a worn item to take it off.", (client.x, by + 8), 11, colour=(90, 90, 90))
+
+        # The detail line shares the row with the Close button, so it has to
+        # stop short of it rather than run underneath.
+        text_x = client.x + 466
+        room = (client.right - 100) - text_x
+        detail = (f"{item['name']} - {item['desc']}" if item
+                  else "Drag things between your body and your pack.")
+        f = W.font(11)
+        if f.size(detail)[0] > room:
+            while f.size(detail + "...")[0] > room and len(detail) > 3:
+                detail = detail[:-1]
+            detail += "..."
+        W.text(surf, detail, (text_x, by + 7), 11,
+               colour=(70, 70, 70) if item else (120, 120, 120))
+
+    def draw_naming(self, surf, client):
+        box = pygame.Rect(client.centerx - 170, client.centery - 50, 340, 100)
+        W.panel(surf, box, raised=True)
+        W.text(surf, "Call it what you like:", (box.x + 12, box.y + 12), 13, bold=True)
+        self.naming.rect = pygame.Rect(box.x + 12, box.y + 36, box.width - 24, 26)
+        self.naming.draw(surf)
+        W.text(surf, "Enter to keep it, Esc to forget it.",
+               (box.x + 12, box.y + 70), 11, colour=(90, 90, 90))
 
 
 class SpellScene(OverlayScene):

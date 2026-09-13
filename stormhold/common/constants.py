@@ -130,18 +130,53 @@ def encumbrance_for(weight, capacity):
 # ------------------------------------------------------------ equipment ----
 # Worn slots, in the order the character sheet lists them.
 SLOTS = (
-    "head", "neck", "torso", "back", "arms", "waist",
+    "head", "neck", "back", "torso", "bracers", "arms", "waist",
     "legs", "feet", "shield", "weapon", "ring_left", "ring_right",
+    "pack", "purse",
 )
 
 SLOT_LABELS = {
-    "head": "Head", "neck": "Neck", "torso": "Body", "back": "Back",
-    "arms": "Hands", "waist": "Waist", "legs": "Legs", "feet": "Feet",
+    "head": "Helmet", "neck": "Neckwear", "back": "Overgarment",
+    "torso": "Armour", "bracers": "Bracers", "arms": "Gauntlets",
+    "waist": "Belt", "legs": "Leggings", "feet": "Boots",
     "shield": "Shield", "weapon": "Weapon",
-    "ring_left": "Left ring", "ring_right": "Right ring",
+    "ring_left": "Right ring", "ring_right": "Left ring",
+    "pack": "Pack", "purse": "Purse",
 }
 
+# Where each slot sits on the figure, as a fraction of the drawing area, so a
+# leader line can be drawn from the box to the body part it belongs to.
+SLOT_ANCHORS = {
+    "head":       (0.50, 0.11),
+    "neck":       (0.50, 0.22),
+    "back":       (0.30, 0.30),
+    "torso":      (0.50, 0.34),
+    "bracers":    (0.26, 0.44),
+    "arms":       (0.76, 0.50),
+    "weapon":     (0.20, 0.52),
+    "shield":     (0.82, 0.40),
+    "waist":      (0.50, 0.53),
+    "ring_left":  (0.19, 0.56),
+    "ring_right": (0.81, 0.56),
+    "legs":       (0.50, 0.66),
+    "feet":       (0.50, 0.88),
+    "pack":       (0.36, 0.30),
+    "purse":      (0.62, 0.55),
+}
+
+# Slots laid out around the figure: which column, and in what order.
+DOLL_TOP = ("head", "neck", "back")
+DOLL_LEFT = ("torso", "bracers", "weapon", "ring_left", "waist", "pack")
+DOLL_RIGHT = ("shield", "arms", "legs", "ring_right", "feet", "purse")
+
 RING_SLOTS = ("ring_left", "ring_right")
+
+# What you can hold without a pack: your two hands, near enough.
+BARE_HANDS_WEIGHT = 120
+BARE_HANDS_BULK = 30
+
+# Bulk you can carry on your body at all, however well packed.
+BULK_PER_STRENGTH = 24
 
 # --------------------------------------------------------------- world -----
 TOWN_DEPTH = 0
