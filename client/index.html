@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#1b1a18">
+<title>Stormhold</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%231b1a18'/><path d='M3 13V6l2-2 3 2 3-2 2 2v7z' fill='%23b8c0cc'/></svg>">
+</head>
+<body>
+
+<!-- ------------------------------------------------------------- lobby -->
+<div id="lobby">
+  <div class="window lobby-window">
+    <div class="titlebar">
+      <span class="title">Stormhold &mdash; The Sundered Keep</span>
+      <span class="titlebuttons"><i>_</i><i>□</i></span>
+    </div>
+    <div class="window-body">
+      <p class="tagline">
+        A co-operative dungeon crawl for the family. One computer runs the keep;
+        everyone else just opens the address in a browser.
+      </p>
+
+      <fieldset>
+        <legend>Your adventurer</legend>
+        <label class="row">
+          <span>Name</span>
+          <input id="name-input" maxlength="14" autocomplete="off" spellcheck="false" placeholder="Adventurer">
+        </label>
+        <div id="class-picker" class="class-picker"></div>
+      </fieldset>
+
+      <fieldset id="resume-box" hidden>
+        <legend>Carry on with a saved character</legend>
+        <div id="resume-list" class="resume-list"></div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Who is already in the keep</legend>
+        <div id="online-list" class="online-list">Nobody yet &mdash; you would be first.</div>
+      </fieldset>
+
+      <div class="lobby-actions">
+        <button id="enter-btn" class="btn big">Enter the Keep</button>
+        <span id="lobby-status" class="status"></span>
+      </div>
+
+      <details class="how">
+        <summary>How to play</summary>
+        <ul>
+          <li><b>Move</b> with the arrow keys or W A S D. Walk into a monster to hit it.</li>
+          <li><b>Space</b> swings your weapon (or fires your bow or staff) in the way you are facing.</li>
+          <li><b>1 2 3</b> use your three class abilities. <b>Q</b> drinks a healing potion.</li>
+          <li><b>E</b> is your do-something key: stairs, shopkeepers, and helping a friend up.</li>
+          <li><b>I</b> opens your pack. Click an item to equip or drink it.</li>
+          <li>If you fall you are <b>down, not dead</b>. A friend can stand over you and hold <b>E</b>.</li>
+          <li>Stand on the stairs and press <b>E</b> to call everyone down to the next level.</li>
+        </ul>
+      </details>
+    </div>
+  </div>
+</div>
+
+<!-- -------------------------------------------------------------- game -->
+<div id="game" hidden>
+  <div id="viewport">
+    <canvas id="screen"></canvas>
+
+    <div id="banner" class="banner" hidden></div>
+    <div id="downed-overlay" class="downed-overlay" hidden>
+      <div class="downed-text">You are down!</div>
+      <div class="downed-sub">Hold on &mdash; someone can stand over you and press <b>E</b>.</div>
+      <div id="bleed-bar" class="bleed-bar"><span></span></div>
+    </div>
+
+    <div id="touch-stick" class="touch-stick"><div class="knob"></div></div>
+    <div id="touch-pad" class="touch-pad">
+      <button data-act="attack" class="tbtn tbtn-big">ATK</button>
+      <button data-act="interact" class="tbtn">E</button>
+      <button data-act="ability0" class="tbtn">1</button>
+      <button data-act="ability1" class="tbtn">2</button>
+      <button data-act="ability2" class="tbtn">3</button>
+      <button data-act="inventory" class="tbtn">Pack</button>
+    </div>
+  </div>
+
+  <aside id="sidebar">
+    <div class="panel charpanel">
+      <div class="charline">
+        <span id="char-name">&mdash;</span>
+        <span id="char-level" class="muted">Lv 1</span>
+      </div>
+      <div class="bar hp"><span id="hp-fill"></span><label id="hp-text">0/0</label></div>
+      <div class="bar mp"><span id="mp-fill"></span><label id="mp-text">0/0</label></div>
+      <div class="bar xp"><span id="xp-fill"></span><label id="xp-text">0 xp</label></div>
+      <div class="statline">
+        <span title="Might">MGT <b id="stat-might">0</b></span>
+        <span title="Agility">AGI <b id="stat-agility">0</b></span>
+        <span title="Wits">WIT <b id="stat-wits">0</b></span>
+        <span title="Armour">ARM <b id="stat-armor">0</b></span>
+      </div>
+      <div class="statline">
+        <span class="gold">⬤ <b id="stat-gold">0</b> gold</span>
+        <span id="depth-label">Aldershade</span>
+      </div>
+      <div id="effects" class="effects"></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Abilities</div>
+      <div id="abilities" class="abilities"></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Party</div>
+      <div id="party" class="party"></div>
+    </div>
+
+    <div class="panel logpanel">
+      <div class="panel-title">
+        Messages
+        <button id="btn-help" class="minibtn" title="Help (H)">?</button>
+        <button id="btn-sound" class="minibtn" title="Sound on/off">♪</button>
+        <button id="btn-pack" class="minibtn" title="Pack (I)">▤</button>
+      </div>
+      <div id="log" class="log"></div>
+      <form id="chat-form" class="chat-form" autocomplete="off">
+        <input id="chat-input" maxlength="160" placeholder="Press Enter to chat…">
+      </form>
+    </div>
+
+    <div id="netstat" class="netstat">connecting…</div>
+  </aside>
+</div>
+
+<!-- ----------------------------------------------------------- overlays -->
+<div id="modal-root" class="modal-root" hidden>
+  <!-- pack -->
+  <div id="pack-window" class="window modal" hidden>
+    <div class="titlebar"><span class="title">Pack &amp; Equipment</span>
+      <button class="closebtn" data-close="pack">×</button></div>
+    <div class="window-body packbody">
+      <div class="equip-col">
+        <div class="panel-title">Worn</div>
+        <div id="equip-slots" class="equip-slots"></div>
+        <div class="panel-title">Carried <span id="pack-count" class="muted"></span></div>
+        <div id="pack-grid" class="item-grid"></div>
+      </div>
+      <div id="item-detail" class="item-detail">
+        <p class="muted">Click an item to see what it does.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- shop -->
+  <div id="shop-window" class="window modal" hidden>
+    <div class="titlebar"><span class="title" id="shop-title">Shop</span>
+      <button class="closebtn" data-close="shop">×</button></div>
+    <div class="window-body shopbody">
+      <div class="shop-col">
+        <div class="panel-title">For sale</div>
+        <div id="shop-stock" class="shop-list"></div>
+        <div id="shop-extra"></div>
+      </div>
+      <div class="shop-col">
+        <div class="panel-title">Your goods</div>
+        <div id="shop-sell" class="shop-list"></div>
+        <div class="shop-gold">You have <b id="shop-gold">0</b> gold.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- help -->
+  <div id="help-window" class="window modal" hidden>
+    <div class="titlebar"><span class="title">How to play</span>
+      <button class="closebtn" data-close="help">×</button></div>
+    <div class="window-body">
+      <table class="keys">
+        <tr><th>Arrows / W A S D</th><td>Move. Walk into a monster to attack it.</td></tr>
+        <tr><th>Space / click</th><td>Attack in the direction you face.</td></tr>
+        <tr><th>1 2 3</th><td>Your three class abilities.</td></tr>
+        <tr><th>E / right-click</th><td>Stairs, shopkeepers, and helping a downed friend up.</td></tr>
+        <tr><th>Q</th><td>Quaff the best healing potion in your pack.</td></tr>
+        <tr><th>I</th><td>Open your pack. Click items to equip or drink.</td></tr>
+        <tr><th>M</th><td>Show or hide the small map.</td></tr>
+        <tr><th>Enter</th><td>Chat with the rest of the party.</td></tr>
+        <tr><th>F</th><td>Full screen.</td></tr>
+      </table>
+      <p><b>Going down:</b> stand on the staircase and press <b>E</b>. Everyone on the
+      level travels together after a short countdown, so nobody gets left behind.</p>
+      <p><b>If you fall:</b> you are down, not dead. A friend standing next to you can
+      hold <b>E</b> to bring you back. If the whole party falls, the temple pulls you
+      home to Aldershade and takes a tenth of your gold for the trouble.</p>
+      <p><b>Town:</b> Doran sells weapons and armour, Wren sells potions and scrolls, and
+      Sister Halli will heal you for coin. The keep gate is at the top of the road.</p>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

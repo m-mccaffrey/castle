@@ -1,0 +1,17 @@
+{
+  "name": "stormhold",
+  "version": "1.0.0",
+  "description": "Stormhold - a LAN co-op dungeon crawler in the spirit of early-90s Windows shareware roguelikes. Zero dependencies.",
+  "type": "module",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "test": "node --test \"test/*.test.js\"",
+    "dev": "node --watch server/index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT",
+  "private": true
+}
