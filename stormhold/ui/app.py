@@ -16,6 +16,7 @@ from ..common.constants import (
     TILE_NAMES, T, SIGHT_DUNGEON, SIGHT_TOWN, chebyshev, xp_for_level,
 )
 from ..common.fov import compute_fov
+from ..game.spells import SPELLS
 from ..net import protocol as P
 from ..net.client import GameClient
 from . import widgets as W
@@ -446,6 +447,26 @@ class PlayScene(Scene):
         if self.chatting:
             self.handle_chat(event)
             return
+        self.build_chrome()
+
+        chosen = self.menubar.handle(event)
+        if chosen:
+            self.menu_command(chosen)
+            return
+        if self.menubar.is_open:
+            return
+
+        hit = self.toolbar.handle(event)
+        if hit:
+            what, value = hit
+            if what == "verb":
+                self.menu_command(value)
+            else:
+                from ..game.spells import SPELLS
+                if value in SPELLS:
+                    self.begin_target(value, SPELLS[value])
+            return
+
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             self.click_map(event.pos)
             return
@@ -534,7 +555,10 @@ class PlayScene(Scene):
         if self.target_mode:
             kind, name = self.target_mode
             self.target_mode = None
-            self.send_action({"a": "cast", "spell": name, "x": tx, "y": ty})
+            if kind == "examine":
+                self.send_action({"a": "examine", "x": tx, "y": ty})
+            else:
+                self.send_action({"a": "cast", "spell": name, "x": tx, "y": ty})
             return
         dx = (tx > me["x"]) - (tx < me["x"])
         dy = (ty > me["y"]) - (ty < me["y"])
@@ -549,8 +573,24 @@ class PlayScene(Scene):
         self.add_message(f"Click a target for {spell_name}, or press Esc.", "info")
 
     # ------------------------------------------------------------- drawing --
+    MENU_H = W.MenuBar.HEIGHT
+    TOOL_H = W.Toolbar.HEIGHT
+    BOTTOM_H = 152
+    STATUS_W = 250
+
     def viewport(self, surf):
-        return pygame.Rect(0, 0, surf.get_width() - SIDEBAR_W, surf.get_height() - LOG_H)
+        top = self.MENU_H + self.TOOL_H
+        return pygame.Rect(0, top, surf.get_width(),
+                           surf.get_height() - top - self.BOTTOM_H)
+
+    def log_rect(self, surf):
+        return pygame.Rect(0, surf.get_height() - self.BOTTOM_H,
+                           surf.get_width() - self.STATUS_W, self.BOTTOM_H)
+
+    def status_rect(self, surf):
+        return pygame.Rect(surf.get_width() - self.STATUS_W,
+                           surf.get_height() - self.BOTTOM_H,
+                           self.STATUS_W, self.BOTTOM_H)
 
     def screen_to_tile(self, pos):
         surf = pygame.display.get_surface()
@@ -564,12 +604,73 @@ class PlayScene(Scene):
             return int(tx), int(ty)
         return None
 
+    def build_chrome(self):
+        """The menu and toolbar, built once and reused."""
+        if getattr(self, "menubar", None) is not None:
+            return
+        self.menubar = W.MenuBar([
+            ("File", [("Save", "save", True), ("-", None, True),
+                      ("Options...", "options", True),
+                      ("-", None, True), ("Leave the keep", "leave", True)]),
+            ("Character!", []),
+            ("Inventory!", []),
+            ("Map!", []),
+            ("Spells", [("Spellbook...", "spellbook", True),
+                        ("Customize Spell Menu...", "customize", True)]),
+            ("Verbs", [("Get", "pickup", True),
+                       ("Examine", "examine", True),
+                       ("Free Hand", "freehand", True),
+                       ("Search", "search", True),
+                       ("Disarm Trap", "disarm", True),
+                       ("-", None, True),
+                       ("Rest Until Healed", "rest", True),
+                       ("Sleep Until Mana is Restored", "sleep", True),
+                       ("-", None, True),
+                       ("Open", "open", True),
+                       ("Close", "close", True),
+                       ("-", None, True),
+                       ("< Climb Up Stairs", "stairs", True),
+                       ("> Climb Down Stairs", "stairs", True)]),
+            ("Help", [("Help Contents", "help", True),
+                      ("Keyboard Commands", "help", True)]),
+        ])
+        self.toolbar = W.Toolbar([
+            ("Get", "pickup"), ("Free Hand", "freehand"), ("Search", "search"),
+            ("Disarm", "disarm"), ("Rest", "rest"), ("Save", "save"),
+        ])
+
+    def menu_command(self, action):
+        if action == "Character!":
+            self.app.push(SheetScene(self.app))
+        elif action == "Inventory!":
+            self.app.push(PackScene(self.app))
+        elif action == "Map!":
+            self.show_overview = not getattr(self, "show_overview", False)
+        elif action in ("spellbook", "customize"):
+            self.app.push(SpellScene(self.app, self))
+        elif action == "help":
+            self.app.push(HelpScene(self.app))
+        elif action == "leave":
+            self.app.disconnect("")
+        elif action == "options":
+            self.add_message("Options are kept in the launcher for now.", "info")
+        elif action == "examine":
+            self.target_mode = ("examine", None)
+            self.add_message("Click something to examine it.", "info")
+        elif action == "save":
+            self.add_message("The server saves everyone automatically.", "info")
+        elif action:
+            self.send_action({"a": action})
+
     def draw(self, surf):
+        self.build_chrome()
         surf.fill(W.FACE)
-        view = self.viewport(surf)
-        self.draw_map(surf, view)
-        self.draw_sidebar(surf)
+        self.draw_map(surf, self.viewport(surf))
         self.draw_log(surf)
+        self.draw_status(surf)
+        spells = self.you.get("spells", []) if self.you else []
+        self.toolbar.draw(surf, surf.get_width(), self.app.sheet, spells)
+        self.menubar.draw(surf, surf.get_width())
 
     def draw_map(self, surf, view):
         pygame.draw.rect(surf, BLACK, view)
@@ -680,7 +781,8 @@ class PlayScene(Scene):
 
         if self.target_mode:
             label = W.font(15, bold=True).render(
-                f"Click a target for {self.target_mode[1]}  (Esc to cancel)", True, YELLOW)
+                f"Click a target for {self.target_mode[1] or 'Examine'}  (Esc to cancel)",
+            True, YELLOW)
             box = pygame.Rect(view.centerx - label.get_width() // 2 - 8, view.y + 8,
                               label.get_width() + 16, 26)
             pygame.draw.rect(surf, (20, 20, 30), box)
@@ -696,116 +798,90 @@ class PlayScene(Scene):
             W.bevel(surf, box, raised=True, width=1)
             surf.blit(label, (box.x + 10, box.y + 6))
 
-    def draw_sidebar(self, surf):
-        x = surf.get_width() - SIDEBAR_W
-        rect = pygame.Rect(x, 0, SIDEBAR_W, surf.get_height())
+    def draw_status(self, surf):
+        """Five lines, as in the original: health, mana, pace, the clock, and
+        where you are. The party list sits underneath because we need one."""
+        rect = self.status_rect(surf)
         W.panel(surf, rect, raised=True)
         you = self.you
         if not you:
             return
-        pad = x + 10
-        width = SIDEBAR_W - 20
-        y = 10
+        from ..common.constants import format_clock
 
-        W.text(surf, you.get("name", ""), (pad, y), 17, bold=True)
-        W.text_right(surf, f"Level {you.get('level', 1)}", x + SIDEBAR_W - 10, y + 3, 13)
-        y += 26
-
-        hp, mhp = you.get("hp", 0), max(1, you.get("max_hp", 1))
-        W.bar(surf, (pad, y, width, 18), hp / mhp, (176, 32, 32), f"{hp} / {mhp}   health")
-        y += 22
-        mana, mmana = you.get("mana", 0), max(1, you.get("max_mana", 1))
-        W.bar(surf, (pad, y, width, 18), mana / mmana, (40, 72, 176), f"{mana} / {mmana}   mana")
-        y += 22
-        level = you.get("level", 1)
-        need = xp_for_level(level)
-        prev = xp_for_level(level - 1) if level > 1 else 0
-        span = max(1, need - prev)
-        W.bar(surf, (pad, y, width, 13), (you.get("xp", 0) - prev) / span,
-              (110, 60, 150), f"{you.get('xp', 0)} xp")
-        y += 22
-
-        stats = you.get("stats", {})
-        base = you.get("base_stats", {})
-        for i, stat in enumerate(STATS):
-            col = pad + (i % 2) * (width // 2)
-            row = y + (i // 2) * 18
-            value = stats.get(stat, 10)
-            colour = (0, 96, 0) if value > base.get(stat, value) else (
-                (150, 0, 0) if value < base.get(stat, value) else BLACK)
-            W.text(surf, f"{STAT_ABBR[stat]} {value:2d}", (col, row), 13, bold=True, colour=colour, mono=True)
-        y += 44
-
-        W.text(surf, f"Armour {you.get('ac', 0)}", (pad, y), 13, mono=True)
-        W.text(surf, f"To hit {you.get('to_hit', 0):+d}", (pad + width // 2, y), 13, mono=True)
-        y += 20
-
-        weight, capacity = you.get("weight", 0), max(1, you.get("capacity", 1))
-        enc = you.get("encumbrance", "Unencumbered")
-        enc_colour = {"Unencumbered": (0, 96, 0), "Burdened": (110, 90, 0),
-                      "Stressed": (150, 80, 0)}.get(enc, (150, 0, 0))
-        W.bar(surf, (pad, y, width, 15), weight / capacity, enc_colour,
-              f"{weight/10:.1f} / {capacity/10:.0f} lb")
-        y += 18
-        W.text(surf, enc, (pad, y), 12, bold=True, colour=enc_colour)
-        W.text_right(surf, f"{you.get('gold', 0)} gold", x + SIDEBAR_W - 10, y, 12, bold=True)
-        y += 22
+        x = rect.x + 8
+        value_x = rect.x + 72
+        y = rect.y + 6
+        rows = [
+            ("HP", f"{you.get('hp', 0)} ({you.get('max_hp', 0)})",
+             (150, 0, 0) if you.get("hp", 1) < you.get("max_hp", 1) * 0.34 else BLACK),
+            ("Mana", f"{you.get('mana', 0)} ({you.get('max_mana', 0)})", BLACK),
+            # A bare "0%" tells a player nothing. If they cannot move, say so.
+            ("Speed",
+             "OVERLOADED" if you.get("speed", 100) <= 0
+             else f"100% / {you.get('speed', 100)}%",
+             (170, 0, 0) if you.get("speed", 100) < 80 else BLACK),
+            ("Time", format_clock(you.get("clock", 0)), BLACK),
+        ]
+        for label, value, colour in rows:
+            W.text(surf, label, (x, y), 12, bold=True)
+            W.text(surf, value, (value_x, y), 12, mono=True, colour=colour)
+            y += 16
 
         depth = you.get("depth", 0)
-        W.text(surf, "Aldershade" if depth == 0 else f"Keep, level {depth}",
-               (pad, y), 13, bold=True)
-        y += 22
+        W.text(surf, "Aldershade" if depth == 0 else f"Dungeon Level {depth}",
+               (x, y), 12, bold=True)
+        y += 18
 
         effects = you.get("effects", {})
         if effects:
-            W.text(surf, "  ".join(sorted(effects.keys())), (pad, y), 11, colour=(90, 0, 120))
-            y += 18
+            W.text(surf, " ".join(sorted(effects))[:28], (x, y), 10, colour=(90, 0, 120))
+            y += 14
 
-        y += 4
-        pygame.draw.line(surf, W.FACE_SHADOW, (pad, y), (pad + width, y))
-        y += 6
-        W.text(surf, "PARTY", (pad, y), 11, bold=True)
-        y += 16
-        for p in self.party:
-            here = p["d"] == depth
-            name = p["n"]
-            colour = BLACK if here else GRAY
-            W.text(surf, name[:12], (pad, y), 12, bold=True, colour=colour)
-            frac = p["hp"] / max(1, p["mhp"])
-            W.bar(surf, (pad + 96, y + 2, width - 96, 10), frac,
-                  (176, 32, 32) if here else GRAY)
-            if not here:
-                W.text(surf, "town" if p["d"] == 0 else f"lv{p['d']}",
-                       (pad + 96, y + 13), 10, colour=GRAY)
-                y += 12
-            y += 18
-
-        hint_y = surf.get_height() - LOG_H - 78
-        pygame.draw.line(surf, W.FACE_SHADOW, (pad, hint_y - 6), (pad + width, hint_y - 6))
-        for i, line in enumerate(["I pack    Z spells    C sheet",
-                                  "G pick up    F fire    > stairs",
-                                  "Enter chat    F1 help    Esc menu"]):
-            W.text(surf, line, (pad, hint_y + i * 15), 11, mono=True, colour=(70, 70, 70))
+        if len(self.party) > 1:
+            pygame.draw.line(surf, W.FACE_SHADOW, (x, y), (rect.right - 8, y))
+            y += 4
+            for mate in self.party:
+                if mate["id"] == you.get("id"):
+                    continue
+                here = mate["d"] == depth
+                W.text(surf, mate["n"][:9], (x, y), 11,
+                       bold=True, colour=BLACK if here else GRAY)
+                W.bar(surf, (x + 66, y + 2, rect.width - 84, 9),
+                      mate["hp"] / max(1, mate["mhp"]),
+                      (176, 32, 32) if here else GRAY)
+                if not here:
+                    W.text(surf, "town" if mate["d"] == 0 else f"lv{mate['d']}",
+                           (rect.right - 38, y), 10, colour=GRAY)
+                y += 15
 
     def draw_log(self, surf):
-        rect = pygame.Rect(0, surf.get_height() - LOG_H, surf.get_width() - SIDEBAR_W, LOG_H)
+        rect = self.log_rect(surf)
         W.panel(surf, rect, raised=True)
-        inner = rect.inflate(-10, -10)
-        W.panel(surf, inner, raised=False, fill=(240, 240, 236))
+        inner = rect.inflate(-8, -8)
+        W.panel(surf, inner, raised=False, fill=(246, 246, 242))
 
         lines = []
-        for text, kind in self.messages[-40:]:
-            for i, part in enumerate(W.wrap(text, inner.width - 14, 13)):
+        for text, kind in self.messages[-50:]:
+            for part in W.wrap(text, inner.width - 26, 13):
                 lines.append((part, kind))
-        visible = (inner.height - 8) // 17
+        visible = (inner.height - 6) // 17
         for i, (text, kind) in enumerate(lines[-visible:]):
-            W.text(surf, text, (inner.x + 6, inner.y + 4 + i * 17), 13,
+            W.text(surf, text, (inner.x + 6, inner.y + 3 + i * 17), 13,
                    colour=MSG_COLOURS.get(kind, BLACK))
 
+        # A scrollbar, for looks and for the fact that the log really does run
+        # off the top during a long fight.
+        track = pygame.Rect(inner.right - 14, inner.y, 14, inner.height)
+        W.panel(surf, track, raised=False, fill=(214, 214, 210))
+        if len(lines) > visible:
+            frac = visible / max(1, len(lines))
+            knob_h = max(16, int(track.height * frac))
+            W.panel(surf, pygame.Rect(track.x, track.bottom - knob_h, 14, knob_h), raised=True)
+
         if self.chatting:
-            box = pygame.Rect(inner.x, inner.bottom - 24, inner.width, 24)
+            box = pygame.Rect(inner.x, inner.bottom - 22, inner.width - 16, 22)
             W.panel(surf, box, raised=False, fill=WHITE)
-            W.text(surf, "Say: " + self.chat_text + "_", (box.x + 6, box.y + 4), 13, mono=True)
+            W.text(surf, "Say: " + self.chat_text + "_", (box.x + 5, box.y + 3), 13, mono=True)
 
 
 # ===========================================================================
@@ -1000,7 +1076,7 @@ class PackScene(OverlayScene):
     def draw(self, surf):
         self.app.scene_under.draw(surf)
         inv = self.inv
-        cp = inv.get("gold", 0)
+        cp = inv.get("copper", 0)
         wt, wt_max = inv.get("weight", 0), max(1, inv.get("capacity", 1))
         bk, bk_max = inv.get("bulk", 0), max(1, inv.get("bulk_capacity", 1))
         self.title = (f"{self.app.play.you.get('name', 'Pack')}"
@@ -1333,137 +1409,322 @@ class PackScene(OverlayScene):
 
 
 class SpellScene(OverlayScene):
-    title = "Spell book"
-    size = (620, 500)
+    """Cast Spell: pick a class on the left, a spell on the right.
+
+    Cancel is the default button, not Cast. Pressing Enter backs out rather
+    than firing something expensive by reflex - the original does this and it
+    is plainly the right call.
+    """
+
+    title = "Cast Spell"
+    size = (620, 380)
 
     def __init__(self, app, play):
         super().__init__(app)
         self.play = play
-        self.list = W.ListBox((0, 0, 10, 10), row_height=34)
+        self.klass = None
         self.selected = None
+        self.list = W.ListBox((0, 0, 10, 10), row_height=20)
+        self.class_rects = []
+
+    def known(self):
+        return [n for n in self.app.play.you.get("spells", []) if n in SPELLS]
+
+    def classes(self):
+        from ..game.spells import SCHOOLS
+        have = {SPELLS[n]["school"] for n in self.known()}
+        return [(c, c in have) for c in SCHOOLS]
 
     def rows(self):
-        from ..game.spells import SPELLS
-        known = self.app.play.you.get("spells", [])
-        return [(name, SPELLS[name]) for name in known if name in SPELLS]
+        if self.klass is None:
+            return []
+        return [n for n in self.known() if SPELLS[n]["school"] == self.klass]
 
     def handle(self, event):
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            for rect, name, usable in self.class_rects:
+                if rect.collidepoint(event.pos) and usable:
+                    self.klass = name
+                    self.selected = None
+                    self.list.selected = None
+                    self.list.scroll = 0
+                    return
         index = self.list.handle(event)
         if index is not None:
-            self.selected = self.rows()[index]
-        if event.type == pygame.KEYDOWN and pygame.K_1 <= event.key <= pygame.K_9:
-            i = event.key - pygame.K_1
             rows = self.rows()
-            if i < len(rows):
-                self.selected = rows[i]
-                self.cast()
+            if index < len(rows):
+                self.selected = rows[index]
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_RETURN:
+                self.close()                     # Cancel is the default
                 return
+            if pygame.K_1 <= event.key <= pygame.K_9:
+                rows = self.rows()
+                i = event.key - pygame.K_1
+                if i < len(rows):
+                    self.selected = rows[i]
+                    self.cast()
+                    return
         super().handle(event)
 
     def on_action(self, action):
         if action == "cast":
             self.cast()
+        elif action == "help":
+            self.app.push(HelpScene(self.app))
         else:
             super().on_action(action)
 
     def cast(self):
         if not self.selected:
             return
-        name, spell = self.selected
+        spell = SPELLS[self.selected]
         if self.app.play.you.get("mana", 0) < spell["mana"]:
             self.app.play.add_message("You have not the mana for that.", "warn")
             return
+        name = self.selected
         self.close()
         self.play.begin_target(name, spell)
 
     def draw(self, surf):
         self.app.scene_under.draw(surf)
         client, _ = self.frame(surf)
-        rows = self.rows()
         you = self.app.play.you
 
-        if not rows:
+        if not self.known():
             W.text(surf, "You know no spells yet.", (client.x + 8, client.y + 10), 15, bold=True)
             for i, line in enumerate(W.wrap(
                     "Magic comes from books. The Gilded Retort in Aldershade sells tomes, "
-                    "and they turn up in the keep. Read one and the spell is yours for good, "
-                    "provided you are experienced and clever enough for it.",
+                    "and they turn up in the keep. Read one and the spell is yours for "
+                    "good, provided you are experienced and clever enough for it.",
                     client.width - 16, 13)):
                 W.text(surf, line, (client.x + 8, client.y + 36 + i * 17), 13)
-        else:
-            W.text(surf, f"Mana {you.get('mana', 0)} of {you.get('max_mana', 0)}",
-                   (client.x + 8, client.y + 4), 13, bold=True)
-            self.list.rect = pygame.Rect(client.x, client.y + 24, client.width, client.height - 110)
+            self.buttons = [W.Button((client.right - 100, client.bottom - 34, 90, 28),
+                                     "Close", "close")]
+            for b in self.buttons:
+                b.draw(surf)
+            return
 
-            def draw_row(target, row, rect, selected):
-                name, spell = row
-                affordable = you.get("mana", 0) >= spell["mana"]
-                colour = WHITE if selected else (BLACK if affordable else GRAY)
-                W.text(target, name, (rect.x + 6, rect.y + 3), 14, bold=True, colour=colour)
-                W.text(target, spell["school"], (rect.x + 190, rect.y + 4), 12,
-                       colour=SILVER if selected else (90, 90, 90))
-                W.text(target, f"{spell['mana']} mana", (rect.x + 280, rect.y + 4), 12,
-                       colour=SILVER if selected else (0, 0, 140))
-                W.text(target, spell["desc"][:46], (rect.x + 6, rect.y + 19), 11,
-                       colour=SILVER if selected else (90, 90, 90))
+        col_w = 200
+        W.text(surf, "Spell Class:", (client.x + 4, client.y + 2), 13, bold=True)
+        W.text(surf, "Spell Name", (client.x + col_w + 16, client.y + 2), 13, bold=True)
+        W.text_right(surf, "Mana", client.right - 8, client.y + 2, 13, bold=True)
 
-            self.list.draw(surf, rows, draw_row)
+        group = pygame.Rect(client.x, client.y + 18, col_w, client.height - 66)
+        W.panel(surf, group, raised=False, fill=W.FACE)
+        self.class_rects = []
+        y = group.y + 8
+        for name, usable in self.classes():
+            rect = pygame.Rect(group.x + 8, y, group.width - 16, 22)
+            dot = pygame.Rect(rect.x, rect.y + 5, 12, 12)
+            pygame.draw.ellipse(surf, WHITE if usable else (208, 208, 204), dot)
+            pygame.draw.ellipse(surf, (90, 90, 90), dot, 1)
+            if name == self.klass:
+                pygame.draw.ellipse(surf, (20, 20, 90), dot.inflate(-6, -6))
+            W.text(surf, f"{name} Spells", (rect.x + 18, rect.y + 3), 13,
+                   colour=BLACK if usable else GRAY)
+            self.class_rects.append((rect, name, usable))
+            y += 24
 
+        self.list.rect = pygame.Rect(client.x + col_w + 12, client.y + 18,
+                                     client.width - col_w - 12, client.height - 66)
+        rows = self.rows()
+
+        def draw_row(target, name, rect, selected):
+            spell = SPELLS[name]
+            affordable = you.get("mana", 0) >= spell["mana"]
+            colour = WHITE if selected else (BLACK if affordable else GRAY)
+            W.text(target, name, (rect.x + 6, rect.y + 2), 13, colour=colour)
+            W.text_right(target, str(spell["mana"]), rect.right - 10, rect.y + 2, 13,
+                         mono=True, colour=colour)
+
+        self.list.draw(surf, rows, draw_row)
+        if self.klass is None:
+            W.text(surf, "Pick a class on the left.",
+                   (self.list.rect.x + 8, self.list.rect.y + 8), 12, colour=(120, 120, 120))
+
+        info = self.selected and SPELLS[self.selected]
+        if info:
+            W.text(surf, info["desc"], (client.x, client.bottom - 54), 12, colour=(60, 60, 60))
+        W.text_right(surf, f"Mana {you.get('mana', 0)} of {you.get('max_mana', 0)}",
+                     client.right, client.bottom - 54, 12, bold=True)
+
+        by = client.bottom - 34
         self.buttons = [
-            W.Button((client.x, client.bottom - 36, 170, 30), "Cast", "cast",
-                     enabled=bool(self.selected)),
-            W.Button((client.right - 110, client.bottom - 36, 100, 30), "Close", "close"),
+            W.Button((client.x + 40, by, 90, 28), "Cast", "cast", enabled=bool(self.selected)),
+            W.Button((client.x + 150, by, 90, 28), "Cancel", "close"),
+            W.Button((client.x + 260, by, 80, 28), "Help", "help"),
         ]
         for b in self.buttons:
             b.draw(surf)
-        W.text(surf, "Press 1-9 to cast straight from this list.",
-               (client.x + 186, client.bottom - 28), 11, colour=(90, 90, 90))
+        W.text(surf, "Enter cancels.", (client.x + 352, by + 7), 11, colour=(120, 120, 120))
 
 
 class SheetScene(OverlayScene):
+    """The character sheet: four attributes as paired gauges, and the numbers.
+
+    Each attribute gets two bars side by side - what you were born with, and
+    what you are walking around with once gear and potions are counted. Seeing
+    a ring push a bar up is much more legible than watching a number change.
+    """
+
     title = "Character"
-    size = (520, 480)
+    size = (720, 486)
 
     def draw(self, surf):
         self.app.scene_under.draw(surf)
         client, _ = self.frame(surf)
         you = self.app.play.you
-        y = client.y + 6
-        W.text(surf, you.get("name", ""), (client.x + 6, y), 20, bold=True)
-        y += 32
+        inv = self.app.inventory
+        from ..common.constants import format_clock
+
+        W.text(surf, "Character name:", (client.x + 6, client.y + 4), 13, bold=True)
+        namebox = pygame.Rect(client.x + 128, client.y, 220, 22)
+        W.panel(surf, namebox, raised=False, fill=WHITE)
+        W.text(surf, you.get("name", ""), (namebox.x + 6, namebox.y + 3), 14)
+
+        # ---- the gauges ----------------------------------------------------
+        gauge_top = client.y + 34
+        gauge_h = 150
+        base = you.get("base_stats", {})
+        now = you.get("stats", {})
+        x = client.x + 14
+        for stat in STATS:
+            natural = base.get(stat, 10)
+            effective = now.get(stat, natural)
+            for i, value in enumerate((natural, effective)):
+                bar = pygame.Rect(x + i * 16, gauge_top, 14, gauge_h)
+                W.panel(surf, bar, raised=False, fill=WHITE)
+                frac = max(0.0, min(1.0, value / 25.0))
+                fill_h = int((gauge_h - 4) * frac)
+                colour = (60, 90, 190) if i == 0 else (
+                    (40, 140, 60) if effective >= natural else (170, 40, 40))
+                pygame.draw.rect(surf, colour,
+                                 (bar.x + 2, bar.bottom - 2 - fill_h, bar.width - 4, fill_h))
+                W.text(surf, str(value), (bar.x - 1, bar.bottom + 2), 10,
+                       bold=True, mono=True)
+            label = STAT_ABBR[stat]
+            W.text(surf, label, (x + 2, gauge_top + gauge_h + 16), 11, bold=True)
+            x += 46
+
+        W.text(surf, "born with / carrying", (client.x + 14, gauge_top + gauge_h + 32),
+               10, colour=(120, 120, 120))
+
+        # ---- the numbers ---------------------------------------------------
+        col = client.x + 210
+        right = client.right - 8
+        y = client.y + 34
+        level = you.get("level", 1)
         rows = [
-            ("Level", you.get("level", 1)),
-            ("Experience", you.get("xp", 0)),
-            ("Next level at", xp_for_level(you.get("level", 1))),
+            ("Character Level:", level),
+            ("Character Experience:", you.get("xp", 0)),
+            ("Next Level At:", xp_for_level(level)),
             ("", ""),
-            ("Health", f"{you.get('hp', 0)} of {you.get('max_hp', 0)}"),
-            ("Mana", f"{you.get('mana', 0)} of {you.get('max_mana', 0)}"),
-            ("Armour class", you.get("ac", 0)),
-            ("To hit", f"{you.get('to_hit', 0):+d}"),
+            ("Weight:", f"{inv.get('weight', 0)} ({inv.get('capacity', 0)})"),
+            ("Bulk:", f"{inv.get('bulk', 0)} ({inv.get('bulk_capacity', 0)})"),
+            ("Burden:", you.get("encumbrance", "")),
+            ("Speed:", f"100% / {you.get('speed', 100)}%"),
             ("", ""),
-            ("Carrying", f"{you.get('weight', 0)/10:.1f} lb of {you.get('capacity', 1)/10:.0f} lb"),
-            ("Burden", you.get("encumbrance", "")),
-            ("Gold on you", you.get("gold", 0)),
-            ("Gold in the strongroom", you.get("bank", 0)),
+            ("Hit Points:", f"{you.get('hp', 0)} ({you.get('max_hp', 0)})"),
+            ("Mana Points:", f"{you.get('mana', 0)} ({you.get('max_mana', 0)})"),
+            ("Armor Value:", you.get("ac", 0)),
             ("", ""),
-            ("Deepest level reached", you.get("deepest", 0)),
-            ("Creatures slain", you.get("kills", 0)),
-            ("Times killed", you.get("deaths", 0)),
+            ("Copper:", you.get("copper", 0)),
+            ("In the strongroom:", you.get("bank", 0)),
+            ("", ""),
+            ("Time played:", format_clock(you.get("clock", 0))),
+            ("Deepest level reached:", you.get("deepest", 0)),
+            ("Creatures slain:", you.get("kills", 0)),
+            ("Times killed:", you.get("deaths", 0)),
         ]
         for label, value in rows:
             if label:
-                W.text(surf, label, (client.x + 6, y), 13)
-                W.text_right(surf, value, client.right - 6, y, 13, bold=True, mono=True)
-            y += 19
-        y += 6
-        stats = you.get("stats", {})
-        for stat in STATS:
-            W.text(surf, stat.title(), (client.x + 6, y), 13)
-            W.text_right(surf, stats.get(stat, 10), client.right - 6, y, 13, bold=True, mono=True)
-            y += 19
-        self.buttons = [W.Button((client.right - 110, client.bottom - 36, 100, 30), "Close", "close")]
+                W.text(surf, label, (col, y), 13)
+                W.text_right(surf, value, right, y, 13, bold=True, mono=True)
+            y += 17
+
+        by = client.bottom - 34
+        self.buttons = [
+            W.Button((client.x, by, 90, 28), "OK", "close"),
+            W.Button((client.x + 100, by, 110, 28), "Attributes", "attributes"),
+            W.Button((client.right - 90, by, 90, 28), "Help", "help"),
+        ]
         for b in self.buttons:
             b.draw(surf)
+
+    def on_action(self, action):
+        if action == "help":
+            self.app.push(HelpScene(self.app))
+        elif action == "attributes":
+            self.app.push(AttributesScene(self.app))
+        else:
+            super().on_action(action)
+
+
+class AttributesScene(OverlayScene):
+    """A plain scrolling list of everything the character currently has going
+    on, the way the original's Attributes window works."""
+
+    title = "Character Attributes"
+    size = (480, 420)
+
+    def __init__(self, app):
+        super().__init__(app)
+        self.list = W.ListBox((0, 0, 10, 10), row_height=18)
+
+    def lines(self):
+        you = self.app.play.you
+        inv = self.app.inventory
+        out = [
+            f"Level {you.get('level', 1)}, {you.get('xp', 0)} experience",
+            f"Next level at {xp_for_level(you.get('level', 1))}",
+            "",
+        ]
+        for stat in STATS:
+            natural = you.get("base_stats", {}).get(stat, 10)
+            effective = you.get("stats", {}).get(stat, natural)
+            note = "" if effective == natural else f"  ({effective - natural:+d} from gear)"
+            out.append(f"{stat.title():<14} {effective}{note}")
+        out += [
+            "",
+            f"Armour value    {you.get('ac', 0)}",
+            f"Chance to hit   {you.get('to_hit', 0):+d}",
+            f"Speed           100% / {you.get('speed', 100)}%",
+            f"Burden          {you.get('encumbrance', '')}",
+            f"Carrying        {inv.get('weight', 0) / 10:.1f} lb of "
+            f"{inv.get('capacity', 1) / 10:.0f} lb",
+            f"Bulk            {inv.get('bulk', 0)} of {inv.get('bulk_capacity', 0)}",
+            "",
+        ]
+        effects = you.get("effects", {})
+        if effects:
+            out.append("Currently affected by:")
+            out += [f"   {name}" for name in sorted(effects)]
+        else:
+            out.append("Nothing is affecting you.")
+        spells = you.get("spells", [])
+        out += ["", f"Spells known: {len(spells)}"]
+        out += [f"   {name}" for name in spells]
+        return out
+
+    def draw(self, surf):
+        self.app.scene_under.draw(surf)
+        client, _ = self.frame(surf)
+        self.list.rect = pygame.Rect(client.x, client.y, client.width, client.height - 40)
+
+        def draw_row(target, text, rect, selected):
+            W.text(target, text, (rect.x + 6, rect.y + 1), 13, mono=True,
+                   colour=WHITE if selected else BLACK)
+
+        self.list.draw(surf, self.lines(), draw_row)
+        self.buttons = [W.Button((client.centerx - 45, client.bottom - 32, 90, 28),
+                                 "OK", "close")]
+        for b in self.buttons:
+            b.draw(surf)
+
+    def handle(self, event):
+        self.list.handle(event)
+        super().handle(event)
 
 
 class MenuOverlay(OverlayScene):
@@ -1564,7 +1825,7 @@ class ShopScene(OverlayScene):
 
         W.text(surf, self.SHOP_BLURB.get(self.shop, ""), (client.x + 4, client.y + 2), 12,
                colour=(70, 70, 70))
-        W.text_right(surf, f"You have {data.get('gold', 0)} gold", client.right - 4,
+        W.text_right(surf, f"You have {data.get('copper', 0)} gold", client.right - 4,
                      client.y + 2, 13, bold=True)
 
         col_w = (client.width - 20) // 2
@@ -1594,8 +1855,8 @@ class ShopScene(OverlayScene):
             self.sell_list.draw(surf, data.get("sell", []), row_drawer("price"))
         else:
             W.text(surf, "The strongroom", (client.x, top), 15, bold=True)
-            W.text(surf, f"On you:        {data.get('gold', 0)} gold "
-                         f"({data.get('gold', 0)/100:.1f} lb to carry)",
+            W.text(surf, f"On you:        {data.get('copper', 0)} gold "
+                         f"({data.get('copper', 0)/100:.1f} lb to carry)",
                    (client.x, top + 30), 14, mono=True)
             W.text(surf, f"In the vault:  {data.get('bank', 0)} gold  (weighs you nothing)",
                    (client.x, top + 52), 14, mono=True)
@@ -1661,7 +1922,7 @@ class App:
         self.server = None
         self.scenes = [MenuScene(self)]
         self.play = None
-        self.inventory = {"items": [], "equipment": {}, "gold": 0}
+        self.inventory = {"items": [], "equipment": {}, "copper": 0}
         self.running = True
         self.last_ping = 0.0
 

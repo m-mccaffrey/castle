@@ -27,6 +27,7 @@ from .actors import Player, NPC, make_monster, stat_bonus
 from .items import Item, Appearances, generate_item, generate_gold, BASES
 from .monsters import spawn_table
 from .spells import SPELLS, can_learn
+from .traps import TRAPS, search_here, disarm_at, a_or_an
 from . import combat, ai
 
 
@@ -110,7 +111,7 @@ class World:
         return pairs[-1][0]
 
     def _gold_item(self, amount):
-        it = Item("gold_pile")
+        it = Item("coins")
         it.gold_amount = amount
         return it
 
@@ -182,9 +183,20 @@ class World:
         return [p for p in self.players.values() if p.depth == depth]
 
     # ====================================================== scheduler =======
+    # Looking at things, tidying your pack and haggling in a shop are not
+    # actions in the world: they take no game time, so they must not give
+    # anything down there a free turn.
+    FREE_ACTIONS = frozenset({
+        "examine", "sort", "rename", "buy", "sell", "service",
+    })
+
     def submit(self, player, action):
         """Queue a player's chosen action, then let the floor run."""
         if player.dead:
+            return
+        level = self.levels.get(player.depth)
+        if level is not None and action.get("a") in self.FREE_ACTIONS:
+            self.do_player_action(level, player, action)
             return
         player.pending = action
         self.run_level(player.depth)
@@ -207,7 +219,7 @@ class World:
             for a in list(level.actors.values()):
                 if a.dead or a.kind == "npc":
                     continue
-                if a.kind == "player" and a.pending is None:
+                if a.kind == "player" and a.pending is None and not a.resting:
                     if threatened:
                         if blocked is None or a.next_at < blocked.next_at:
                             blocked = a
@@ -286,10 +298,30 @@ class World:
     def act(self, level, actor):
         if actor.kind == "monster":
             return ai.take_turn(self, level, actor)
+        if actor.kind == "player" and actor.resting and actor.pending is None:
+            # Carry on resting without being asked, until healed or disturbed.
+            for_mana = actor.resting == "mana"
+            done = (actor.mana >= actor.max_mana if for_mana
+                    else actor.hp >= actor.max_hp and actor.mana >= actor.max_mana)
+            if done:
+                actor.resting = False
+                self.msg("You wake, clear-headed." if for_mana else "You feel rested.",
+                         "good", to=actor)
+            elif combat.enemies_near(level, actor.x, actor.y, 8):
+                actor.resting = False
+                self.msg("Something disturbs your rest.", "bad", to=actor)
+            else:
+                actor.pending = {"a": "wait"}
         action = actor.pending
         actor.pending = None
+        if action is None:
+            return MOVE_COST
         if actor.kind == "player" and action.get("a") != "wait":
             actor.idle_noted = False
+            # Anything except settling down interrupts a rest - but the rest
+            # and sleep commands themselves obviously must not.
+            if action.get("a") not in ("rest", "sleep"):
+                actor.resting = False
         if action is None:
             return MOVE_COST
         return self.do_player_action(level, actor, action)
@@ -413,15 +445,58 @@ class World:
 
         cost = p.action_cost(MOVE_COST)
         if cost is None:
-            self.msg("You are carrying far too much to move.", "warn", to=p)
+            self.msg("You are carrying far too much to move. Drop something, "
+                     "or bank your copper in town.", "warn", to=p)
             return FREE_COST
 
         level.move_actor(p, nx, ny)
         if tile in (T.WATER, T.RUBBLE):
             cost = int(cost * 1.5)
         self.update_fov(p)
+        self.spring_trap(level, p)
         self.describe_floor(level, p)
         return cost
+
+    def spring_trap(self, level, p, forced=False):
+        """Walk onto something you did not find and it goes off."""
+        spot = (p.x, p.y)
+        trap = level.traps.get(spot)
+        if not trap or not trap["armed"]:
+            return False
+        if trap["found"] and not forced:
+            # You knew it was there, so you step around the trigger.
+            return False
+        info = TRAPS[trap["kind"]]
+        trap["found"] = True
+        trap["armed"] = False
+        level.traps.pop(spot, None)
+
+        self.msg(info["desc"], "bad", to=p)
+        self.fx("blast", p.x, p.y, level.depth)
+        self.sound("slam", p.x, p.y, level.depth)
+        n, sides = info["dmg"]
+        if n:
+            dmg = sum(self.rng.randint(1, sides) for _ in range(n))
+            combat.apply_damage(self, p, dmg, None)
+        now = level.clock
+        if info.get("poison"):
+            p.add_effect("poisoned", now + 500, info["poison"])
+        if info.get("burn"):
+            p.add_effect("burning", now + 400, info["burn"])
+        if info.get("hold"):
+            p.add_effect("held", now + 300)
+        if info.get("stun"):
+            p.next_at += 200
+        if info.get("alarm"):
+            roused = 0
+            for a in level.actors.values():
+                if a.kind == "monster" and not a.dead and a.target_id is None:
+                    a.target_id = p.id
+                    a.last_seen = (p.x, p.y)
+                    roused += 1
+            if roused:
+                self.msg(f"{roused} things below start moving toward you.", "bad", to=p)
+        return True
 
     def describe_floor(self, level, p):
         pile = level.items_at(p.x, p.y)
@@ -435,6 +510,199 @@ class World:
 
     def _act_wait(self, level, p, action):
         return p.action_cost(REST_COST) or REST_COST
+
+    def _act_search(self, level, p, action):
+        """Take a turn to look at the walls and floor around you."""
+        found = search_here(self, level, p, self.rng)
+        if found:
+            for line in found:
+                self.msg(line, "good", to=p)
+            self.sound("notice", p.x, p.y, level.depth)
+        else:
+            self.msg("You search, and find nothing.", "info", to=p)
+        return p.action_cost(REST_COST) or REST_COST
+
+    def _act_disarm(self, level, p, action):
+        """Try to defuse a trap you have already found, next to you or underfoot."""
+        best = None
+        for dy in range(-1, 2):
+            for dx in range(-1, 2):
+                spot = (p.x + dx, p.y + dy)
+                trap = level.traps.get(spot)
+                if trap and trap["found"] and trap["armed"]:
+                    best = spot
+                    break
+            if best:
+                break
+        if best is None:
+            self.msg("There is no trap here that you have found.", "info", to=p)
+            return FREE_COST
+        acted, message = disarm_at(self, level, p, best, self.rng)
+        self.msg(message, "good" if "disarm" in message else "warn", to=p)
+        if "set the" in message:
+            was = (p.x, p.y)
+            p.x, p.y = best
+            self.spring_trap(level, p, forced=True)
+            p.x, p.y = was
+        return p.action_cost(REST_COST) or REST_COST
+
+    def _act_freehand(self, level, p, action):
+        """Put your weapon away, so you have a hand free."""
+        if p.equipment.get("weapon") is None:
+            self.msg("Your hands are already empty.", "info", to=p)
+            return FREE_COST
+        ok, message = p.unequip("weapon")
+        self.msg(message, "info" if ok else "warn", to=p)
+        self.events.append({"t": "inv", "to": p.id})
+        return (p.action_cost(EQUIP_COST) or EQUIP_COST) if ok else FREE_COST
+
+    def _act_rest(self, level, p, action):
+        """Sit still until you are mended, or until something interrupts."""
+        if combat.enemies_near(level, p.x, p.y, 8):
+            self.msg("Not with something watching you.", "warn", to=p)
+            return FREE_COST
+        if p.hp >= p.max_hp and p.mana >= p.max_mana:
+            self.msg("You are already rested.", "info", to=p)
+            return FREE_COST
+        p.resting = True
+        self.msg("You sit down to rest.", "info", to=p)
+        return p.action_cost(REST_COST) or REST_COST
+
+    def _act_examine(self, level, p, action):
+        """Look at something without touching it. Costs nothing."""
+        tx, ty = int(action.get("x", p.x)), int(action.get("y", p.y))
+        if (ty * level.w + tx) not in p.fov:
+            self.msg("You cannot see that from here.", "info", to=p)
+            return FREE_COST
+
+        other = level.actor_at(tx, ty)
+        if other is not None and not other.dead:
+            if other.kind == "monster":
+                share = other.hp / max(1, other.max_hp)
+                state = ("unhurt" if share > 0.95 else "lightly wounded" if share > 0.6
+                         else "badly wounded" if share > 0.25 else "nearly dead")
+            self.msg(
+                f"{other.name}: {state}." if other.kind == "monster"
+                else f"{other.name}, level {getattr(other, 'level', 1)}.", "info", to=p)
+            return FREE_COST
+
+        pile = level.items_at(tx, ty)
+        if pile:
+            for it in pile:
+                self.msg(f"{it.name(self.appearances)} - {it.describe(self.appearances)}.",
+                         "loot", to=p)
+            return FREE_COST
+
+        trap = level.traps.get((tx, ty))
+        if trap and trap["found"]:
+            self.msg(f"{a_or_an(TRAPS[trap['kind']]['name']).capitalize()}, still armed.",
+                     "warn", to=p)
+            return FREE_COST
+
+        tile = level.get(tx, ty)
+        names = {T.FLOOR: "bare floor", T.WALL: "solid wall", T.DOOR: "a closed door",
+                 T.DOOR_OPEN: "an open doorway", T.STAIRS_DOWN: "stairs leading down",
+                 T.STAIRS_UP: "stairs leading up", T.WATER: "shallow water",
+                 T.RUBBLE: "broken rubble", T.GRASS: "grass", T.ROAD: "a paved road",
+                 T.TREE: "a tree", T.SHOP_FLOOR: "a shop floor", T.ALTAR: "an altar"}
+        self.msg(f"You see {names.get(tile, 'nothing of interest')}.", "info", to=p)
+        return FREE_COST
+
+    def _act_open(self, level, p, action):
+        """Open a door beside you, or the one you name."""
+        for spot in self._adjacent(p, action):
+            if level.get(*spot) == T.DOOR:
+                self.set_tile(level, spot[0], spot[1], T.DOOR_OPEN)
+                self.sound("door", spot[0], spot[1], level.depth)
+                self.msg("You open the door.", "info", to=p)
+                self.update_fov(p, force=True)
+                return p.action_cost(MOVE_COST) or MOVE_COST
+        self.msg("There is nothing here to open.", "info", to=p)
+        return FREE_COST
+
+    def _act_close(self, level, p, action):
+        """Shut a door beside you. Useful for putting something between you
+        and whatever is following."""
+        for spot in self._adjacent(p, action):
+            if level.get(*spot) != T.DOOR_OPEN:
+                continue
+            if level.actor_at(*spot) is not None:
+                self.msg("Something is standing in the doorway.", "warn", to=p)
+                return FREE_COST
+            if level.items_at(*spot):
+                self.msg("Something on the floor is blocking the door.", "warn", to=p)
+                return FREE_COST
+            self.set_tile(level, spot[0], spot[1], T.DOOR)
+            self.sound("door", spot[0], spot[1], level.depth)
+            self.msg("You close the door.", "info", to=p)
+            self.update_fov(p, force=True)
+            return p.action_cost(MOVE_COST) or MOVE_COST
+        self.msg("There is nothing here to close.", "info", to=p)
+        return FREE_COST
+
+    def _adjacent(self, p, action):
+        """The tiles to try for a door verb: the one aimed at, else all neighbours."""
+        if "x" in action and "y" in action:
+            return [(int(action["x"]), int(action["y"]))]
+        return [(p.x + dx, p.y + dy) for dx, dy in DIRS]
+
+    def _act_sleep(self, level, p, action):
+        """Sleep until your mana comes back. A separate command from resting."""
+        if combat.enemies_near(level, p.x, p.y, 8):
+            self.msg("Not with something watching you.", "warn", to=p)
+            return FREE_COST
+        if p.mana >= p.max_mana:
+            self.msg("Your mana is already full.", "info", to=p)
+            return FREE_COST
+        p.resting = "mana"
+        self.msg("You settle down to sleep.", "info", to=p)
+        return p.action_cost(REST_COST) or REST_COST
+
+    def _act_run(self, level, p, action):
+        """Travel in one direction until something worth stopping for appears.
+
+        The original has an option called "Stop Running on Special Sites",
+        which is the whole idea: running is for crossing ground you have
+        already cleared, and it gives way the moment the floor gets interesting.
+        """
+        dx = clamp(int(action.get("dx", 0)), -1, 1)
+        dy = clamp(int(action.get("dy", 0)), -1, 1)
+        if not dx and not dy:
+            return FREE_COST
+
+        def open_ways(x, y):
+            return sum(1 for ax, ay in DIRS if level.passable(x + ax, y + ay))
+
+        total = 0
+        prev_ways = open_ways(p.x, p.y)
+        for step in range(40):
+            if combat.enemies_near(level, p.x, p.y, 7):
+                if step == 0:
+                    self.msg("Not with something in sight.", "warn", to=p)
+                break
+            nx, ny = p.x + dx, p.y + dy
+            if not level.walkable(nx, ny, p.id) or level.get(nx, ny) == T.DOOR:
+                break
+            before = p.hp
+            total += self._act_move(level, p, {"dx": dx, "dy": dy}) or 0
+            if p.hp < before or p.dead:
+                break
+            tile = level.get(p.x, p.y)
+            if tile in (T.STAIRS_DOWN, T.STAIRS_UP, T.DOOR_OPEN, T.ALTAR):
+                break
+            if level.items_at(p.x, p.y):
+                break
+            trap = level.traps.get((p.x, p.y))
+            if trap and trap["found"]:
+                break
+            # A junction is only interesting in a corridor. In open ground
+            # every tile has eight ways out, and stopping at each one would
+            # make running useless exactly where it is most wanted.
+            ways = open_ways(p.x, p.y)
+            if prev_ways <= 3 and ways > prev_ways and step > 0:
+                break
+            prev_ways = ways
+        return total or (p.action_cost(MOVE_COST) or MOVE_COST)
 
     # ---- fighting --------------------------------------------------------
     def _act_attack(self, level, p, action):
@@ -504,8 +772,8 @@ class World:
             self.msg("There is nothing here to pick up.", "info", to=p)
             return FREE_COST
         item = pile[0]
-        if item.kind == "gold":
-            p.gold += item.gold_amount
+        if item.kind == "coins":
+            p.copper += item.gold_amount
             level.take_ground_item(p.x, p.y, item)
             self.msg(f"You pick up {item.gold_amount} gold pieces.", "loot", to=p)
             self.sound("gold", p.x, p.y, level.depth)
@@ -1001,11 +1269,11 @@ class World:
             for item in list(target.inventory):
                 level.add_ground_item(target.x, target.y, item)
             target.inventory.clear()
-            if target.gold > 0:
-                lost = int(target.gold * DEATH_GOLD_PENALTY)
+            if target.copper > 0:
+                lost = int(target.copper * DEATH_GOLD_PENALTY)
                 if lost:
                     level.add_ground_item(target.x, target.y, self._gold_item(lost))
-                    target.gold -= lost
+                    target.copper -= lost
             level.remove(target)
 
         target.deaths += 1
@@ -1121,7 +1389,7 @@ class World:
         if item is None:
             return FREE_COST
         price = self.shop_price(item)
-        if p.gold < price:
+        if p.copper < price:
             self.msg("You cannot afford that.", "warn", to=p)
             return FREE_COST
         take = item
@@ -1143,7 +1411,7 @@ class World:
         if not p.add_item(take):
             self.msg("Your pack is full.", "warn", to=p)
             return FREE_COST
-        p.gold -= price
+        p.copper -= price
         self.appearances.identify(take.key)
         self.msg(f"You buy {take.name(self.appearances)} for {price} gold.", "loot", to=p)
         self.sound("buy", p.x, p.y, level.depth)
@@ -1158,7 +1426,7 @@ class World:
             return FREE_COST
         price = self.shop_price(item, selling=True)
         p.remove_item(item, item.qty)
-        p.gold += price
+        p.copper += price
         self.msg(f"You sell {item.name(self.appearances)} for {price} gold.", "loot", to=p)
         self.sound("gold", p.x, p.y, level.depth)
         self.events.append({"t": "inv", "to": p.id})
@@ -1175,10 +1443,10 @@ class World:
             if item is None:
                 return FREE_COST
             price = 60 + p.level * 10
-            if p.gold < price:
+            if p.copper < price:
                 self.msg(f"Ulric wants {price} gold for that.", "warn", to=p)
                 return FREE_COST
-            p.gold -= price
+            p.copper -= price
             item.known = True
             self.appearances.identify(item.key)
             self.msg(f"Ulric turns it over. It is {item.name(self.appearances)}.", "good", to=p)
@@ -1186,10 +1454,10 @@ class World:
 
         elif what == "heal":
             price = 30 + p.level * 12
-            if p.gold < price:
+            if p.copper < price:
                 self.msg(f"The offering is {price} gold.", "warn", to=p)
                 return FREE_COST
-            p.gold -= price
+            p.copper -= price
             p.hp = p.max_hp
             p.mana = p.max_mana
             for bad in ("poisoned", "burning", "slowed", "afraid"):
@@ -1199,28 +1467,28 @@ class World:
 
         elif what == "uncurse":
             price = 150 + p.level * 20
-            if p.gold < price:
+            if p.copper < price:
                 self.msg(f"That rite costs {price} gold.", "warn", to=p)
                 return FREE_COST
             freed = [w for w in p.equipment.values() if w and w.cursed]
             if not freed:
                 self.msg("Nothing you carry is cursed.", "info", to=p)
                 return FREE_COST
-            p.gold -= price
+            p.copper -= price
             for w in freed:
                 w.cursed = False
             self.msg("The binding breaks.", "good", to=p)
 
         elif what == "deposit":
-            amount = max(0, min(int(action.get("amount", 0)), p.gold))
-            p.gold -= amount
+            amount = max(0, min(int(action.get("amount", 0)), p.copper))
+            p.copper -= amount
             p.bank += amount
             self.msg(f"You deposit {amount} gold. The strongroom holds {p.bank}.", "info", to=p)
 
         elif what == "withdraw":
             amount = max(0, min(int(action.get("amount", 0)), p.bank))
             p.bank -= amount
-            p.gold += amount
+            p.copper += amount
             self.msg(f"You withdraw {amount} gold.", "info", to=p)
 
         self.events.append({"t": "inv", "to": p.id})
@@ -1278,9 +1546,14 @@ class World:
             items.append({"x": x, "y": y, "icon": top.base.get("icon", "gold"),
                           "n": top.name(self.appearances), "many": len(pile) > 1})
 
+        hazards = [{"x": x, "y": y, "kind": t["kind"]}
+                   for (x, y), t in level.traps.items()
+                   if t["found"] and (y * level.w + x) in viewer.fov]
+
         return {
             "clock": level.clock,
             "depth": viewer.depth,
+            "traps": hazards,
             "waiting": level.waiting_on,
             "actors": actors,
             "items": items,
@@ -1297,13 +1570,13 @@ class World:
             "id": p.id, "name": p.name, "level": p.level, "xp": p.xp,
             "hp": max(0, int(p.hp)), "max_hp": p.max_hp,
             "mana": int(p.mana), "max_mana": p.max_mana,
-            "gold": p.gold, "bank": p.bank, "depth": p.depth,
+            "copper": p.copper, "bank": p.bank, "depth": p.depth,
             "ac": p.armour_class, "to_hit": p.to_hit,
             "stats": {k: p.stat(k) for k in p.stats},
             "base_stats": dict(p.stats),
             "weight": weight, "capacity": p.capacity,
             "bulk": p.carried_bulk, "bulk_capacity": p.bulk_capacity,
-            "encumbrance": enc_name,
+            "encumbrance": enc_name, "speed": p.speed_percent(),
             "effects": {k: v[0] for k, v in p.effects.items()},
             "spells": sorted(p.spells),
             "deepest": p.deepest, "kills": p.kills, "deaths": p.deaths,
@@ -1317,7 +1590,7 @@ class World:
             "items": [self.item_view(i) for i in p.inventory],
             "equipment": {slot: (self.item_view(i) if i else None)
                           for slot, i in p.equipment.items()},
-            "gold": p.gold, "bank": p.bank,
+            "copper": p.copper, "bank": p.bank,
             "weight": p.carried_weight, "capacity": p.capacity,
             "bulk": p.carried_bulk, "bulk_capacity": p.bulk_capacity,
             "pack_weight": pack_w, "pack_max_weight": max_w,
@@ -1346,7 +1619,7 @@ class World:
             "stock": [dict(self.item_view(i, shop=True), price=self.shop_price(i)) for i in stock],
             "sell": [dict(self.item_view(i), price=self.shop_price(i, selling=True))
                      for i in p.inventory],
-            "gold": p.gold, "bank": p.bank,
+            "copper": p.copper, "bank": p.bank,
             "heal_price": 30 + p.level * 12,
             "identify_price": 60 + p.level * 10,
             "uncurse_price": 150 + p.level * 20,

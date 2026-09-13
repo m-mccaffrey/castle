@@ -23,6 +23,19 @@ REST_COST = 100
 STAIRS_COST = 100
 FREE_COST = 0               # rummaging in your own pack costs nothing
 
+# Ten ticks to the game-second, so an ordinary action takes ten seconds of
+# game time and the clock reads in days, hours, minutes and seconds.
+TICKS_PER_SECOND = 10
+
+
+def format_clock(ticks):
+    total = int(ticks // TICKS_PER_SECOND)
+    days, rest = divmod(total, 86400)
+    hours, rest = divmod(rest, 3600)
+    minutes, seconds = divmod(rest, 60)
+    return f"{days}d,{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+
 # How far the world may run ahead of a player who has not acted yet. Beyond
 # this it stops and says who everyone is waiting for. Two turns is enough that
 # nobody notices a pause for thought, and short enough that nobody gets left

@@ -113,7 +113,7 @@ BASES = {
     "gem":         dict(name="Gemstone", icon="gem", bulk=1, wt=2, value=350, depth=4, kind="treasure"),
     "bracers":     dict(name="Bracers", slot="bracers", icon="bracers", bulk=8, wt=25, value=55, ac=1, depth=1),
     "purse":       dict(name="Purse", slot="purse", icon="sack", bulk=3, wt=3, value=15, depth=0, kind="container", capacity=40, bulk_capacity=20, coins_only=True),
-    "gold_pile":   dict(name="gold pieces", icon="gold", bulk=0, wt=0, value=1, depth=0, kind="gold"),
+    "coins":       dict(name="copper pieces", icon="gold", bulk=0, wt=0, value=1, depth=0, kind="coins"),
     "pack":        dict(name="Backpack", slot="pack", icon="pack", bulk=20, wt=30, value=60, depth=0, kind="container", capacity=1200, bulk_capacity=500),
     "sack":        dict(name="Sack", slot=None, icon="sack", bulk=8, wt=10, value=25, depth=0, kind="container", capacity=600, bulk_capacity=260),
 }
@@ -249,7 +249,7 @@ class Item:
     @property
     def bulk(self):
         """How much room it takes up, as opposed to how much it weighs."""
-        if self.kind == "gold":
+        if self.kind == "coins":
             return max(0, self.gold_amount // 400)
         b = self.base.get("bulk", 5) * max(1, self.qty)
         if self.contents:
@@ -260,7 +260,7 @@ class Item:
 
     @property
     def weight(self):
-        if self.kind == "gold":
+        if self.kind == "coins":
             return self.gold_amount // 10        # a hundred coins to the pound
         w = self.base.get("wt", 10) * max(1, self.qty)
         if self.contents:
@@ -295,8 +295,8 @@ class Item:
             label = appearances.describe(self.key, base)
             return f"{self.qty} {pluralise(label, self.qty)}" if self.qty > 1 else label
 
-        if self.kind == "gold":
-            return f"{self.gold_amount} gold pieces"
+        if self.kind == "coins":
+            return f"{self.gold_amount} copper"
         label = base.get("name", self.key)
         if self.spell:
             label = f"Tome of {self.spell}"

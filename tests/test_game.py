@@ -85,7 +85,7 @@ class TestEncumbrance(unittest.TestCase):
         p = Player("Miser", {"strength": 10, "dexterity": 10,
                              "intelligence": 10, "constitution": 10})
         light = p.action_cost(100)
-        p.gold = 12000                       # 120 lb of coins
+        p.copper = 12000                       # 120 lb of coins
         heavy = p.action_cost(100)
         self.assertGreater(heavy, light, "a fortune in coin should slow you down")
 
@@ -283,7 +283,7 @@ class TestWorld(unittest.TestCase):
         town.move_actor(p, *town.down_at)
         world.submit(p, {"a": "stairs"})
         self.assertEqual(p.depth, 1)
-        p.gold = 1000
+        p.copper = 1000
         p.add_item(Item("potion_heal", qty=2))
         carried = len(p.inventory)
         self.assertGreater(carried, 0)
@@ -291,7 +291,7 @@ class TestWorld(unittest.TestCase):
         apply_damage(world, p, 99999, None)
         self.assertEqual(p.depth, TOWN_DEPTH, "death should wake you at the temple")
         self.assertEqual(len(p.inventory), 0, "your pack should stay where you fell")
-        self.assertEqual(p.gold, 800, "expected a fifth of your gold to be lost")
+        self.assertEqual(p.copper, 800, "expected a fifth of your gold to be lost")
         self.assertGreater(p.hp, 0)
         self.assertTrue(world.levels[1].items_at(*where), "the pack is not on the floor")
 
@@ -300,17 +300,17 @@ class TestWorld(unittest.TestCase):
         p = world.add_player("Shopper")
         stock = world.stock_for("weaponsmith")
         item = min(stock, key=lambda i: i.value())
-        p.gold = item.value()
+        p.copper = item.value()
         world.submit(p, {"a": "buy", "shop": "weaponsmith", "id": item.id})
-        self.assertEqual(p.gold, 0)
+        self.assertEqual(p.copper, 0)
         self.assertTrue(any(i.id == item.id for i in p.inventory))
         world.submit(p, {"a": "sell", "shop": "weaponsmith", "id": item.id})
-        self.assertGreater(p.gold, 0)
+        self.assertGreater(p.copper, 0)
 
     def test_the_strongroom_takes_the_weight_off_you(self):
         world = World(seed=3)
         p = world.add_player("Banker")
-        p.gold = 5000
+        p.copper = 5000
         heavy = p.carried_weight
         world.submit(p, {"a": "service", "what": "deposit", "amount": 5000})
         self.assertEqual(p.bank, 5000)
@@ -353,3 +353,190 @@ class TestProtocol(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestVerbs(unittest.TestCase):
+    """The verb set taken from the original's menu."""
+
+    def descend(self, seed=31):
+        world = World(seed=seed)
+        p = world.add_player("Verb")
+        town = world.levels[TOWN_DEPTH]
+        town.move_actor(p, *town.down_at)
+        world.update_fov(p, force=True)
+        world.submit(p, {"a": "stairs"})
+        return world, p, world.levels[1]
+
+    def messages(self, world):
+        return [e["text"] for e in world.events if e["t"] == "msg"]
+
+    def test_open_and_close_a_door(self):
+        world, p, level = self.descend()
+        spot = level.find_floor(p.x + 2, p.y)
+        level.set(spot[0], spot[1], T.DOOR)
+        level.move_actor(p, *level.find_free(spot[0] + 1, spot[1]))
+        world.events.clear()
+        world.submit(p, {"a": "open"})
+        self.assertEqual(level.get(*spot), T.DOOR_OPEN)
+        world.events.clear()
+        world.submit(p, {"a": "close"})
+        self.assertEqual(level.get(*spot), T.DOOR)
+
+    def test_a_door_will_not_close_on_somebody(self):
+        world, p, level = self.descend()
+        spot = level.find_floor(p.x + 2, p.y)
+        level.set(spot[0], spot[1], T.DOOR_OPEN)
+        level.move_actor(p, *level.find_free(spot[0] + 1, spot[1]))
+        m = make_monster("cave_rat", spot[0], spot[1], 1, random.Random(1))
+        m.depth = 1
+        level.place(m)
+        world.events.clear()
+        world.submit(p, {"a": "close"})
+        self.assertEqual(level.get(*spot), T.DOOR_OPEN, "closed a door on a creature")
+
+    def test_free_hand_puts_the_weapon_away(self):
+        world, p, level = self.descend()
+        self.assertIsNotNone(p.equipment.get("weapon"))
+        world.submit(p, {"a": "freehand"})
+        self.assertIsNone(p.equipment.get("weapon"))
+        self.assertTrue(any(i.slot == "weapon" for i in p.inventory))
+
+    def test_examine_costs_no_time(self):
+        world, p, level = self.descend()
+        before = level.clock
+        world.submit(p, {"a": "examine", "x": p.x, "y": p.y})
+        self.assertEqual(level.clock, before, "looking at something took a turn")
+
+    def test_rest_runs_until_healed_then_stops(self):
+        world, p, level = self.descend()
+        for m in [a for a in level.actors.values() if a.kind == "monster"]:
+            level.remove(m)
+        p.hp, p.mana = 2, 0
+        world.submit(p, {"a": "rest"})
+        for _ in range(3000):
+            if not p.resting:
+                break
+            world.run_level(p.depth)
+        self.assertFalse(p.resting)
+        self.assertEqual(p.hp, p.max_hp)
+        self.assertEqual(p.mana, p.max_mana)
+
+    def test_you_cannot_rest_with_company(self):
+        world, p, level = self.descend()
+        m = make_monster("cave_rat", p.x + 2, p.y, 1, random.Random(1))
+        m.depth = 1
+        level.place(m)
+        world.events.clear()
+        world.submit(p, {"a": "rest"})
+        self.assertFalse(p.resting)
+
+    def test_running_crosses_open_ground(self):
+        """Running must not stop on every tile just because the floor is open."""
+        world = World(seed=31)
+        p = world.add_player("Runner")
+        town = world.levels[TOWN_DEPTH]
+        town.move_actor(p, town.down_at[0], town.down_at[1] + 20)
+        world.update_fov(p, force=True)
+        start_y = p.y
+        world.submit(p, {"a": "run", "dx": 0, "dy": -1})
+        self.assertGreater(start_y - p.y, 5,
+                           "run stopped almost immediately on open ground")
+
+    def test_running_stops_at_the_stairs(self):
+        world = World(seed=31)
+        p = world.add_player("Runner")
+        town = world.levels[TOWN_DEPTH]
+        town.move_actor(p, town.down_at[0], town.down_at[1] + 20)
+        world.update_fov(p, force=True)
+        world.submit(p, {"a": "run", "dx": 0, "dy": -1})
+        self.assertEqual((p.x, p.y), town.down_at,
+                         "run should have halted on the keep gate")
+
+
+class TestHazards(unittest.TestCase):
+    def test_every_floor_gets_traps_and_hidden_doors(self):
+        for depth in (1, 10, 25):
+            level = generate_dungeon(depth, 4242)
+            self.assertGreater(len(level.traps), 0, f"floor {depth} has no traps")
+            self.assertGreater(len(level.secrets), 0, f"floor {depth} has no secret doors")
+            for (x, y) in level.traps:
+                self.assertTrue(level.passable(x, y), "a trap was placed inside a wall")
+
+    def test_traps_start_hidden_and_searching_finds_them(self):
+        world = World(seed=777)
+        p = world.add_player("Seeker")
+        town = world.levels[TOWN_DEPTH]
+        town.move_actor(p, *town.down_at)
+        world.update_fov(p, force=True)
+        world.submit(p, {"a": "stairs"})
+        level = world.levels[1]
+        spot = next(iter(level.traps))
+        self.assertFalse(level.traps[spot]["found"], "traps should start hidden")
+
+        p.stats["intelligence"] = 20
+        level.move_actor(p, *level.find_free(spot[0] + 1, spot[1]))
+        for _ in range(40):
+            world.submit(p, {"a": "search"})
+            if spot not in level.traps or level.traps[spot]["found"]:
+                break
+        self.assertTrue(spot not in level.traps or level.traps[spot]["found"],
+                        "searching next to a trap never revealed it")
+
+    def test_walking_onto_a_hidden_trap_springs_it(self):
+        world = World(seed=777)
+        p = world.add_player("Unlucky")
+        town = world.levels[TOWN_DEPTH]
+        town.move_actor(p, *town.down_at)
+        world.update_fov(p, force=True)
+        world.submit(p, {"a": "stairs"})
+        level = world.levels[1]
+        spot = next(s for s, t in level.traps.items() if t["kind"] != "alarm")
+        level.traps[spot]["kind"] = "dart"
+        level.move_actor(p, *spot)
+        before = p.hp
+        world.spring_trap(level, p)
+        self.assertLess(p.hp, before, "the trap did nothing")
+        self.assertNotIn(spot, level.traps, "a sprung trap should be spent")
+
+
+class TestStatusReadouts(unittest.TestCase):
+    def test_the_clock_reads_in_days_and_hours(self):
+        from stormhold.common.constants import format_clock
+        self.assertEqual(format_clock(0), "0d,00:00:00")
+        self.assertEqual(format_clock(10610), "0d,00:17:41")
+        self.assertEqual(format_clock(864000 * 7), "7d,00:00:00")
+
+    def test_speed_falls_with_burden_and_rises_with_agility(self):
+        quick = Player("Q", {"strength": 12, "dexterity": 16,
+                             "intelligence": 8, "constitution": 8})
+        slow = Player("S", {"strength": 12, "dexterity": 8,
+                            "intelligence": 8, "constitution": 12})
+        self.assertGreater(quick.speed_percent(), slow.speed_percent())
+
+        laden = Player("L", {"strength": 10, "dexterity": 12,
+                             "intelligence": 8, "constitution": 8})
+        before = laden.speed_percent()
+        laden.copper = 9000
+        self.assertLess(laden.speed_percent(), before,
+                        "a purse full of copper should slow you down")
+
+    def test_an_immobile_character_reports_zero_rather_than_lying(self):
+        stuck = Player("Stuck", {"strength": 8, "dexterity": 10,
+                                 "intelligence": 8, "constitution": 8})
+        stuck.copper = 200000
+        self.assertEqual(stuck.speed_percent(), 0)
+        self.assertIsNone(stuck.action_cost(100))
+
+
+class TestSpellClasses(unittest.TestCase):
+    def test_six_classes_and_every_spell_belongs_to_one(self):
+        from stormhold.game.spells import SCHOOLS
+        self.assertEqual(len(SCHOOLS), 6)
+        for name, spell in SPELLS.items():
+            self.assertIn(spell["school"], SCHOOLS, name)
+
+    def test_every_class_has_at_least_one_spell(self):
+        from stormhold.game.spells import SCHOOLS
+        for school in SCHOOLS:
+            self.assertTrue(any(s["school"] == school for s in SPELLS.values()),
+                            f"{school} has no spells in it")

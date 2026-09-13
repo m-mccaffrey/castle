@@ -27,6 +27,8 @@ class Level:
         self.spawn_point = (1, 1)
         self.boss_room = None
         self.boss_key = None
+        self.traps = {}            # (x, y) -> {kind, found, armed}
+        self.secrets = {}          # (x, y) -> {found}
 
     # ------------------------------------------------------------ queries --
     def idx(self, x, y):
@@ -354,6 +356,9 @@ def generate_dungeon(depth, seed):
     if depth in (12, 25):
         level.boss_room = far
         level.boss_key = "warden_of_ash" if depth == 12 else "vaelrik"
+
+    from .traps import place_hazards
+    place_hazards(level, rng)
     return level
 
 

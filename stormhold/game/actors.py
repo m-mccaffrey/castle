@@ -76,7 +76,7 @@ class Player(Actor):
             self.stats.update({k: v for k, v in stats.items() if k in STATS})
         self.level = 1
         self.xp = 0
-        self.gold = 120
+        self.copper = 120
         self.bank = 0
         self.equipment = {s: None for s in SLOTS}
         self.inventory = []
@@ -158,7 +158,7 @@ class Player(Actor):
     def carried_weight(self):
         w = sum(i.weight for i in self.inventory)
         w += sum(i.weight for i in self.equipment.values() if i)
-        w += self.gold // 10          # a hundred coins to the pound
+        w += self.copper // 10          # a hundred coins to the pound
         return w
 
     @property
@@ -175,7 +175,7 @@ class Player(Actor):
             worn = self.equipment.get(slot)
             if worn:
                 b += worn.base.get("bulk", 0)
-        b += self.gold // 400
+        b += self.copper // 400
         return b
 
     @property
@@ -228,12 +228,24 @@ class Player(Actor):
                 return tier
         return by_weight if by_weight[1] >= by_bulk[1] else by_bulk
 
+    @property
+    def agility_factor(self):
+        """A nimble character simply does everything a little quicker."""
+        return max(0.4, 1.0 + (self.stat("dexterity") - 10) * 0.035)
+
+    def speed_percent(self):
+        """What the status panel shows: 100% is an ordinary unburdened pace."""
+        cost = self.action_cost(TICKS_PER_TURN)
+        if cost is None:
+            return 0
+        return max(1, int(round(100.0 * TICKS_PER_TURN / cost)))
+
     def action_cost(self, base):
         """How long an action takes this character, all things considered."""
         _, mult = self.encumbrance
         if mult is None:
             return None                       # too loaded to move at all
-        cost = base * mult
+        cost = base * mult / self.agility_factor
         if self.has("haste"):
             cost *= 0.5
         if self.has("slowed"):
@@ -276,7 +288,7 @@ class Player(Actor):
         """Group the pack the way a tidy person would: by what things are."""
         order = {"weapon": 0, "armour": 1, "container": 2, "potion": 3,
                  "scroll": 4, "book": 5, "food": 6, "light": 7,
-                 "ring": 8, "amulet": 9, "treasure": 10, "gold": 11}
+                 "ring": 8, "amulet": 9, "treasure": 10, "coins": 11}
 
         def key(item):
             kind = item.kind
@@ -368,7 +380,7 @@ class Player(Actor):
     def to_save(self):
         return {
             "name": self.name, "colour": self.colour, "stats": self.stats,
-            "level": self.level, "xp": self.xp, "gold": self.gold, "bank": self.bank,
+            "level": self.level, "xp": self.xp, "copper": self.copper, "bank": self.bank,
             "hp": self.hp, "mana": self.mana,
             "inventory": [i.to_dict() for i in self.inventory],
             "equipment": {k: (v.to_dict() if v else None) for k, v in self.equipment.items()},
@@ -381,7 +393,7 @@ class Player(Actor):
         self.colour = d.get("colour", self.colour)
         self.level = d.get("level", 1)
         self.xp = d.get("xp", 0)
-        self.gold = d.get("gold", 120)
+        self.copper = d.get("copper", 120)
         self.bank = d.get("bank", 0)
         self.inventory = [Item.from_dict(x) for x in d.get("inventory", [])]
         self.equipment = {s: None for s in SLOTS}

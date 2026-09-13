@@ -241,3 +241,161 @@ def bar(surf, rect, fraction, colour, label=None, back=(40, 40, 40)):
         cy = rect[1] + rect[3] // 2 - img.get_height() // 2
         surf.blit(shadow, (cx + 1, cy + 1))
         surf.blit(img, (cx, cy))
+
+
+class MenuBar:
+    """A Windows-style menu bar with drop-downs.
+
+    Menus are given as (label, [(item label, action, enabled), ...]). An item
+    whose label is "-" draws a separator. A menu with no items acts as a button
+    and fires its own action immediately, which is how the original's
+    Character!, Inventory! and Map! entries behave.
+    """
+
+    HEIGHT = 22
+
+    def __init__(self, menus):
+        self.menus = menus
+        self.open_index = None
+        self.hover_item = None
+        self._rects = []
+        self._item_rects = []
+
+    def layout(self, width):
+        self._rects = []
+        x = 4
+        f = font(13)
+        for label, _items in self.menus:
+            w = f.size(label)[0] + 18
+            self._rects.append(pygame.Rect(x, 0, w, self.HEIGHT))
+            x += w
+
+    def draw(self, surf, width):
+        self.layout(width)
+        bar = pygame.Rect(0, 0, width, self.HEIGHT)
+        pygame.draw.rect(surf, FACE, bar)
+        pygame.draw.line(surf, FACE_SHADOW, (0, self.HEIGHT - 1), (width, self.HEIGHT - 1))
+
+        for i, (label, items) in enumerate(self.menus):
+            rect = self._rects[i]
+            if i == self.open_index and items:
+                pygame.draw.rect(surf, TITLE_A, rect)
+            colour = WHITE if (i == self.open_index and items) else INK
+            img = font(13).render(label, True, colour)
+            surf.blit(img, (rect.x + 9, rect.centery - img.get_height() // 2))
+
+        self._item_rects = []
+        if self.open_index is None:
+            return
+        items = self.menus[self.open_index][1]
+        if not items:
+            return
+        f = font(13)
+        w = max(f.size(t)[0] for t, _a, _e in items) + 44
+        h = sum(8 if t == "-" else 20 for t, _a, _e in items) + 8
+        origin = self._rects[self.open_index]
+        panel_rect = pygame.Rect(origin.x, self.HEIGHT, w, h)
+        panel(surf, panel_rect, raised=True)
+
+        y = panel_rect.y + 4
+        for text, action, enabled in items:
+            if text == "-":
+                pygame.draw.line(surf, FACE_SHADOW, (panel_rect.x + 4, y + 3),
+                                 (panel_rect.right - 4, y + 3))
+                y += 8
+                continue
+            row = pygame.Rect(panel_rect.x + 2, y, panel_rect.width - 4, 20)
+            if enabled and self.hover_item == len(self._item_rects):
+                pygame.draw.rect(surf, TITLE_A, row)
+                colour = WHITE
+            else:
+                colour = INK if enabled else DISABLED
+            img = f.render(text, True, colour)
+            surf.blit(img, (row.x + 20, row.centery - img.get_height() // 2))
+            self._item_rects.append((row, action, enabled))
+            y += 20
+
+    def handle(self, event):
+        """Returns an action string when something is chosen."""
+        if event.type == pygame.MOUSEMOTION:
+            self.hover_item = None
+            for i, (rect, _a, enabled) in enumerate(self._item_rects):
+                if rect.collidepoint(event.pos) and enabled:
+                    self.hover_item = i
+            if self.open_index is not None:
+                for i, rect in enumerate(self._rects):
+                    if rect.collidepoint(event.pos) and self.menus[i][1]:
+                        self.open_index = i
+            return None
+
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            for i, rect in enumerate(self._rects):
+                if not rect.collidepoint(event.pos):
+                    continue
+                label, items = self.menus[i]
+                if not items:
+                    self.open_index = None
+                    return label            # an immediate command, not a menu
+                self.open_index = None if self.open_index == i else i
+                return None
+            for rect, action, enabled in self._item_rects:
+                if rect.collidepoint(event.pos) and enabled:
+                    self.open_index = None
+                    return action
+            self.open_index = None
+        return None
+
+    @property
+    def is_open(self):
+        return self.open_index is not None
+
+
+class Toolbar:
+    """The row of verb buttons under the menu, plus quick-cast spell icons."""
+
+    HEIGHT = 30
+
+    def __init__(self, verbs):
+        self.verbs = verbs                  # [(label, action)]
+        self.buttons = []
+        self.spell_rects = []
+
+    def draw(self, surf, width, sheet=None, spells=()):
+        bar = pygame.Rect(0, MenuBar.HEIGHT, width, self.HEIGHT)
+        pygame.draw.rect(surf, FACE, bar)
+        pygame.draw.line(surf, FACE_SHADOW, (0, bar.bottom - 1), (width, bar.bottom - 1))
+
+        self.buttons = []
+        x = 4
+        f = font(12, bold=True)
+        for label, action in self.verbs:
+            w = f.size(label)[0] + 16
+            rect = pygame.Rect(x, bar.y + 3, w, self.HEIGHT - 7)
+            panel(surf, rect, raised=True)
+            img = f.render(label, True, INK)
+            surf.blit(img, (rect.centerx - img.get_width() // 2,
+                            rect.centery - img.get_height() // 2))
+            self.buttons.append((rect, action))
+            x += w + 3
+
+        # Quick-cast slots, which fill up as spells are learned.
+        self.spell_rects = []
+        x += 10
+        for i, name in enumerate(spells[:12]):
+            rect = pygame.Rect(x, bar.y + 3, 26, self.HEIGHT - 7)
+            panel(surf, rect, raised=True)
+            img = font(11, bold=True).render(str(i + 1), True, (60, 60, 120))
+            surf.blit(img, (rect.centerx - img.get_width() // 2,
+                            rect.centery - img.get_height() // 2))
+            self.spell_rects.append((rect, name))
+            x += 28
+
+    def handle(self, event):
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            for rect, action in self.buttons:
+                if rect.collidepoint(event.pos):
+                    return ("verb", action)
+            for rect, name in self.spell_rects:
+                if rect.collidepoint(event.pos):
+                    return ("spell", name)
+        return None
