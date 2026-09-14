@@ -199,6 +199,26 @@ DOLL_TOP = ("head", "neck", "back")
 DOLL_LEFT = ("torso", "bracers", "weapon", "ring_left", "waist", "pack")
 DOLL_RIGHT = ("shield", "arms", "legs", "ring_right", "feet", "purse")
 
+# How a creature's condition reads when you examine it. The original never
+# shows a number here - six words, read from its own strings.
+CONDITION = (
+    (1.00, "Uninjured"),
+    (0.85, "Barely scratched"),
+    (0.65, "Slightly injured"),
+    (0.40, "Injured"),
+    (0.20, "Heavily injured"),
+    (0.00, "Critically injured"),
+)
+
+
+def condition_for(share):
+    """The word for a creature at this fraction of its hit points."""
+    for cut, word in CONDITION:
+        if share >= cut:
+            return word
+    return CONDITION[-1][1]
+
+
 RING_SLOTS = ("ring_left", "ring_right")
 
 # What you can hold without a pack: your two hands, near enough.

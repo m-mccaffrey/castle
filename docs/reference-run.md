@@ -429,3 +429,190 @@ wedged game and is not one.
 
 Resizing the window repeatedly while a game is running eventually leaves the
 map pane blank and unrecoverable. Set the size once, before starting a game.
+
+# Fourth session: reading the game's own name tables
+
+The Help menu turned out to carry the whole manual - **Help Contents, Keyboard
+Commands, Mouse Commands, Spell Directory, Object Directory, Bestiary, High
+Scores**. Opening any of them asks for `castle1.hlp`, which is not in the
+upload; only the `.EXE` is. That file ships in the original archive and would
+be the authoritative source for everything below.
+
+Failing that, the runtime name tables are in the executable itself as plain
+text, and `strings` reads them without decompiling anything. What follows is
+the vocabulary the game actually uses. Names are recorded here as *reference*;
+this remake keeps its own names and art.
+
+## The bestiary is a taxonomy, not a flat list
+
+Dragons come in four colours and six ages, which is 24 distinct monsters from
+one family:
+
+    White / Green / Blue / Red
+    Young, Young Adult, Adult, Old, Very Old, Ancient
+
+Elementals come in six materials: Air, Dust, Earth, Fire, Ice, Magma.
+Undead ladder through Wights (Barrow, Castle) and Wraiths (Pale, Dark, Abyss).
+Giants ladder through Hill, Stone, Frost, Fire.
+
+The rest, roughly in order of depth: Giant Rat, Kobold, Goblin, Goblin Fighter,
+Hobgoblin, Orc, Giant Bat, Large Snake, Ant, Giant Red Ant, Gray Wolf, White
+Wolf, Bandit, Berserker, Skeleton, Walking Corpse, Eerie Ghost, Giant Scorpion,
+Giant Trapdoor Spider, Carrion Creeper, Brown Bear, Cave Bear, Bear-Man,
+Huge Ogre, Gruesome Troll, Smirking Sneak Thief.
+
+Named bosses, each a set piece:
+
+    Hrungnir, The Hill Giant Lord
+    Rungnir, The Stone Giant King
+    Thrym, The Frost Giant King
+    Thiassa, The Fire Giant King
+    The Demon Lord Surtur
+
+The lesson for our own bestiary is structural: families with tiers inside them,
+so one art idea and one behaviour carry six or more depths of difficulty, and
+each act closes on a named giant.
+
+## The spell list
+
+    Attack:     Magic Arrow, Fire Bolt, Cold Bolt, Lightning Bolt,
+                Fireball, Cold Ball, Ball Lightning
+    Healing:    Heal Minor Wounds, Heal Medium Wounds, Heal Major Wounds,
+                Heal, Neutralize Poison, Remove Curse
+    Divination: Detect Monsters, Detect Objects, Detect Traps, Identify,
+                True Sight, Clairvoyance
+    Movement:   Phase Door, Teleport Away, Teleportation, Levitation
+    Defense:    Shield, Protection, Banishing Fear
+    Misc:       Light, Slow, Blindness, Ogre Power, Clone Monster,
+                Transmogrify Monster
+
+Attack spells form a clean grid: three elements (fire, cold, lightning) times
+two shapes (bolt, ball), plus Magic Arrow as the starter. Healing ladders in
+four steps and the temple sells exactly those four.
+
+The Spell Directory's own descriptions are in the binary too, e.g. *"detect
+objects on the current level"*, *"detect traps close by"*, *"neutralizes poison
+in the character"*, *"creates a return field about the player"* (Rune of Return).
+
+## Casting without mana is allowed, and hurts
+
+> "You don't have enough mana. Casting this spell may damage your health.
+> Continue?"
+
+So mana is not a hard gate - you may overdraw and pay in hit points. That is a
+real tactical mechanic and this remake does not have it.
+
+## Items are composed at runtime, not stored whole
+
+This is the useful discovery. Most item names do not exist in the binary as
+complete strings - they are assembled from word tables through templates:
+
+    %i Sword     %i Bow      %i Cloak    %i Boots     %i Helmet
+    %i Belt      %i Bag      %i Pack     %i Chest     %i Scroll
+    %i %i Shield             %i Pack Of Holding
+    %i %d charge%z
+
+which is why the shop shows "Normal Suit of Leather Armor" and "Normal Medium
+Iron Shield" rather than fixed names. The word tables that feed them, all
+verified present:
+
+    quality:   Broken, Ripped, Rusty, Normal, Enchanted, Cursed
+    size:      Small, Medium, Large
+    material:  Leather, Studded Leather, Chain, Scale, Plate, Splint,
+               Iron, Wooden, Meteoric Steel
+    weapons:   Dagger, Club, Quarter Staff, Spear, Hand Axe, Battle Axe,
+               Axe, Mace, Hammer, War Hammer, Morning Star, Flail,
+               Short, Broad, Bastard, Two Handed (+ Sword)
+    wearables: Helmet, Gauntlets, Bracers, Boots, Cloak, Belt, Ring,
+               Amulet, Shield
+    carried:   Pack, Pack Of Holding, Bag, Chest, Potion, Scroll, Wand,
+               Wand Quiver, Food
+
+So the identification system and the quality system are the same mechanism: an
+unidentified item shows a plain noun, and identifying it reveals the adjective.
+
+Two slots we did not have: a **Wand Quiver**, and belts that are containers
+sized in slots ("2 Slot Belt", "4 Slot"). A spent wand becomes a **Dead Wand**.
+Charged items show "%i %d charge%z" and recharge on a timer, "(Once every %d
+hour%z)".
+
+Two-handed weapons conflict with shields, and the game says so rather than
+silently refusing: *"Can't use both a Two Handed Sword and a Shield"*, and
+*"You drop something to wield your sword with both hands"*.
+
+Named unique gear exists: Thangbrand's Sword and Scabbard, Isleif's Sword and
+Scabbard, 7 League Boots, Red Dragon Blood.
+
+## Shops have proprietors
+
+Shops are named for their owners, which is why the town feels inhabited:
+
+    Beinir the Strong's Armor Shop
+    Sverting's Armor Shop
+    Eirik's House of Armor
+    Thangbrand's Sword and Scabbard
+    Isleif's Sword and Scabbard
+
+## The trap list
+
+    an arrow trap, a dart trap, a blade trap (a scything blade), a fire trap,
+    an acid trap, a poison gas trap, a sleep gas trap, a slow gas trap,
+    a teleport trap, an animation trap, a deadfall, a pit, a trap door,
+    a glyph of warding, an unknown trap
+
+Ours were invented; this is the real set. Note the spread of effects - damage,
+status, movement, and *animation* (which raises the dead), plus a trap door
+that drops you a level rather than hurting you.
+
+## Health is reported in words, not numbers
+
+Examining something gives one of six states rather than a number:
+
+    Uninjured, Barely scratched, Slightly injured, Injured,
+    Heavily injured, Critically injured
+
+## Combat messages are weapon-aware and located
+
+The messages vary by weapon class and by where the blow lands, which is why
+combat reads well without ever printing a damage number:
+
+    You hit <foe> in the arm! / in the chest! / in the head! / in the leg!
+                              / on the flank!
+    You slash <foe>, opening a bloodless cut.
+    You slash at air as <foe> dances back.
+    You deal <foe> a solid blow! / a crushing blow!
+    You smash into <foe>'s shield, striking sparks.
+    You miss <foe> by a league!
+
+Kill messages are their own escalated set:
+
+    You slash through <foe>'s throat with a neat lunge and slice.
+    You chop open <foe>'s chest, splintering ribs and shredding viscera.
+    You crush <foe>'s skull into jelly.
+    You pound <foe> until it stops moving.
+    You deal <foe> a final murderous cut.
+
+Slash verbs go with blades, crush and pound with blunt weapons, chop with axes.
+A shield block is its own message. This is the single most copyable thing in
+the game for feel, and it costs nothing but a message table.
+
+## Status line formats, verbatim
+
+    %i %d (%d)          HP and Mana:  "HP  10 (10)"
+    %i %d%% / %d%%      Speed:        "Speed  100% / 200%"
+    %i %dd,%D:%D:%D     Time:         "Time  0d,00:00:52"
+    %i (%i)             Weight/Bulk
+
+## Other mechanics the strings give away
+
+- Thieves steal from the purse: *"You feel a tug on your purse"*, and
+  *"The Thief vanishes!"* - so theft plus teleport-away is a monster behaviour.
+- Money auto-banks into the pack: *"Placing money in your pack..."*
+- Doors can be smashed: *"The %i blasts open the door!"*, *"A broken door"*,
+  and they can be blocked: *"There are objects blocking the door"*.
+- Level features include a stone sarcophagus, a shrine to Odin, an elemental
+  portal, fountains and thrones you can use, and webs you must fight through.
+- Shops refuse junk: *"We don't buy those..."*, *"We don't buy worthless items!"*
+- The game warns before the point of no return: *"This is your last chance to
+  save if you want to carry your character forward to part two."*
+- Quitting is called what it is: *"cowardly restart"*.

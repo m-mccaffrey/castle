@@ -506,6 +506,15 @@ class TestHazards(unittest.TestCase):
 
 
 class TestStatusReadouts(unittest.TestCase):
+    def test_condition_reads_in_words_not_numbers(self):
+        from stormhold.common.constants import condition_for
+        self.assertEqual(condition_for(1.0), "Uninjured")
+        self.assertEqual(condition_for(0.9), "Barely scratched")
+        self.assertEqual(condition_for(0.5), "Injured")
+        self.assertEqual(condition_for(0.0), "Critically injured")
+        # never falls off the end, however battered
+        self.assertEqual(condition_for(-0.5), "Critically injured")
+
     def test_the_clock_reads_in_days_and_hours(self):
         from stormhold.common.constants import format_clock
         from stormhold.common.constants import TICKS_PER_SECOND

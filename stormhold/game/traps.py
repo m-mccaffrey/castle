@@ -8,19 +8,32 @@ on the toolbar next to Get and Rest.
 
 import random
 
+# The original's trap list, read from its own strings. Ours had been invented;
+# this is the real spread - damage, status, movement, and one that raises the
+# dead. Effects and numbers are still ours, the taxonomy is not. The original
+# also has a trap door (drops you a level) and an animation trap (raises the
+# dead); both are recorded in docs/reference-run.md and not built yet.
 TRAPS = {
+    "arrow":    dict(name="arrow trap",    dmg=(2, 6),  desc="An arrow leaps from the dark!"),
     "dart":     dict(name="dart trap",     dmg=(2, 5),  desc="A dart springs from the wall!"),
-    "pit":      dict(name="pit",           dmg=(2, 7),  desc="The floor gives way beneath you!", stun=True),
-    "gas":      dict(name="gas vent",      dmg=(1, 3),  desc="A jet of foul gas catches you!", poison=4),
-    "flame":    dict(name="flame jet",     dmg=(2, 6),  desc="Fire roars up from the flagstones!", burn=5),
-    "alarm":    dict(name="alarm rune",    dmg=(0, 0),  desc="A bell tolls somewhere below. Something heard that.", alarm=True),
-    "snare":    dict(name="snare",         dmg=(1, 4),  desc="A cord whips tight around your ankle!", hold=True),
+    "blade":    dict(name="blade trap",    dmg=(3, 8),  desc="A scything blade sweeps out at you!"),
+    "fire":     dict(name="fire trap",     dmg=(2, 6),  desc="Fire roars up from the flagstones!", burn=5),
+    "acid":     dict(name="acid trap",     dmg=(2, 6),  desc="Acid sprays across you!", burn=3),
+    "poison":   dict(name="poison gas trap", dmg=(1, 3), desc="A cloud of gas surrounds you!", poison=4),
+    "sleep":    dict(name="sleep gas trap", dmg=(0, 0), desc="A cloud of gas surrounds you!", hold=True),
+    "slow":     dict(name="slow gas trap", dmg=(0, 0),  desc="A cloud of gas surrounds you!", slow=True),
+    "pit":      dict(name="pit",           dmg=(2, 7),  desc="You fell into a pit!", stun=True),
+    "deadfall": dict(name="deadfall",      dmg=(3, 9),  desc="The ceiling comes down on you!", stun=True),
+    "teleport": dict(name="teleport trap", dmg=(0, 0),  desc="The floor twists away beneath you!", teleport=True),
+    "glyph":    dict(name="glyph of warding", dmg=(0, 0), desc="You trigger a hidden glyph!", alarm=True),
 }
 
 TRAP_BY_DEPTH = (
-    (1, ("dart", "pit", "alarm")),
-    (5, ("dart", "pit", "alarm", "gas", "snare")),
-    (10, ("dart", "pit", "alarm", "gas", "snare", "flame")),
+    (1, ("dart", "arrow", "pit", "glyph")),
+    (5, ("dart", "arrow", "pit", "glyph", "poison", "sleep", "blade")),
+    (10, ("dart", "arrow", "pit", "glyph", "poison", "sleep", "blade",
+          "fire", "acid", "slow", "deadfall")),
+    (15, ("blade", "fire", "acid", "slow", "deadfall", "poison", "teleport")),
 )
 
 

@@ -15,7 +15,7 @@ import random
 import time
 
 from ..common.constants import (
-    SHOP_BUY_MARKUP, SHOP_SELL_RATE,
+    SHOP_BUY_MARKUP, SHOP_SELL_RATE, condition_for,
     T, DIRS, TOWN_DEPTH, MAX_DEPTH, GRACE_TICKS, MOVE_COST, ATTACK_COST,
     CAST_COST, PICKUP_COST, DROP_COST, EQUIP_COST, QUAFF_COST, READ_COST,
     STAIRS_COST, REST_COST, FREE_COST, SIGHT_DUNGEON, SIGHT_TOWN, REGEN_TICKS,
@@ -488,6 +488,16 @@ class World:
             p.add_effect("held", now + 300)
         if info.get("stun"):
             p.next_at += 200
+        if info.get("slow"):
+            p.add_effect("slowed", now + 400)
+            self.msg("Your limbs grow heavy.", "bad", to=p)
+        if info.get("teleport"):
+            spot = level.find_free(p.x, p.y, max_r=30, ignore_id=p.id)
+            if spot:
+                level.move_actor(p, *spot)
+                self.update_fov(p, force=True)
+                self.msg("The floor twists away, and you are somewhere else.",
+                         "bad", to=p)
         if info.get("alarm"):
             roused = 0
             for a in level.actors.values():
@@ -579,9 +589,7 @@ class World:
         other = level.actor_at(tx, ty)
         if other is not None and not other.dead:
             if other.kind == "monster":
-                share = other.hp / max(1, other.max_hp)
-                state = ("unhurt" if share > 0.95 else "lightly wounded" if share > 0.6
-                         else "badly wounded" if share > 0.25 else "nearly dead")
+                state = condition_for(other.hp / max(1, other.max_hp))
             self.msg(
                 f"{other.name}: {state}." if other.kind == "monster"
                 else f"{other.name}, level {getattr(other, 'level', 1)}.", "info", to=p)
