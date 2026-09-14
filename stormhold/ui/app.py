@@ -441,7 +441,15 @@ class PlayScene(Scene):
         elif kind == P.S_INV:
             self.app.inventory = data
         elif kind == P.S_SHOP:
-            self.app.push(ShopScene(self.app, data))
+            shop = data.get("shop", "general")
+            # "Stores operate as an extension of the inventory. When you enter
+            # a store, the inventory window appears, but with the floor
+            # replaced by the contents of the store." The temple and the bank
+            # are counters rather than stores, and stay dialogs.
+            if shop in ("temple", "bank"):
+                self.app.push(ServiceScene(self.app, data))
+            else:
+                self.app.push(StoreScene(self.app, data))
         elif kind == P.S_CHAT:
             self.add_message(f"{data['from']}: {data['text']}", "chat")
         elif kind == P.S_DIED:
@@ -1115,7 +1123,9 @@ class PackScene(OverlayScene):
 
     # ------------------------------------------------------------ drawing --
     def draw(self, surf):
-        self.app.scene_under.draw(surf)
+        below = self.app.under(self)
+        if below is not None:
+            below.draw(surf)
         inv = self.inv
         cp = inv.get("copper", 0)
         wt, wt_max = inv.get("weight", 0), max(1, inv.get("capacity", 1))
@@ -1349,7 +1359,7 @@ class PackScene(OverlayScene):
         pb, pbm = inv.get("pack_bulk", 0), max(1, inv.get("pack_max_bulk", 1))
         bar = pygame.Rect(area.x, area.y, area.width, 18)
         pygame.draw.rect(surf, W.TITLE_B, bar)
-        W.text(surf, f"{name}   Wt {pw/10:.1f} ({pwm/10:.0f})   Bulk {pb} ({pbm})",
+        W.text(surf, f"{name}   Wt {pw} ({pwm})   Bulk {pb} ({pbm})",
                (bar.x + 6, bar.y + 2), 12, bold=True, colour=WHITE)
 
         self.grid_rect = pygame.Rect(area.x, bar.bottom, area.width, area.height - bar.height)
@@ -1528,7 +1538,9 @@ class SpellScene(OverlayScene):
         self.play.begin_target(name, spell)
 
     def draw(self, surf):
-        self.app.scene_under.draw(surf)
+        below = self.app.under(self)
+        if below is not None:
+            below.draw(surf)
         client, _ = self.frame(surf)
         you = self.app.play.you
 
@@ -1613,7 +1625,9 @@ class SheetScene(OverlayScene):
     size = (720, 486)
 
     def draw(self, surf):
-        self.app.scene_under.draw(surf)
+        below = self.app.under(self)
+        if below is not None:
+            below.draw(surf)
         client, _ = self.frame(surf)
         you = self.app.play.you
         inv = self.app.inventory
@@ -1749,7 +1763,9 @@ class AttributesScene(OverlayScene):
         return out
 
     def draw(self, surf):
-        self.app.scene_under.draw(surf)
+        below = self.app.under(self)
+        if below is not None:
+            below.draw(surf)
         client, _ = self.frame(surf)
         self.list.rect = pygame.Rect(client.x, client.y, client.width, client.height - 40)
 
@@ -1773,7 +1789,9 @@ class MenuOverlay(OverlayScene):
     size = (360, 230)
 
     def draw(self, surf):
-        self.app.scene_under.draw(surf)
+        below = self.app.under(self)
+        if below is not None:
+            below.draw(surf)
         client, _ = self.frame(surf)
         self.buttons = [
             W.Button((client.x + 20, client.y + 14, client.width - 40, 32), "Back to the game", "close"),
@@ -1794,7 +1812,7 @@ class MenuOverlay(OverlayScene):
             self.app.disconnect("")
 
 
-class ShopScene(OverlayScene):
+class ServiceScene(OverlayScene):
     size = (820, 560)
 
     SHOP_BLURB = {
@@ -1928,7 +1946,9 @@ class ShopScene(OverlayScene):
             sy += 14
 
     def draw(self, surf):
-        self.app.scene_under.draw(surf)
+        below = self.app.under(self)
+        if below is not None:
+            below.draw(surf)
         client, _ = self.frame(surf)
         sheet = self.app.sheet
         data = self.data
@@ -2018,6 +2038,201 @@ class ShopScene(OverlayScene):
 #  The application
 # ===========================================================================
 
+
+class StoreScene(PackScene):
+    """A shop, which is the inventory screen with the floor replaced by stock.
+
+    The original is explicit about this: "Stores operate as an extension of the
+    inventory. When you enter a store, the inventory window appears, but with
+    the floor replaced by the contents of the store. Clicking and dragging out
+    of the store window buys an item, dragging into the store window sells an
+    item. In either case, a dialog with the price asked/offered appears and you
+    are given a chance to accept or reject the offer."
+
+    So there is no separate shop interface: the same paper doll, the same pack,
+    the same dragging, with one more container to drag to and from.
+    """
+
+    size = (980, 700)
+
+    def __init__(self, app, data):
+        super().__init__(app)
+        self.data = data
+        self.store_rect = pygame.Rect(0, 0, 10, 10)
+        self.store_cells = []
+        self.store_scroll = 0
+        self.confirm = None          # {"text", "yes", "no", "action"}
+
+    @property
+    def shop(self):
+        return self.data.get("shop", "general")
+
+    def refresh(self, data):
+        self.data = data
+
+    def store_title(self):
+        # PackScene keeps a `title` attribute of its own, so this is not one.
+        return self.data.get("name", "Store")
+
+    # ------------------------------------------------------------ helpers --
+    def stock(self):
+        return self.data.get("stock", [])
+
+    def sell_price(self, item):
+        for row in self.data.get("sell", []):
+            if row["id"] == item["id"]:
+                return row.get("price", 0)
+        return 0
+
+    def item_at(self, pos):
+        for rect, item in self.store_cells:
+            if rect.collidepoint(pos):
+                return item, ("store", None)
+        return super().item_at(pos)
+
+    # -------------------------------------------------------------- input --
+    def handle(self, event):
+        if self.confirm is not None:
+            self.handle_confirm(event)
+            return
+        super().handle(event)
+
+    def handle_confirm(self, event):
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self.confirm["yes"].collidepoint(event.pos):
+                self.app.act(self.confirm["action"])
+                self.confirm = None
+            elif self.confirm["no"].collidepoint(event.pos):
+                self.confirm = None
+        elif event.type == pygame.KEYDOWN:
+            if event.key in (pygame.K_y, pygame.K_RETURN):
+                self.app.act(self.confirm["action"])
+                self.confirm = None
+            elif event.key in (pygame.K_n, pygame.K_ESCAPE):
+                self.confirm = None
+
+    def ask(self, text, action):
+        self.confirm = {"text": text, "action": action,
+                        "yes": pygame.Rect(0, 0, 1, 1),
+                        "no": pygame.Rect(0, 0, 1, 1)}
+
+    def finish_drag(self, pos):
+        drag = self.drag
+        if drag is None:
+            return
+        item = drag["item"]
+        npc = self.data.get("npc")
+
+        # dragging out of the store window buys
+        if drag["from"] == "store":
+            self.drag = None
+            self.hover_slot = None
+            if not drag["moved"] or self.store_rect.collidepoint(pos):
+                return
+            price = item.get("price", 0)
+            self.ask(f"It'll cost you {price} C.P. for that. Take it?",
+                     {"a": "buy", "shop": self.shop, "id": item["id"],
+                      "npc": npc, "name": self.data.get("name")})
+            return
+
+        # dragging into the store window sells - or asks the sage to identify
+        if drag["moved"] and self.store_rect.collidepoint(pos):
+            self.drag = None
+            self.hover_slot = None
+            if self.shop == "sage":
+                price = self.data.get("identify_price", 0)
+                self.ask(f"I can tell you what that is for {price} C.P. Well?",
+                         {"a": "service", "shop": self.shop, "key": "identify",
+                          "id": item["id"], "npc": npc})
+            else:
+                price = self.sell_price(item)
+                self.ask(f"I'll give you {price} C.P. for that. Take it?",
+                         {"a": "sell", "shop": self.shop, "id": item["id"],
+                          "npc": npc, "name": self.data.get("name")})
+            return
+
+        super().finish_drag(pos)
+
+    # --------------------------------------------------------------- draw --
+    def draw(self, surf):
+        super().draw(surf)
+        if self.confirm is not None:
+            self.draw_confirm(surf)
+
+    def draw_pack(self, surf, area):
+        """Split the right-hand side: the store above, your pack below."""
+        top = pygame.Rect(area.x, area.y, area.width, area.height // 2 - 6)
+        bottom = pygame.Rect(area.x, top.bottom + 12, area.width,
+                             area.height - top.height - 12)
+        self.draw_store(surf, top)
+        super().draw_pack(surf, bottom)
+
+    def draw_store(self, surf, area):
+        bar = pygame.Rect(area.x, area.y, area.width, 18)
+        pygame.draw.rect(surf, W.TITLE_B, bar)
+        purse = self.data.get("copper", 0)
+        W.text(surf, f"{self.store_title()}      you have {purse} C.P.",
+               (bar.x + 6, bar.y + 2), 12, bold=True, colour=WHITE)
+
+        self.store_rect = pygame.Rect(area.x, bar.bottom, area.width,
+                                      area.height - bar.height)
+        W.panel(surf, self.store_rect, raised=False, fill=(236, 236, 232))
+
+        cell = 74
+        cols = max(1, (self.store_rect.width - 8) // cell)
+        rows = max(1, (self.store_rect.height - 8) // cell)
+        stock = self.stock()
+        max_scroll = max(0, (len(stock) + cols - 1) // cols - rows)
+        self.store_scroll = min(self.store_scroll, max_scroll)
+
+        self.store_cells = []
+        clip = surf.get_clip()
+        surf.set_clip(self.store_rect)
+        for index, item in enumerate(stock):
+            row, col = divmod(index, cols)
+            row -= self.store_scroll
+            if row < 0 or row >= rows + 1:
+                continue
+            r = pygame.Rect(self.store_rect.x + 4 + col * cell,
+                            self.store_rect.y + 4 + row * cell, cell - 4, cell - 4)
+            img = self.app.sheet.item(item["icon"])
+            if img:
+                surf.blit(img, (r.centerx - TILE // 2, r.y + 2))
+            label = item["name"]
+            f = W.font(10)
+            if f.size(label)[0] > r.width - 2:
+                while f.size(label + "...")[0] > r.width - 2 and len(label) > 3:
+                    label = label[:-1]
+                label += "..."
+            img2 = f.render(label, True, BLACK)
+            surf.blit(img2, (r.centerx - img2.get_width() // 2, r.bottom - 26))
+            price = f"{item.get('price', 0)}"
+            W.text(surf, price, (r.centerx - W.font(10, bold=True).size(price)[0] // 2,
+                                 r.bottom - 14), 10, bold=True, colour=(0, 90, 0))
+            self.store_cells.append((r, item))
+        surf.set_clip(clip)
+
+        if not stock:
+            W.text(surf, "Nothing for sale today.",
+                   (self.store_rect.x + 10, self.store_rect.y + 10), 12,
+                   colour=(120, 120, 120))
+
+    def draw_confirm(self, surf):
+        w, h = 430, 120
+        box = pygame.Rect(surf.get_width() // 2 - w // 2,
+                          surf.get_height() // 2 - h // 2, w, h)
+        W.panel(surf, box, raised=True)
+        W.text(surf, self.confirm["text"], (box.x + 20, box.y + 26), 13, bold=True)
+        yes = pygame.Rect(box.x + 90, box.bottom - 46, 90, 30)
+        no = pygame.Rect(box.right - 180, box.bottom - 46, 90, 30)
+        for rect, label in ((yes, "Yes"), (no, "No")):
+            W.panel(surf, rect, raised=True)
+            img = W.font(13, bold=True).render(label, True, BLACK)
+            surf.blit(img, (rect.centerx - img.get_width() // 2,
+                            rect.centery - img.get_height() // 2))
+        self.confirm["yes"], self.confirm["no"] = yes, no
+
+
 class App:
     def __init__(self, args):
         self.args = args
@@ -2074,6 +2289,20 @@ class App:
     @property
     def scene_under(self):
         return self.scenes[-2] if len(self.scenes) > 1 else self.scenes[0]
+
+    def under(self, scene):
+        """The scene directly beneath this one in the stack.
+
+        Overlays draw whatever is behind them. Asking for "the scene under the
+        top of the stack" is wrong as soon as two overlays are open: the lower
+        one is handed itself and draws forever. This asks relative to the
+        scene that is actually drawing.
+        """
+        try:
+            i = self.scenes.index(scene)
+        except ValueError:
+            return None
+        return self.scenes[i - 1] if i > 0 else None
 
     def push(self, scene):
         scene.layout(self.screen.get_size())
@@ -2154,7 +2383,7 @@ class App:
                         f"Others on your network can join at {self.hosting_note}:"
                         f"{self.settings.get('port', 7777)}", "good")
             elif self.play is not None:
-                if kind == P.S_SHOP and isinstance(self.scene, ShopScene):
+                if kind == P.S_SHOP and isinstance(self.scene, (ServiceScene, StoreScene)):
                     self.scene.refresh(data)
                 else:
                     self.play.on_message(kind, data)

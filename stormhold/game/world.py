@@ -191,7 +191,6 @@ class World:
             it = Item(key)
             it.known = True
             p.equipment[it.slot] = it
-        p.add_item(Item("food", qty=3))
         p.add_item(Item("torch", qty=2))
         self.appearances.identify("potion_heal")
         p.recalc()
@@ -966,12 +965,6 @@ class World:
             return self.read_book(level, p, item)
         if item.slot:
             return self._act_equip(level, p, {"id": item.id})
-        if kind == "food":
-            p.remove_item(item, 1)
-            self.msg("You eat a ration. It is not exciting, but it helps.", "info", to=p)
-            combat.heal(self, p, 3)
-            self.events.append({"t": "inv", "to": p.id})
-            return QUAFF_COST
         self.msg("You are not sure what to do with that.", "info", to=p)
         return FREE_COST
 
@@ -1826,8 +1819,8 @@ class World:
                 it.known = True
                 items.append(it)
         elif shop == "general":
-            for key in ("food", "torch", "lantern", "pack", "sack"):
-                items.append(Item(key, qty=5 if key in ("food", "torch") else 1))
+            for key in ("torch", "lantern", "pack", "sack", "belt", "belt3"):
+                items.append(Item(key, qty=5 if key == "torch" else 1))
         elif shop == "magic":
             for key in ("potion_heal", "potion_mana", "scroll_map", "scroll_ident", "scroll_teleport"):
                 it = Item(key, qty=2)

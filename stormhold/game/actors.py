@@ -399,7 +399,7 @@ class Player(Actor):
     def sort_pack(self):
         """Group the pack the way a tidy person would: by what things are."""
         order = {"weapon": 0, "armour": 1, "container": 2, "potion": 3,
-                 "scroll": 4, "book": 5, "food": 6, "light": 7,
+                 "scroll": 4, "book": 5, "light": 7,
                  "ring": 8, "amulet": 9, "treasure": 10, "coins": 11}
 
         def key(item):

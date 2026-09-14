@@ -116,7 +116,6 @@ BASES = {
     "scroll_fear":    dict(name="Scroll of Terror", icon="scroll", bulk=1800, wt=135, value=150, depth=4, kind="scroll", use="fear"),
 
     # ---- sundries --------------------------------------------------------
-    "food":        dict(name="Ration", icon="food", bulk=5400, wt=900, value=15, depth=0, kind="food", stack=True),
     "torch":       dict(name="Torch", icon="torch", bulk=5400, wt=675, value=10, depth=0, kind="light", stack=True, light=1),
     "lantern":     dict(name="Lantern", icon="lantern", bulk=12600, wt=1800, value=250, depth=3, kind="light", light=3),
     "gem":         dict(name="Gemstone", icon="gem", bulk=900, wt=90, value=350, depth=4, kind="treasure"),
@@ -443,7 +442,7 @@ def roll_enchantment(depth, rng):
 def generate_item(depth, rng, rich=False, kinds=None):
     pool = _eligible(depth, rng, kinds)
     if not pool:
-        return Item("food")
+        return Item("torch")
     key = _weighted(rng, pool)
     base = BASES[key]
 

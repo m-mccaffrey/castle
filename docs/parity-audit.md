@@ -79,7 +79,7 @@ deliberate divergence.
 | Quality prefixes: Broken, Ripped, Rusty, Normal, Enchanted, Cursed | partial |
 | Class identify: one of a type identifies all of that type | done |
 | Identify on use, identify on wield | done |
-| The Sage identifies for a fee | partial - exists, not by drag |
+| The Sage identifies for a fee | done |
 | Junk store buys anything, 25 CP for cursed or worthless | done |
 | Cursed items cannot be removed until uncursed | done |
 | Cursed items may summon monsters or lower attributes | partial |
@@ -95,7 +95,7 @@ deliberate divergence.
 |---|---|
 | Temple service list and prices | done |
 | Remove Curse never greyed, to avoid leaking identification | done |
-| Shops are the inventory screen with a Store container | partial |
+| Shops are the inventory screen with a Store container | done |
 | Buy at 1.4x base, sell at 0.8x | done |
 | Fountains and thrones: may help, harm, or do nothing | done |
 | A known trap is less likely to spring, not immune | done |
@@ -146,6 +146,12 @@ is simply a death sentence.
 | Review Story | open |
 | Sort Pack sorts by type and within type, unknowns last | partial |
 | Name Object | done |
+
+## Things we had that the original does not
+
+| Ours | Status |
+|---|---|
+| Rations, and eating them for hit points | removed - the original has no food, hunger or eating of any kind; "Food" appears once in the executable as an object category and nowhere in the manual |
 
 ## Deliberate divergences
 
