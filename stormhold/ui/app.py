@@ -1709,8 +1709,8 @@ class AttributesScene(OverlayScene):
             f"Chance to hit   {you.get('to_hit', 0):+d}",
             f"Speed           {speed_text(you)}",
             f"Burden          {you.get('encumbrance', '')}",
-            f"Carrying        {inv.get('weight', 0) / 10:.1f} lb of "
-            f"{inv.get('capacity', 1) / 10:.0f} lb",
+            f"Carrying        {inv.get('weight', 0)} g of "
+            f"{inv.get('capacity', 1)} g",
             f"Bulk            {inv.get('bulk', 0)} of {inv.get('bulk_capacity', 0)}",
             "",
         ]
@@ -1948,7 +1948,7 @@ class ShopScene(OverlayScene):
         else:
             W.text(surf, "The strongroom", (client.x, top), 15, bold=True)
             W.text(surf, f"On you:        {data.get('copper', 0)} CP "
-                         f"({data.get('copper', 0)/100:.1f} lb to carry)",
+                         f"({data.get('copper', 0)} g to carry)",
                    (client.x, top + 30), 14, mono=True)
             W.text(surf, f"In the vault:  {data.get('bank', 0)} CP  (weighs you nothing)",
                    (client.x, top + 52), 14, mono=True)

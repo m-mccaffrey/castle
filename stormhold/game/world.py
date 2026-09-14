@@ -160,12 +160,18 @@ class World:
         return p
 
     def give_starting_kit(self, p):
-        """Everyone leaves town with the same modest kit, whatever their stats."""
-        for key in ("shortsword", "leather", "pack", "purse"):
+        """A dagger, a pack and a purse - the rest you buy.
+
+        The original starts you with exactly this and 1500 copper, which is the
+        point: a suit of leather armour costs 1050 and a short sword 1470, so
+        your first decision is which one you can afford. Handing out a sword
+        and armour for free made that starting purse meaningless, and left the
+        character at 84% of capacity before leaving town.
+        """
+        for key in ("dagger", "pack", "purse"):
             it = Item(key)
             it.known = True
             p.equipment[it.slot] = it
-        p.add_item(Item("potion_heal", qty=2))
         p.add_item(Item("food", qty=3))
         p.add_item(Item("torch", qty=2))
         self.appearances.identify("potion_heal")

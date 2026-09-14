@@ -760,6 +760,137 @@ times by school, with Revelation (our Identify) as the one-minute spell.
   damage."
 - **Magic containers** can lighten what they hold: "certain magical containers
   may cause the weight of their contents to be less than expected."
-- The bestiary and object directories are **prose, not stat blocks** - lore and
-  ecology rather than numbers. Per-monster and per-item figures are still only
-  in the code, so damage dice, hit points and experience values remain ours.
+- The **bestiary** is prose - lore and ecology rather than numbers - so
+  per-monster damage, hit points and experience values remain ours. The
+  **object directory is not**: see the tables below, which I missed on the
+  first pass.
+
+# The object tables, which I had said did not exist
+
+I told you the Object Directory was prose. That was wrong, and it was the one
+thing in the help file worth finding: it carries **stat tables with exact
+numbers**, under the topics Weapon Class, Armor Value, Weight, Bulk and
+Containers. My line-oriented dump had scrambled them, because table cells are
+separated by control bytes rather than newlines, and I did not go back and
+check. The cross-check that should have caught it was sitting in my own notes:
+I had measured Leather Armour in-game at AV 6, 5000 weight, 24000 bulk, and
+the table says exactly that.
+
+## Body armour
+
+| Armour | Armor Value | Weight (g) | Bulk (cc) |
+|---|---|---|---|
+| Rusty Armor | 0 | 10000 | 30000 |
+| Leather Armor | 6 | 5000 | 24000 |
+| Studded Leather Armor | 12 | 7000 | 25000 |
+| Ring Mail | 18 | 8000 | 30000 |
+| Scale Mail | 24 | 9000 | 30000 |
+| Chain Mail | 30 | 10000 | 30000 |
+| Splint Mail | 36 | 12000 | 40000 |
+| Plate Mail | 42 | 15000 | 40000 |
+| Plate Armor | 48 | 15000 | 60000 |
+| Elven Mail | 52 | 5000 | 24000 |
+| Meteoric Steel Plate | 54 | 5000 | 30000 |
+
+Armour value climbs in **steps of exactly 6**, and the two best suits are the
+lightest: Elven Mail weighs what leather does, Meteoric Steel Plate a third of
+plate. Rusty Armor is the joke entry - heavier than plate mail and worth
+nothing.
+
+## Helmets and shields
+
+| Helmet | AV | Wt | Bulk |          | Shield | AV | Wt | Bulk |
+|---|---|---|---|---|---|---|---|---|
+| Broken Helmet | 0 | 1000 | 1000 | | Broken Shield | 0 | 4000 | 35000 |
+| Leather Helmet | 3 | 500 | 500 | | Small Wooden | 3 | 3000 | 15000 |
+| Iron Helmet | 6 | 2000 | 2000 | | Medium Wooden | 6 | 4000 | 35000 |
+| Steel Helmet | 9 | 2500 | 2000 | | Small Iron | 6 | 4000 | 15000 |
+| Meteoric Steel Helmet | 15 | 1000 | 2000 | | Large Wooden | 9 | 5000 | 50000 |
+| Helmet of Detect Monsters | 9 | 2500 | 2000 | | Medium Iron | 9 | 5000 | 35000 |
+| | | | | | Small Steel | 9 | 4000 | 15000 |
+| | | | | | Large Iron | 12 | 6000 | 50000 |
+| | | | | | Medium Steel | 12 | 5000 | 35000 |
+| | | | | | Large Steel | 15 | 6000 | 50000 |
+| | | | | | Small Meteoric | 15 | 2500 | 10000 |
+| | | | | | Medium Meteoric | 18 | 3500 | 25000 |
+
+Shields are a clean grid of size against material: each step up in size or up
+in material is +3, so a small steel shield and a large wooden one are worth the
+same. That is a nice design to steal - two axes, one number.
+
+## Weapons, by Weapon Class
+
+| Weapon | Class | Wt | Bulk |
+|---|---|---|---|
+| Broken Sword | 0 | 1000 | 5000 |
+| Club | 1 | 1500 | 3000 |
+| Dagger | 2 | 500 | 500 |
+| Hammer | 2 | 2000 | 3000 |
+| Hand Axe | 3 | 1000 | 3000 |
+| Quarterstaff | 3 | 750 | 5000 |
+| Spear | 4 | 1500 | 5000 |
+| Short Sword | 5 | 1000 | 5000 |
+| Mace | 5 | 2500 | 4375 |
+| Flail | 6 | 2000 | 3250 |
+| Axe | 6 | 2000 | 5000 |
+| War Hammer | 7 | 1400 | 7500 |
+| Long Sword | 8 | 1500 | 8000 |
+| Battle Axe | 8 | 3000 | 6000 |
+| Broad Sword | 9 | 1600 | 9000 |
+| Morningstar | 10 | 3000 | 9000 |
+| Bastard Sword | 11 | 3000 | 10000 |
+| Two Handed Sword | 12 | 5000 | 12000 |
+
+Weapon Class runs 0-12 with ties at every step - the dagger and the hammer are
+both class 2, and weigh 500 g against 2000 g. So weight is a real cost paid for
+nothing but flavour at equal class, which is what makes the dagger a sensible
+early weapon.
+
+## Containers
+
+Six columns: `Wt | Bulk | Wt. Max | Bulk Max | Wt.Fx | Bulk Fx`.
+
+| Container | Wt | Bulk | Wt Max | Bulk Max | Wt Fx | Bulk Fx |
+|---|---|---|---|---|---|---|
+| Broken Pack | 1000 | 1000 | 0 | 0 | 0 | 0 |
+| Small Bag | 300 | 500 | 5000 | 6000 | 0 | 0 |
+| Medium Bag | 500 | 700 | 10000 | 12000 | 0 | 0 |
+| Large Bag | 900 | 900 | 15000 | 18000 | 0 | 0 |
+| Small Pack | 1000 | 1000 | 12000 | 50000 | 0 | 0 |
+| Medium Pack | 2000 | 1500 | 22000 | 75000 | 0 | 0 |
+| Large Pack | 4000 | 2000 | 35000 | 100000 | 0 | 100000 |
+| Small Chest | 5000 | 10000 | 100000 | 50000 | 0 | 50000 |
+| Medium Chest | 15000 | 2000 | 100000 | 150000 | 0 | 150000 |
+| Large Chest | 25000 | 4000 | 100000 | 250000 | 0 | 250000 |
+| Small Pack of Holding | 1000 | 1000 | 50000 | 150000 | 5000 | 75000 |
+| Medium Pack of Holding | 2000 | 1500 | 75000 | 200000 | 7500 | 100000 |
+| Large Pack of Holding | 4000 | 2000 | 100000 | 250000 | 10000 | 125000 |
+
+Small Pack reads `Wt 1000, Bulk 1000, Wt Max 12000, Bulk Max 50000`, which is
+character-for-character the caption the game showed in the shop, so the first
+four columns are certain. The two Fx columns are the magical-container effect
+the manual mentions - only Packs of Holding carry a non-zero weight figure -
+but the exact semantics are not settled from the table alone, and I have not
+guessed at them.
+
+## What this changed in the code
+
+- Weight is now in **grams** and bulk in **cubic centimetres** throughout, and
+  the items that map onto the original's list carry its exact figures.
+  A coin weighs 1 g and displaces 1 cc.
+- Containers carry the real capacities: a pack holds 12 kg and 50 litres.
+- The starting kit is now a dagger, a pack and a purse, as the original's is.
+  We had been handing out a short sword and a suit of leather armour, which
+  left the character at 84% of rated capacity before leaving town - moving at
+  120% instead of 200% - and made the 1500 starting copper pointless. The
+  original's design is that the purse buys your first armour (1050) or your
+  first real sword (1470), and you cannot have both.
+
+## What this has not changed, and why
+
+The armour value ladder is **not** adopted. Ours runs 1-16 against a d20 roll
+(`10 + AC - to_hit`); the original runs 0-54 and its manual describes armour as
+reducing the *chance* of a damaging hit, which points at a percentage roll
+rather than a d20. Taking the ladder means rewriting the hit formula and
+rebalancing every monster, so it is written down as a decision for you rather
+than done quietly.

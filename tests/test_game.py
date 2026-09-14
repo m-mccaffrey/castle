@@ -88,7 +88,8 @@ class TestEncumbrance(unittest.TestCase):
                              "intelligence": 10, "constitution": 10})
         light_move = p.action_cost(100, moving=True)
         light_cast = p.action_cost(100)
-        p.copper = p.capacity * 15             # past the rated maximum
+        p.copper = p.capacity                  # a coin weighs a gram, so this
+                                               # is the rated maximum exactly
         self.assertGreater(p.action_cost(100, moving=True), light_move,
                            "a fortune in coin should slow you down")
         self.assertEqual(p.action_cost(100), light_cast,
@@ -540,7 +541,7 @@ class TestStatusReadouts(unittest.TestCase):
         # Copper weighs a hundredth of a pound a piece, so the pile has to be
         # sized against capacity rather than hardcoded - capacity moved when
         # the carry law was corrected against the original.
-        laden.copper = laden.capacity * 15
+        laden.copper = laden.capacity
         self.assertLess(laden.move_speed_percent(), before,
                         "a purse full of copper should slow you down")
 
@@ -552,6 +553,29 @@ class TestStatusReadouts(unittest.TestCase):
         self.assertIsNone(stuck.action_cost(100, moving=True))
         self.assertIsNotNone(stuck.action_cost(100),
                              "pinned by your own loot, you can still cast")
+
+
+class TestStartingKit(unittest.TestCase):
+    def test_you_start_light_with_a_purse_worth_spending(self):
+        """The original's opening: a dagger, a pack, and a real decision."""
+        world = World(seed=3)
+        p = world.add_player("Newcomer")
+        self.assertEqual(p.move_speed_percent(), 200,
+                         "a fresh character should be lightly loaded")
+        worn = {i.base["name"] for i in p.equipment.values() if i}
+        self.assertNotIn("Leather Armour", worn, "armour is bought, not given")
+        self.assertEqual(p.copper, 1500)
+
+    def test_item_figures_match_the_original(self):
+        """Grams and cubic centimetres, straight off the Object Directory."""
+        from stormhold.game.items import Item
+        self.assertEqual((Item("leather").base["wt"], Item("leather").base["bulk"]),
+                         (5000, 24000))
+        self.assertEqual((Item("dagger").base["wt"], Item("dagger").base["bulk"]),
+                         (500, 500))
+        pack = Item("pack").base
+        self.assertEqual((pack["wt"], pack["bulk"]), (1000, 1000))
+        self.assertEqual((pack["capacity"], pack["bulk_capacity"]), (12000, 50000))
 
 
 class TestCasting(unittest.TestCase):

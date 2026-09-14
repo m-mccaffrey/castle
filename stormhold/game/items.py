@@ -35,92 +35,92 @@ def _new_id():
 
 BASES = {
     # ---- blades ---------------------------------------------------------
-    "dagger":      dict(name="Dagger", slot="weapon", icon="dagger", bulk=4, wt=10, value=20, dmg=(1, 4), depth=0, speed=80),
-    "shortsword":  dict(name="Short Sword", slot="weapon", icon="shortsword", bulk=10, wt=30, value=50, dmg=(1, 6), depth=0),
-    "sabre":       dict(name="Sabre", slot="weapon", icon="sabre", bulk=12, wt=40, value=95, dmg=(1, 8), depth=3, speed=90),
-    "longsword":   dict(name="Long Sword", slot="weapon", icon="longsword", bulk=16, wt=60, value=150, dmg=(2, 4), depth=4),
-    "broadsword":  dict(name="Broad Sword", slot="weapon", icon="broadsword", bulk=22, wt=90, value=320, dmg=(2, 6), depth=8, str_req=13),
+    "dagger":      dict(name="Dagger", slot="weapon", icon="dagger", bulk=500, wt=500, value=20, dmg=(1, 4), depth=0, speed=80),
+    "shortsword":  dict(name="Short Sword", slot="weapon", icon="shortsword", bulk=5000, wt=1000, value=50, dmg=(1, 6), depth=0),
+    "sabre":       dict(name="Sabre", slot="weapon", icon="sabre", bulk=5000, wt=1000, value=95, dmg=(1, 8), depth=3, speed=90),
+    "longsword":   dict(name="Long Sword", slot="weapon", icon="longsword", bulk=8000, wt=1500, value=150, dmg=(2, 4), depth=4),
+    "broadsword":  dict(name="Broad Sword", slot="weapon", icon="broadsword", bulk=9000, wt=1600, value=320, dmg=(2, 6), depth=8, str_req=13),
     # ---- hafted ---------------------------------------------------------
-    "mace":        dict(name="Mace", slot="weapon", icon="mace", bulk=12, wt=50, value=70, dmg=(1, 7), depth=1),
-    "warhammer":   dict(name="War Hammer", slot="weapon", icon="hammer", bulk=18, wt=80, value=190, dmg=(2, 5), depth=6, str_req=12),
-    "axe":         dict(name="Battle Axe", slot="weapon", icon="axe", bulk=18, wt=75, value=230, dmg=(1, 10), depth=7, str_req=12),
-    "halberd":     dict(name="Halberd", slot="weapon", icon="halberd", bulk=40, wt=110, value=420, dmg=(2, 8), depth=12, str_req=15),
-    "spear":       dict(name="Spear", slot="weapon", icon="spear", bulk=30, wt=45, value=85, dmg=(1, 8), depth=2),
+    "mace":        dict(name="Mace", slot="weapon", icon="mace", bulk=4375, wt=2500, value=70, dmg=(1, 7), depth=1),
+    "warhammer":   dict(name="War Hammer", slot="weapon", icon="hammer", bulk=7500, wt=1400, value=190, dmg=(2, 5), depth=6, str_req=12),
+    "axe":         dict(name="Battle Axe", slot="weapon", icon="axe", bulk=6000, wt=3000, value=230, dmg=(1, 10), depth=7, str_req=12),
+    "halberd":     dict(name="Halberd", slot="weapon", icon="halberd", bulk=36000, wt=4950, value=420, dmg=(2, 8), depth=12, str_req=15),
+    "spear":       dict(name="Spear", slot="weapon", icon="spear", bulk=5000, wt=1500, value=85, dmg=(1, 8), depth=2),
     # ---- missile --------------------------------------------------------
-    "shortbow":    dict(name="Short Bow", slot="weapon", icon="bow", bulk=20, wt=25, value=90, dmg=(1, 6), depth=1, missile="arrow", rng=7),
-    "longbow":     dict(name="Long Bow", slot="weapon", icon="bow", bulk=30, wt=40, value=260, dmg=(1, 9), depth=6, missile="arrow", rng=9, str_req=12),
-    "crossbow":    dict(name="Crossbow", slot="weapon", icon="crossbow", bulk=26, wt=70, value=380, dmg=(2, 6), depth=9, missile="bolt", rng=8, speed=140),
-    "arrow":       dict(name="Arrow", icon="arrows", bulk=1, wt=1, value=2, depth=0, stack=True, ammo="arrow"),
-    "bolt":        dict(name="Quarrel", icon="arrows", bulk=1, wt=2, value=3, depth=6, stack=True, ammo="bolt"),
+    "shortbow":    dict(name="Short Bow", slot="weapon", icon="bow", bulk=18000, wt=1125, value=90, dmg=(1, 6), depth=1, missile="arrow", rng=7),
+    "longbow":     dict(name="Long Bow", slot="weapon", icon="bow", bulk=27000, wt=1800, value=260, dmg=(1, 9), depth=6, missile="arrow", rng=9, str_req=12),
+    "crossbow":    dict(name="Crossbow", slot="weapon", icon="crossbow", bulk=23400, wt=3150, value=380, dmg=(2, 6), depth=9, missile="bolt", rng=8, speed=140),
+    "arrow":       dict(name="Arrow", icon="arrows", bulk=900, wt=45, value=2, depth=0, stack=True, ammo="arrow"),
+    "bolt":        dict(name="Quarrel", icon="arrows", bulk=900, wt=90, value=3, depth=6, stack=True, ammo="bolt"),
     # ---- staves and wands ------------------------------------------------
-    "quarterstaff": dict(name="Quarterstaff", slot="weapon", icon="staff", bulk=28, wt=40, value=60, dmg=(1, 6), depth=0, mana_bonus=4),
-    "runestaff":   dict(name="Rune Staff", slot="weapon", icon="staff", bulk=28, wt=45, value=400, dmg=(1, 7), depth=10, mana_bonus=15),
-    "wand":        dict(name="Wand", slot="weapon", icon="wand", bulk=3, wt=8, value=300, dmg=(1, 3), depth=5, charges=(4, 9)),
+    "quarterstaff": dict(name="Quarterstaff", slot="weapon", icon="staff", bulk=25200, wt=1800, value=60, dmg=(1, 6), depth=0, mana_bonus=4),
+    "runestaff":   dict(name="Rune Staff", slot="weapon", icon="staff", bulk=25200, wt=2025, value=400, dmg=(1, 7), depth=10, mana_bonus=15),
+    "wand":        dict(name="Wand", slot="weapon", icon="wand", bulk=2700, wt=360, value=300, dmg=(1, 3), depth=5, charges=(4, 9)),
 
     # ---- body armour -----------------------------------------------------
-    "robe":        dict(name="Robe", slot="torso", icon="robe", bulk=14, wt=20, value=25, ac=1, depth=0, mana_bonus=6),
-    "leather":     dict(name="Leather Armour", slot="torso", icon="leather", bulk=26, wt=90, value=80, ac=3, depth=0),
-    "studded":     dict(name="Studded Leather", slot="torso", icon="studded", bulk=30, wt=130, value=170, ac=5, depth=2),
-    "ringmail":    dict(name="Ring Mail", slot="torso", icon="ringmail", bulk=34, wt=200, value=290, ac=7, depth=4, str_req=11),
-    "chainmail":   dict(name="Chain Mail", slot="torso", icon="chainmail", bulk=38, wt=280, value=520, ac=10, depth=7, str_req=13),
-    "scalemail":   dict(name="Scale Mail", slot="torso", icon="scalemail", bulk=42, wt=340, value=760, ac=12, depth=10, str_req=14),
-    "platemail":   dict(name="Plate Armour", slot="torso", icon="platemail", bulk=55, wt=450, value=1400, ac=16, depth=14, str_req=16),
+    "robe":        dict(name="Robe", slot="torso", icon="robe", bulk=12600, wt=900, value=25, ac=1, depth=0, mana_bonus=6),
+    "leather":     dict(name="Leather Armour", slot="torso", icon="leather", bulk=24000, wt=5000, value=80, ac=3, depth=0),
+    "studded":     dict(name="Studded Leather", slot="torso", icon="studded", bulk=25000, wt=7000, value=170, ac=5, depth=2),
+    "ringmail":    dict(name="Ring Mail", slot="torso", icon="ringmail", bulk=30000, wt=8000, value=290, ac=7, depth=4, str_req=11),
+    "chainmail":   dict(name="Chain Mail", slot="torso", icon="chainmail", bulk=30000, wt=10000, value=520, ac=10, depth=7, str_req=13),
+    "scalemail":   dict(name="Scale Mail", slot="torso", icon="scalemail", bulk=30000, wt=9000, value=760, ac=12, depth=10, str_req=14),
+    "platemail":   dict(name="Plate Armour", slot="torso", icon="platemail", bulk=40000, wt=15000, value=1400, ac=16, depth=14, str_req=16),
     # ---- shields ---------------------------------------------------------
-    "buckler":     dict(name="Buckler", slot="shield", icon="buckler", bulk=16, wt=40, value=45, ac=1, depth=0),
-    "shield":      dict(name="Kite Shield", slot="shield", icon="shield", bulk=26, wt=90, value=140, ac=3, depth=3),
-    "towershield": dict(name="Tower Shield", slot="shield", icon="tower", bulk=42, wt=170, value=390, ac=5, depth=9, str_req=14),
+    "buckler":     dict(name="Buckler", slot="shield", icon="buckler", bulk=15000, wt=3000, value=45, ac=1, depth=0),
+    "shield":      dict(name="Kite Shield", slot="shield", icon="shield", bulk=23400, wt=4050, value=140, ac=3, depth=3),
+    "towershield": dict(name="Tower Shield", slot="shield", icon="tower", bulk=50000, wt=6000, value=390, ac=5, depth=9, str_req=14),
     # ---- the other slots -------------------------------------------------
-    "cap":         dict(name="Leather Cap", slot="head", icon="cap", bulk=8, wt=15, value=25, ac=1, depth=0),
-    "helm":        dict(name="Steel Helm", slot="head", icon="helm", bulk=14, wt=55, value=130, ac=3, depth=4),
-    "gloves":      dict(name="Leather Gloves", slot="arms", icon="gauntlets", bulk=5, wt=10, value=20, ac=1, depth=0),
-    "gauntlets":   dict(name="Gauntlets", slot="arms", icon="gauntlets", bulk=9, wt=35, value=110, ac=2, depth=5),
-    "boots":       dict(name="Boots", slot="feet", icon="boots", bulk=12, wt=25, value=30, ac=1, depth=0),
-    "leggings":    dict(name="Leggings", slot="legs", icon="leggings", bulk=18, wt=60, value=95, ac=2, depth=3),
-    "cloak":       dict(name="Cloak", slot="back", icon="cloak", bulk=14, wt=15, value=40, ac=1, depth=1),
-    "belt":        dict(name="Girdle", slot="waist", icon="belt", bulk=5, wt=10, value=35, ac=1, depth=1),
+    "cap":         dict(name="Leather Cap", slot="head", icon="cap", bulk=7200, wt=675, value=25, ac=1, depth=0),
+    "helm":        dict(name="Steel Helm", slot="head", icon="helm", bulk=2000, wt=2500, value=130, ac=3, depth=4),
+    "gloves":      dict(name="Leather Gloves", slot="arms", icon="gauntlets", bulk=4500, wt=450, value=20, ac=1, depth=0),
+    "gauntlets":   dict(name="Gauntlets", slot="arms", icon="gauntlets", bulk=8100, wt=1575, value=110, ac=2, depth=5),
+    "boots":       dict(name="Boots", slot="feet", icon="boots", bulk=10800, wt=1125, value=30, ac=1, depth=0),
+    "leggings":    dict(name="Leggings", slot="legs", icon="leggings", bulk=16200, wt=2700, value=95, ac=2, depth=3),
+    "cloak":       dict(name="Cloak", slot="back", icon="cloak", bulk=12600, wt=675, value=40, ac=1, depth=1),
+    "belt":        dict(name="Girdle", slot="waist", icon="belt", bulk=4500, wt=450, value=35, ac=1, depth=1),
 
     # ---- jewellery (always unidentified when found) ----------------------
-    "ring_might":    dict(name="Ring of Might", slot="ring_left", icon="ring", bulk=1, wt=2, value=600, depth=3, kind="ring", bonus=("strength", 2)),
-    "ring_grace":    dict(name="Ring of Grace", slot="ring_left", icon="ring", bulk=1, wt=2, value=600, depth=3, kind="ring", bonus=("dexterity", 2)),
-    "ring_wit":      dict(name="Ring of Wit", slot="ring_left", icon="ring", bulk=1, wt=2, value=600, depth=3, kind="ring", bonus=("intelligence", 2)),
-    "ring_health":   dict(name="Ring of Health", slot="ring_left", icon="ring", bulk=1, wt=2, value=650, depth=4, kind="ring", bonus=("constitution", 2)),
-    "ring_warding":  dict(name="Ring of Warding", slot="ring_left", icon="ring", bulk=1, wt=2, value=800, depth=6, kind="ring", ac=3),
-    "ring_burden":   dict(name="Ring of Burdens", slot="ring_left", icon="ring", bulk=1, wt=2, value=10, depth=2, kind="ring", bonus=("strength", -3), cursed=True),
-    "amulet_ward":   dict(name="Amulet of Warding", slot="neck", icon="amulet", bulk=2, wt=5, value=900, depth=7, kind="amulet", ac=4),
-    "amulet_focus":  dict(name="Amulet of Focus", slot="neck", icon="amulet", bulk=2, wt=5, value=750, depth=5, kind="amulet", mana_bonus=25),
-    "amulet_vigour": dict(name="Amulet of Vigour", slot="neck", icon="amulet", bulk=2, wt=5, value=750, depth=5, kind="amulet", hp_bonus=25),
-    "amulet_doom":   dict(name="Amulet of Doom", slot="neck", icon="amulet", bulk=2, wt=5, value=10, depth=4, kind="amulet", ac=-4, cursed=True),
+    "ring_might":    dict(name="Ring of Might", slot="ring_left", icon="ring", bulk=900, wt=90, value=600, depth=3, kind="ring", bonus=("strength", 2)),
+    "ring_grace":    dict(name="Ring of Grace", slot="ring_left", icon="ring", bulk=900, wt=90, value=600, depth=3, kind="ring", bonus=("dexterity", 2)),
+    "ring_wit":      dict(name="Ring of Wit", slot="ring_left", icon="ring", bulk=900, wt=90, value=600, depth=3, kind="ring", bonus=("intelligence", 2)),
+    "ring_health":   dict(name="Ring of Health", slot="ring_left", icon="ring", bulk=900, wt=90, value=650, depth=4, kind="ring", bonus=("constitution", 2)),
+    "ring_warding":  dict(name="Ring of Warding", slot="ring_left", icon="ring", bulk=900, wt=90, value=800, depth=6, kind="ring", ac=3),
+    "ring_burden":   dict(name="Ring of Burdens", slot="ring_left", icon="ring", bulk=900, wt=90, value=10, depth=2, kind="ring", bonus=("strength", -3), cursed=True),
+    "amulet_ward":   dict(name="Amulet of Warding", slot="neck", icon="amulet", bulk=1800, wt=225, value=900, depth=7, kind="amulet", ac=4),
+    "amulet_focus":  dict(name="Amulet of Focus", slot="neck", icon="amulet", bulk=1800, wt=225, value=750, depth=5, kind="amulet", mana_bonus=25),
+    "amulet_vigour": dict(name="Amulet of Vigour", slot="neck", icon="amulet", bulk=1800, wt=225, value=750, depth=5, kind="amulet", hp_bonus=25),
+    "amulet_doom":   dict(name="Amulet of Doom", slot="neck", icon="amulet", bulk=1800, wt=225, value=10, depth=4, kind="amulet", ac=-4, cursed=True),
 
     # ---- potions (appearance shuffled per world) -------------------------
-    "potion_heal":    dict(name="Potion of Healing", icon="potion_red", bulk=4, wt=15, value=60, depth=0, kind="potion", use="heal", power=30),
-    "potion_heal2":   dict(name="Potion of Great Healing", icon="potion_red", bulk=4, wt=15, value=180, depth=7, kind="potion", use="heal", power=90),
-    "potion_mana":    dict(name="Potion of Mana", icon="potion_blue", bulk=4, wt=15, value=70, depth=1, kind="potion", use="mana", power=30),
-    "potion_speed":   dict(name="Potion of Quickness", icon="potion_green", bulk=4, wt=15, value=140, depth=4, kind="potion", use="haste", power=40),
-    "potion_might":   dict(name="Potion of Giant Strength", icon="potion_yellow", bulk=4, wt=15, value=160, depth=5, kind="potion", use="might", power=40),
-    "potion_cure":    dict(name="Potion of Cleansing", icon="potion_clear", bulk=4, wt=15, value=90, depth=3, kind="potion", use="cure"),
-    "potion_sight":   dict(name="Potion of True Sight", icon="potion_purple", bulk=4, wt=15, value=110, depth=4, kind="potion", use="sight", power=60),
-    "potion_poison":  dict(name="Draught of Sickness", icon="potion_green", bulk=4, wt=15, value=10, depth=2, kind="potion", use="poison", power=12, bad=True),
+    "potion_heal":    dict(name="Potion of Healing", icon="potion_red", bulk=3600, wt=675, value=60, depth=0, kind="potion", use="heal", power=30),
+    "potion_heal2":   dict(name="Potion of Great Healing", icon="potion_red", bulk=3600, wt=675, value=180, depth=7, kind="potion", use="heal", power=90),
+    "potion_mana":    dict(name="Potion of Mana", icon="potion_blue", bulk=3600, wt=675, value=70, depth=1, kind="potion", use="mana", power=30),
+    "potion_speed":   dict(name="Potion of Quickness", icon="potion_green", bulk=3600, wt=675, value=140, depth=4, kind="potion", use="haste", power=40),
+    "potion_might":   dict(name="Potion of Giant Strength", icon="potion_yellow", bulk=3600, wt=675, value=160, depth=5, kind="potion", use="might", power=40),
+    "potion_cure":    dict(name="Potion of Cleansing", icon="potion_clear", bulk=3600, wt=675, value=90, depth=3, kind="potion", use="cure"),
+    "potion_sight":   dict(name="Potion of True Sight", icon="potion_purple", bulk=3600, wt=675, value=110, depth=4, kind="potion", use="sight", power=60),
+    "potion_poison":  dict(name="Draught of Sickness", icon="potion_green", bulk=3600, wt=675, value=10, depth=2, kind="potion", use="poison", power=12, bad=True),
 
     # ---- scrolls (title shuffled per world) ------------------------------
-    "scroll_map":     dict(name="Scroll of Cartography", icon="scroll", bulk=2, wt=3, value=90, depth=1, kind="scroll", use="map"),
-    "scroll_ident":   dict(name="Scroll of Revelation", icon="scroll", bulk=2, wt=3, value=120, depth=2, kind="scroll", use="identify"),
-    "scroll_teleport": dict(name="Scroll of Recall", icon="scroll", bulk=2, wt=3, value=180, depth=3, kind="scroll", use="recall"),
-    "scroll_blink":   dict(name="Scroll of Blinking", icon="scroll", bulk=2, wt=3, value=100, depth=2, kind="scroll", use="blink"),
-    "scroll_uncurse": dict(name="Scroll of Unbinding", icon="scroll", bulk=2, wt=3, value=200, depth=5, kind="scroll", use="uncurse"),
-    "scroll_enchant": dict(name="Scroll of Enchantment", icon="scroll", bulk=2, wt=3, value=400, depth=6, kind="scroll", use="enchant"),
-    "scroll_fire":    dict(name="Scroll of Conflagration", icon="scroll", bulk=2, wt=3, value=220, depth=5, kind="scroll", use="firestorm", power=28),
-    "scroll_fear":    dict(name="Scroll of Terror", icon="scroll", bulk=2, wt=3, value=150, depth=4, kind="scroll", use="fear"),
+    "scroll_map":     dict(name="Scroll of Cartography", icon="scroll", bulk=1800, wt=135, value=90, depth=1, kind="scroll", use="map"),
+    "scroll_ident":   dict(name="Scroll of Revelation", icon="scroll", bulk=1800, wt=135, value=120, depth=2, kind="scroll", use="identify"),
+    "scroll_teleport": dict(name="Scroll of Recall", icon="scroll", bulk=1800, wt=135, value=180, depth=3, kind="scroll", use="recall"),
+    "scroll_blink":   dict(name="Scroll of Blinking", icon="scroll", bulk=1800, wt=135, value=100, depth=2, kind="scroll", use="blink"),
+    "scroll_uncurse": dict(name="Scroll of Unbinding", icon="scroll", bulk=1800, wt=135, value=200, depth=5, kind="scroll", use="uncurse"),
+    "scroll_enchant": dict(name="Scroll of Enchantment", icon="scroll", bulk=1800, wt=135, value=400, depth=6, kind="scroll", use="enchant"),
+    "scroll_fire":    dict(name="Scroll of Conflagration", icon="scroll", bulk=1800, wt=135, value=220, depth=5, kind="scroll", use="firestorm", power=28),
+    "scroll_fear":    dict(name="Scroll of Terror", icon="scroll", bulk=1800, wt=135, value=150, depth=4, kind="scroll", use="fear"),
 
     # ---- sundries --------------------------------------------------------
-    "food":        dict(name="Ration", icon="food", bulk=6, wt=20, value=15, depth=0, kind="food", stack=True),
-    "torch":       dict(name="Torch", icon="torch", bulk=6, wt=15, value=10, depth=0, kind="light", stack=True, light=1),
-    "lantern":     dict(name="Lantern", icon="lantern", bulk=14, wt=40, value=250, depth=3, kind="light", light=3),
-    "gem":         dict(name="Gemstone", icon="gem", bulk=1, wt=2, value=350, depth=4, kind="treasure"),
-    "bracers":     dict(name="Bracers", slot="bracers", icon="bracers", bulk=8, wt=25, value=55, ac=1, depth=1),
-    "purse":       dict(name="Purse", slot="purse", icon="sack", bulk=3, wt=3, value=15, depth=0, kind="container", capacity=40, bulk_capacity=20, coins_only=True),
+    "food":        dict(name="Ration", icon="food", bulk=5400, wt=900, value=15, depth=0, kind="food", stack=True),
+    "torch":       dict(name="Torch", icon="torch", bulk=5400, wt=675, value=10, depth=0, kind="light", stack=True, light=1),
+    "lantern":     dict(name="Lantern", icon="lantern", bulk=12600, wt=1800, value=250, depth=3, kind="light", light=3),
+    "gem":         dict(name="Gemstone", icon="gem", bulk=900, wt=90, value=350, depth=4, kind="treasure"),
+    "bracers":     dict(name="Bracers", slot="bracers", icon="bracers", bulk=7200, wt=1125, value=55, ac=1, depth=1),
+    "purse":       dict(name="Purse", slot="purse", icon="sack", bulk=500, wt=300, value=15, depth=0, kind="container", capacity=5000, bulk_capacity=6000, coins_only=True),
     "coins":       dict(name="copper pieces", icon="gold", bulk=0, wt=0, value=1, depth=0, kind="coins"),
-    "pack":        dict(name="Backpack", slot="pack", icon="pack", bulk=20, wt=30, value=60, depth=0, kind="container", capacity=1200, bulk_capacity=500),
-    "sack":        dict(name="Sack", slot=None, icon="sack", bulk=8, wt=10, value=25, depth=0, kind="container", capacity=600, bulk_capacity=260),
+    "pack":        dict(name="Backpack", slot="pack", icon="pack", bulk=1000, wt=1000, value=60, depth=0, kind="container", capacity=12000, bulk_capacity=50000),
+    "sack":        dict(name="Sack", slot=None, icon="sack", bulk=700, wt=500, value=25, depth=0, kind="container", capacity=10000, bulk_capacity=12000),
 }
 
 # Spell books are generated from the spell list, so they live in spells.py.
@@ -334,7 +334,7 @@ class Item:
                   and b.get("kind") in ("potion", "scroll", "ring", "amulet")
                   and not appearances.is_known(self.key))
         if hidden:
-            return f"unidentified, {self.weight / 10:.1f} lb, bulk {self.bulk}"
+            return f"unidentified, {self.weight} g, bulk {self.bulk} cc"
         bits = []
         if b.get("dmg"):
             n, s = b["dmg"]
@@ -355,8 +355,8 @@ class Item:
         if b.get("str_req"):
             bits.append(f"needs Strength {b['str_req']}")
         if b.get("capacity"):
-            bits.append(f"holds {b['capacity'] / 10:.0f} lb")
-        bits.append(f"{self.weight / 10:.1f} lb")
+            bits.append(f"holds {b['capacity'] / 1000:.0f} kg")
+        bits.append(f"{self.weight} g")
         bits.append(f"bulk {self.bulk}")
         return ", ".join(bits)
 

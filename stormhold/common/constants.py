@@ -125,13 +125,17 @@ def xp_for_level(level):
 # ----------------------------------------------------------- encumbrance ---
 # Weight is in tenths of a pound, so a long sword at 60 is six pounds and a
 # hundred gold coins weigh one. That last detail is why the bank matters.
-# Measured from the original by running it: max carry weight rises exactly
-# 2000 of its units per point of strength, dead linear across the whole
-# chargen range, with a constant offset. Its unit is a hundredth of a pound
-# (a small pack reads 1000, i.e. ten pounds); ours is a tenth, so the same
-# law in our units is 200 per point plus a 10lb offset.
-CARRY_PER_STRENGTH = 200
-CARRY_BASE = 100
+# Weight is in grams and bulk in cubic centimetres, as the original's manual
+# states outright. Max carry weight rises exactly 2000 g per point of
+# strength, dead linear across the whole chargen range, measured by running
+# the game at +0, +5 and +12 points.
+CARRY_PER_STRENGTH = 2000
+CARRY_BASE = 1000
+
+# One copper piece weighs a gram and displaces a cubic centimetre. Measured:
+# buying a 1000 g sword for 1470 coins moved total weight by exactly -470.
+COPPER_GRAMS = 1
+COPPER_CC = 1
 
 # What a shop charges and what it pays. Measured: a short sword costs 1470 and
 # sells back for 840; a club costs 105 and sells back for 60. Both are the same
@@ -256,8 +260,8 @@ def condition_for(share):
 RING_SLOTS = ("ring_left", "ring_right")
 
 # What you can hold without a pack: your two hands, near enough.
-BARE_HANDS_WEIGHT = 120
-BARE_HANDS_BULK = 30
+BARE_HANDS_WEIGHT = 5000        # what two hands carry without a pack, in grams
+BARE_HANDS_BULK = 8000
 
 # Bulk is NOT a strength limit. In the original the character sheet reports a
 # body bulk maximum of 1000000 regardless of strength - it never binds. What

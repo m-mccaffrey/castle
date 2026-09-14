@@ -9,7 +9,7 @@ Intelligence and bought tomes plays like a mage. Nothing enforces it.
 import random
 
 from ..common.constants import (
-    movement_speed,
+    movement_speed, COPPER_GRAMS, COPPER_CC,
     STATS, START_STAT, MAX_LEVEL, CARRY_PER_STRENGTH, encumbrance_for,
     xp_for_level, clamp, SLOTS, RING_SLOTS, TICKS_PER_TURN,
     BODY_BULK_CAPACITY, CARRY_BASE, START_COPPER, BARE_HANDS_WEIGHT, BARE_HANDS_BULK,
@@ -163,7 +163,7 @@ class Player(Actor):
     def carried_weight(self):
         w = sum(i.weight for i in self.inventory)
         w += sum(i.weight for i in self.equipment.values() if i)
-        w += self.copper // 10          # a hundred coins to the pound
+        w += self.copper * COPPER_GRAMS      # a coin weighs a gram
         return w
 
     @property
@@ -180,7 +180,7 @@ class Player(Actor):
             worn = self.equipment.get(slot)
             if worn:
                 b += worn.base.get("bulk", 0)
-        b += self.copper // 400
+        b += self.copper * COPPER_CC
         return b
 
     @property
@@ -201,8 +201,8 @@ class Player(Actor):
         pack = self.pack
         if pack is None:
             return BARE_HANDS_WEIGHT, BARE_HANDS_BULK
-        return (pack.base.get("capacity", 600),
-                pack.base.get("bulk_capacity", 250))
+        return (pack.base.get("capacity", 12000),
+                pack.base.get("bulk_capacity", 50000))
 
     def pack_load(self):
         """(weight, bulk) currently in the pack."""
