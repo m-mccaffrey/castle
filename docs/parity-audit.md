@@ -30,7 +30,7 @@ deliberate divergence.
 
 | Rule | Status |
 |---|---|
-| Attributes on a 0-100 scale | ours - we use a 3-18 range |
+| Attributes on a 0-100 scale | ours - we use a 3-18 range, which the to-hit maths is tuned around |
 | Chargen is a pool against per-attribute caps | done |
 | Above-average attributes give bonuses; specialising beats spreading | partial |
 | Strength: damage, carrying, and gates what armour you may wear | done |
@@ -74,7 +74,7 @@ deliberate divergence.
 | Rule | Status |
 |---|---|
 | Item figures in grams and cc from the Object Directory | done |
-| Armour value ladder 0-54 in sixes; shields a size x material grid | open (#27) |
+| Armour value ladder 0-54 in sixes; shields a size x material grid | done |
 | Weapon Class 0-12 sets damage; same class, same damage | open |
 | Quality prefixes: Broken, Ripped, Rusty, Normal, Enchanted, Cursed | partial |
 | Class identify: one of a type identifies all of that type | done |
@@ -154,4 +154,4 @@ is simply a death sentence.
 | Death returns you to the temple; the original is permadeath with a Valhalla's Champions scroll | chosen so a child losing a character does not lose the afternoon |
 | Multiplayer on a shared per-floor clock | the original is single player |
 | Our own names, art, story, bestiary and item list | only the gameplay is being reproduced |
-| 3-18 attribute range rather than 0-100 | ours, and it interacts with the d20 to-hit maths |
+| 3-18 attribute range rather than 0-100 | ours; the armour ladder and hit chances are now the original's, and the attribute range is the remaining scale difference |

@@ -7,15 +7,30 @@ all, not how much it hurts. A well-armoured character is missed, not chipped.
 from ..common.constants import chebyshev
 
 
+# Armour value is a chance to avoid a telling blow, not a damage soak: "A high
+# armor value means monsters have a lesser chance of making a hit that inflicts
+# damage." The original's ladder runs 0-54 for body armour in steps of six, with
+# helmets and shields adding in threes, so a well-equipped character reaches the
+# seventies - which is why the roll is a percentage rather than a d20.
+HIT_BASE = 0.70          # an even fight against no armour at all
+HIT_PER_SKILL = 0.02     # each point of the attacker's skill
+HIT_PER_AV = 0.008       # each point of the defender's armour value
+HIT_FLOOR = 0.05         # nothing is ever untouchable
+HIT_CEILING = 0.95       # and nothing ever connects every time
+CRIT_SHARE = 0.05        # the best-struck twentieth of blows tell double
+
+
+def hit_chance(attacker_hit, defender_ac):
+    """How often this attacker lands a telling blow on this defender."""
+    p = HIT_BASE + HIT_PER_SKILL * attacker_hit - HIT_PER_AV * defender_ac
+    return min(HIT_CEILING, max(HIT_FLOOR, p))
+
+
 def attack_roll(rng, attacker_hit, defender_ac):
-    """d20 against 10 + AC - to-hit. A natural 20 always lands, a 1 never does."""
-    roll = rng.randint(1, 20)
-    if roll == 1:
+    """(landed, critical). Armour lowers the chance; it never soaks damage."""
+    if rng.random() >= hit_chance(attacker_hit, defender_ac):
         return False, False
-    if roll == 20:
-        return True, True
-    target = 10 + defender_ac - attacker_hit
-    return roll >= target, False
+    return True, rng.random() < CRIT_SHARE
 
 
 def melee(world, attacker, defender, cost_free=False):

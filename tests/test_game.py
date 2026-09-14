@@ -188,21 +188,36 @@ class TestSpells(unittest.TestCase):
 
 
 class TestCombat(unittest.TestCase):
-    def test_armour_makes_you_harder_to_hit(self):
+    """Armour lowers the chance of a telling blow; it never soaks damage."""
+
+    def test_armour_value_lowers_the_chance_of_a_hit(self):
+        from stormhold.game.combat import hit_chance
+        ladder = [hit_chance(8, av) for av in (0, 6, 12, 24, 42, 75)]
+        self.assertEqual(ladder, sorted(ladder, reverse=True),
+                         "every step up the ladder helps")
+        self.assertLess(ladder[-1], ladder[0] / 2,
+                        "a full kit should more than halve what lands")
+
+    def test_the_ladder_matches_the_original(self):
+        """Body armour in sixes, helmets and shields in threes."""
+        from stormhold.game.items import BASES
+        self.assertEqual(BASES["leather"]["ac"], 6)
+        self.assertEqual(BASES["chainmail"]["ac"], 30)
+        self.assertEqual(BASES["platemail"]["ac"], 42)
+        self.assertEqual(BASES["buckler"]["ac"], 3)
+        self.assertEqual(BASES["helm"]["ac"], 9)
+
+    def test_nothing_is_untouchable_and_nothing_always_lands(self):
+        from stormhold.game.combat import hit_chance, HIT_FLOOR, HIT_CEILING
+        self.assertEqual(hit_chance(0, 10_000), HIT_FLOOR)
+        self.assertEqual(hit_chance(10_000, 0), HIT_CEILING)
+
+    def test_a_landed_blow_is_sometimes_critical(self):
         rng = random.Random(7)
-        lightly = sum(attack_roll(rng, 3, 3)[0] for _ in range(3000))
-        heavily = sum(attack_roll(rng, 3, 16)[0] for _ in range(3000))
-        self.assertGreater(lightly, heavily * 3)
-
-    def test_natural_one_and_twenty(self):
-        class Fixed:
-            def __init__(self, value):
-                self.value = value
-
-            def randint(self, a, b):
-                return self.value
-        self.assertFalse(attack_roll(Fixed(1), 99, 0)[0], "a 1 always misses")
-        self.assertTrue(attack_roll(Fixed(20), -99, 99)[0], "a 20 always hits")
+        rolls = [attack_roll(rng, 12, 0) for _ in range(4000)]
+        landed = [c for hit, c in rolls if hit]
+        self.assertTrue(any(landed), "some blows tell double")
+        self.assertLess(sum(landed) / len(landed), 0.15)
 
 
 class TestTurnEngine(unittest.TestCase):
