@@ -15,6 +15,7 @@ import random
 import time
 
 from ..common.constants import (
+    SHOP_BUY_MARKUP, SHOP_SELL_RATE,
     T, DIRS, TOWN_DEPTH, MAX_DEPTH, GRACE_TICKS, MOVE_COST, ATTACK_COST,
     CAST_COST, PICKUP_COST, DROP_COST, EQUIP_COST, QUAFF_COST, READ_COST,
     STAIRS_COST, REST_COST, FREE_COST, SIGHT_DUNGEON, SIGHT_TOWN, REGEN_TICKS,
@@ -1501,7 +1502,8 @@ class World:
 
     def shop_price(self, item, selling=False):
         value = item.value()
-        return max(1, int(value * 0.4)) if selling else max(1, value)
+        return (max(1, int(value * SHOP_SELL_RATE)) if selling
+                else max(1, int(value * SHOP_BUY_MARKUP)))
 
     def _act_buy(self, level, p, action):
         shop = action.get("shop")
@@ -1511,7 +1513,7 @@ class World:
             return FREE_COST
         price = self.shop_price(item)
         if p.copper < price:
-            self.msg("You cannot afford that.", "warn", to=p)
+            self.msg("You don't have enough money!", "warn", to=p)
             return FREE_COST
         take = item
         if item.stackable and item.qty > 1:

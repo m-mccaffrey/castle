@@ -11,7 +11,7 @@ import random
 from ..common.constants import (
     STATS, START_STAT, MAX_LEVEL, CARRY_PER_STRENGTH, encumbrance_for,
     xp_for_level, clamp, SLOTS, RING_SLOTS, TICKS_PER_TURN,
-    BODY_BULK_CAPACITY, CARRY_BASE, BARE_HANDS_WEIGHT, BARE_HANDS_BULK,
+    BODY_BULK_CAPACITY, CARRY_BASE, START_COPPER, BARE_HANDS_WEIGHT, BARE_HANDS_BULK,
 )
 from .items import Item
 from .monsters import MONSTERS, scaled
@@ -76,7 +76,7 @@ class Player(Actor):
             self.stats.update({k: v for k, v in stats.items() if k in STATS})
         self.level = 1
         self.xp = 0
-        self.copper = 400
+        self.copper = START_COPPER
         self.bank = 0
         self.equipment = {s: None for s in SLOTS}
         self.inventory = []
@@ -434,7 +434,7 @@ class Player(Actor):
         self.colour = d.get("colour", self.colour)
         self.level = d.get("level", 1)
         self.xp = d.get("xp", 0)
-        self.copper = d.get("copper", 400)
+        self.copper = d.get("copper", START_COPPER)
         self.bank = d.get("bank", 0)
         self.inventory = [Item.from_dict(x) for x in d.get("inventory", [])]
         self.equipment = {s: None for s in SLOTS}

@@ -8,7 +8,7 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from stormhold.common.constants import (
-    T, GRACE_TICKS, TOWN_DEPTH, MAX_DEPTH, encumbrance_for, CARRY_PER_STRENGTH, CARRY_BASE,
+    T, GRACE_TICKS, TOWN_DEPTH, MAX_DEPTH, encumbrance_for, CARRY_PER_STRENGTH, CARRY_BASE, SHOP_BUY_MARKUP, SHOP_SELL_RATE,
     xp_for_level, MAX_LEVEL, SLOTS,
 )
 from stormhold.common.fov import compute_fov, has_los
@@ -301,12 +301,17 @@ class TestWorld(unittest.TestCase):
         p = world.add_player("Shopper")
         stock = world.stock_for("weaponsmith")
         item = min(stock, key=lambda i: i.value())
-        p.copper = item.value()
+        # A shop charges above the item's worth and pays below it - the
+        # markup and the discount both measured from the original.
+        price = world.shop_price(item)
+        self.assertEqual(price, int(item.value() * SHOP_BUY_MARKUP))
+        p.copper = price
         world.submit(p, {"a": "buy", "shop": "weaponsmith", "id": item.id})
         self.assertEqual(p.copper, 0)
         self.assertTrue(any(i.id == item.id for i in p.inventory))
         world.submit(p, {"a": "sell", "shop": "weaponsmith", "id": item.id})
-        self.assertGreater(p.copper, 0)
+        self.assertEqual(p.copper, int(item.value() * SHOP_SELL_RATE))
+        self.assertLess(p.copper, price, "you never sell back at cost")
 
     def test_the_strongroom_takes_the_weight_off_you(self):
         world = World(seed=3)
@@ -503,9 +508,11 @@ class TestHazards(unittest.TestCase):
 class TestStatusReadouts(unittest.TestCase):
     def test_the_clock_reads_in_days_and_hours(self):
         from stormhold.common.constants import format_clock
+        from stormhold.common.constants import TICKS_PER_SECOND
         self.assertEqual(format_clock(0), "0d,00:00:00")
-        self.assertEqual(format_clock(10610), "0d,00:17:41")
-        self.assertEqual(format_clock(864000 * 7), "7d,00:00:00")
+        self.assertEqual(format_clock(1061 * TICKS_PER_SECOND), "0d,00:17:41")
+        self.assertEqual(format_clock(86400 * 7 * TICKS_PER_SECOND),
+                         "7d,00:00:00")
 
     def test_speed_falls_with_burden_and_rises_with_agility(self):
         quick = Player("Q", {"strength": 12, "dexterity": 16,

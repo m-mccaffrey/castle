@@ -155,3 +155,196 @@ The numbers below remain ours, and are marked as such in `ux-reference.md`:
 - spell mana costs
 - what the difficulty settings actually change
 - trap mechanics
+
+
+# Second session: playing it through
+
+Character created, town explored, shop used, wilderness crossed, mine entered,
+and a kobold met. Everything below was read off the running program.
+
+## The screen
+
+At 1024x768 the real layout appears, and it is the one this remake already
+uses: **map filling the top, message log along the bottom left, status panel
+bottom right**. The status panel reads:
+
+    HP        10 (10)
+    Mana        5 (5)
+    Speed  100% / 200%
+    Time   0d,00:00:52
+    A Tiny Hamlet
+
+The last row is the location, and underground it becomes `Mine Level 0`. The
+message log keeps a scrollback with its own scrollbar, oldest at top.
+
+## Time: one step is 2.5 game-seconds
+
+Measured by stepping and reading the clock. From 75s: 77, 80, 82 - then a
+prediction of 85, 87, 90, 92 for the next four steps, which is exactly what
+happened. Checked again over a 16-move run (2:55 to 3:35, 40s = 16 x 2.5)
+and a 24-move run. Display truncates, which is why the deltas read 2,3,2,2.
+
+Our MOVE_COST is 100 ticks, so `TICKS_PER_SECOND = 40`. It was 10.
+
+## Movement keys
+
+Arrow keys move orthogonally. Diagonals are **vi keys**: `y u h j k l b n`,
+exactly as in NetHack - the numeric keypad did nothing. Shift plus a direction
+runs, and the run stops on reaching anything interesting, a monster included.
+Clicking a map square does not walk there.
+
+## The economy
+
+Shop prices are one base value with two multipliers:
+
+| item | buy | sell | implied base |
+|---|---|---|---|
+| Normal Club | 105 | 60 | 75 |
+| Normal Short Sword | 1470 | 840 | 1050 |
+| Normal Leather Helmet | 525 | - | 375 |
+| Normal Suit of Leather Armor | 1050 | - | 750 |
+
+**buy = 1.4 x base, sell = 0.8 x base.** The 4/7 ratio held on both items
+tested, so there is no per-item haggling. Predicting the club would sell for
+60 before selling it, and getting 60, is the check that this is the real rule.
+
+Buying prompts *"It'll cost you 1470 C.P. for that. Take it?"* with Yes/No;
+selling prompts *"I'll give you 840 C.P. for that. Take it?"*. Too little
+money gives *"You don't have enough money!"*.
+
+A character starts with **1500 copper** - so a short sword at 1470 is very
+nearly the entire starting purse.
+
+## Copper weighs, and so does everything else
+
+Buying the short sword moved three numbers at once, and they reconcile exactly:
+
+    copper   1500 -> 30      (spent 1470)
+    pack     Wt 1000 -> 2000, Bulk 1000 -> 6000
+    character Weight 3300 -> 2830, Bulk 3300 -> 6830
+
+Total weight *fell* by 470 because 1470 coins left the purse and a 1000-weight
+sword entered the pack. So **one copper piece is 1 weight and 1 bulk**, and
+100 coins make a pound. Item figures measured the same way:
+
+| item | weight | bulk |
+|---|---|---|
+| Normal Short Sword | 1000 | 5000 |
+| Normal Club | 1500 | 3000 |
+| Small Pack (empty) | 1000 | 1000 |
+
+A small pack holds 12000 weight and 50000 bulk. Note the club is heavier and
+far cheaper than the sword.
+
+## Armour
+
+A Normal Leather Helmet alone gives **Armor Value 3**.
+
+## Shops are the inventory screen
+
+Walking into a shop opens the *same* inventory window with one extra container
+window titled `Store`. Buying and selling is dragging between windows - drag to
+the pack to buy, drag to the Store to sell, and dragging onto a body slot buys
+and equips in one move. There is no separate shop interface.
+
+Container windows carry their contents in the caption:
+
+    Small Pack Wt 2500 (12000) Bulk 4000 (50000)
+
+`Floor` is one of these windows too, so the ground is just another container.
+The `Window` menu offers Open Container, Arrange All and Auto Arrange - there
+is no detail or list view, so item weights and prices are never shown as text.
+
+## The full slot list
+
+    Armor  Neckwear  Overgarment  Helmet  Shield
+    Bracers  Gauntlets  Free Hand
+    Right Ring  Left Ring  Belt  Boots
+    (weapon)  Small Pack  Purse
+
+Fifteen, which is what this remake already has.
+
+## Spells
+
+The Spell menu lists bound spells as `0: Heal Minor Wounds (1)` - slot number,
+name, and **mana cost in parentheses**. Heal Minor Wounds costs 1. The menu
+also has Spellbook... and Customize Spell Menu...
+
+The Spellbook dialog is the Cast dialog: six class radio buttons (Attack,
+Defense, Healing, Movement, Divination, Miscellaneous) against a two-column
+`Spell Name | Mana` list, with Cast/Cancel/Help.
+
+## The temple
+
+Walking into the temple opens **Temple of Odin**, a radio list with prices:
+
+    Heal Minor Wounds            500 CP
+    Heal Medium Wounds           900 CP
+    Heal Major Wounds           1400 CP
+    Heal                        2500 CP
+    Remove Curse                2500 CP
+    Neutralize Poison           1800 CP
+    Rune of Return              1000 CP
+    Restore Strength            3000 CP
+    Restore Intelligence        3000 CP
+    Restore Constitution        3000 CP
+    Restore Dexterity           3000 CP
+    Restore Drained Hit Points  3000 CP
+
+This matches the prices extracted from the binary earlier, and matches what
+this remake already charges. Services you have no need of are **greyed out** -
+at full health only Remove Curse and Rune of Return were selectable. Buttons
+are Cast and Exit.
+
+## The world outside town
+
+Town is "A Tiny Hamlet"; leaving by the north gate reaches "A Rough Trail", an
+overworld of roads and highways with mountains along the north edge. Entering
+the mountains reaches the mine, and the status line switches to `Mine Level 0`.
+
+`Map!` opens a full-screen zoomed-out view of the current region with a box
+around the part you are looking at, and only an `Exit!` menu.
+
+Story arrives as a **modal box with a Done button**, fired by walking onto the
+place it belongs to - the burned farm delivers the whole opening in one.
+
+## Combat, and death
+
+Attacking is walking into the monster. Messages name the weapon's action and
+give no numbers:
+
+    The Kobold missed you!
+    The Kobold hits you!
+    You slash at air as the Kobold dances back.
+
+A level-1 character on Intermediate - 10 hit points, Armor Value 3, a dagger -
+was killed by a single kobold. That is the difficulty calibration point: the
+first monster you meet can kill you.
+
+Death is **permanent**, and ends on a scroll headed **Valhalla's Champions**:
+
+    Probe,  Experience : 0 on Intermediate
+    Killed by a Kobold after 0 days, at 00:09
+
+A persistent high-score list of dead characters, recording name, experience,
+difficulty, what killed you, and how long you lasted. Buttons Done and Reset.
+The death message in the log is *"Another one bites the dust..."*.
+
+This remake deliberately diverges here: you chose temple resurrection so that
+a child losing a character does not lose the afternoon. Recording the original
+rule so the divergence stays a decision rather than a mistake.
+
+## Corrected in the code this session
+
+- `TICKS_PER_SECOND` 10 -> 40, so a step is 2.5 game-seconds
+- shop markup 1.0 -> 1.4 and sell rate 0.4 -> 0.8
+- starting copper 400 -> 1500
+- "You cannot afford that." -> "You don't have enough money!"
+
+## Still ours, still unmeasured
+
+- the experience curve past level 2 (the character died at 0 XP)
+- what the four difficulty settings actually change
+- monster statistics beyond "a kobold kills a level-1 character"
+- trap mechanics
+- spell costs other than Heal Minor Wounds at 1

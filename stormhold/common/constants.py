@@ -23,9 +23,10 @@ REST_COST = 100
 STAIRS_COST = 100
 FREE_COST = 0               # rummaging in your own pack costs nothing
 
-# Ten ticks to the game-second, so an ordinary action takes ten seconds of
-# game time and the clock reads in days, hours, minutes and seconds.
-TICKS_PER_SECOND = 10
+# Forty ticks to the game-second. Measured against the original: one step at
+# 100% speed advances its clock by exactly 2.5 game-seconds, checked over
+# runs of 2, 8, 16 and 24 moves. MOVE_COST is 100 ticks, so 100/40 = 2.5s.
+TICKS_PER_SECOND = 40
 
 
 def format_clock(ticks):
@@ -123,6 +124,16 @@ def xp_for_level(level):
 # law in our units is 200 per point plus a 10lb offset.
 CARRY_PER_STRENGTH = 200
 CARRY_BASE = 100
+
+# What a shop charges and what it pays. Measured: a short sword costs 1470 and
+# sells back for 840; a club costs 105 and sells back for 60. Both are the same
+# pair of multipliers on one base value (1050 and 75), and the 4/7 ratio holds
+# exactly, so the markup is not per-item haggling.
+SHOP_BUY_MARKUP = 1.4
+SHOP_SELL_RATE = 0.8
+
+# A character starts with this much copper in the purse.
+START_COPPER = 1500
 
 ENCUMBRANCE = (
     #  name           fraction of capacity,  multiplier on how long moving takes
