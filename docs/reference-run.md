@@ -894,3 +894,32 @@ reducing the *chance* of a damaging hit, which points at a percentage roll
 rather than a d20. Taking the ladder means rewriting the hit formula and
 rebalancing every monster, so it is written down as a decision for you rather
 than done quietly.
+
+## The bank
+
+Both games have one, and it is the same institution: **First Bank of
+Crossroads** in the city of Part Two, and **First Bank of Crossroads (branch
+office)** in the Part One hamlet. It prompts *"Would you like to deposit your
+money in the bank?"*, and Part Two's manual describes it as "a bank where you
+can leave your money for safe keeping".
+
+It exists for two reasons, and both are mechanical rather than decorative.
+
+**Weight.** A copper piece weighs a gram, so ten thousand coins are ten
+kilograms against a rated capacity of twenty-five. Coin is the single heaviest
+thing a successful character carries, and since load drives movement speed
+directly, a full purse is the difference between moving at 200% and crawling.
+Banking is how you convert loot into speed.
+
+**Theft.** The Smirking Sneak Thief steals coin - *"You feel a tug on your
+purse"* - and then leaves: *"The Thief vanishes!"*. Banked money cannot be
+taken.
+
+The status line reflects this: Copper "indicates how much money you are
+carrying in your purse, **plus any money you have in the bank**. It doesn't
+include any money you have in your pack." So banked coin still reads as yours,
+while coins loose in the pack do not count at all - which is a quiet nudge
+toward keeping money in the purse or the bank and nowhere else.
+
+We have the strongroom and the weight relief. We have no thieves, so half the
+reason for the bank is missing; that is task #29.

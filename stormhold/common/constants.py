@@ -123,8 +123,6 @@ def xp_for_level(level):
 
 
 # ----------------------------------------------------------- encumbrance ---
-# Weight is in tenths of a pound, so a long sword at 60 is six pounds and a
-# hundred gold coins weigh one. That last detail is why the bank matters.
 # Weight is in grams and bulk in cubic centimetres, as the original's manual
 # states outright. Max carry weight rises exactly 2000 g per point of
 # strength, dead linear across the whole chargen range, measured by running

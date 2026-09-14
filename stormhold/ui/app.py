@@ -324,7 +324,7 @@ class HelpScene(Scene):
         y += 10
         for line in W.wrap(
                 "Weight matters. Armour and loot slow you down, and a hundred copper "
-                "weigh a pound - which is why there is a strongroom in town. If you die "
+                "weigh a kilo - which is why there is a strongroom in town. If you die "
                 "you drop your pack where you fell and wake at the temple, so the party "
                 "can go back for it.",
                 client.width - 12, 14):
@@ -1781,7 +1781,7 @@ class ShopScene(OverlayScene):
         "magic": "The Gilded Retort: potions, scrolls, and tomes to learn spells from.",
         "sage": "Ulric will tell you what a thing really is, for a fee.",
         "temple": "The Quiet Hour will mend you, cleanse you, and break a curse.",
-        "bank": "The strongroom. Copper weighs a pound the hundred - leave it here.",
+        "bank": "The strongroom. A thousand copper weigh a kilo - leave them here.",
     }
 
     def __init__(self, app, data):
@@ -1953,7 +1953,7 @@ class ShopScene(OverlayScene):
             W.text(surf, f"In the vault:  {data.get('bank', 0)} CP  (weighs you nothing)",
                    (client.x, top + 52), 14, mono=True)
             for i, line in enumerate(W.wrap(
-                    "A hundred copper weigh a pound. Carrying a fortune into the keep will "
+                    "A thousand copper weigh a kilo. Carrying a fortune into the keep will "
                     "slow you to a crawl, and if you die down there you drop a fifth of it "
                     "on the floor. Leave it here.", client.width - 20, 13)):
                 W.text(surf, line, (client.x, top + 86 + i * 17), 13, colour=(70, 70, 70))

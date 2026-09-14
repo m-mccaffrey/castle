@@ -1,8 +1,8 @@
 """Items: weight, worn slots, enchantment, curses and identification.
 
-Weight is in tenths of a pound. A long sword is 60, plate armour 450, and a
-hundred gold coins weigh 10 - which is the whole reason the strongroom in town
-is worth walking to.
+Weight is in grams and bulk in cubic centimetres, the units the original
+measures in. A coin weighs a gram, so a thousand of them weigh a kilo - which
+is the whole reason the strongroom in town is worth walking to.
 
 Nothing is identified when you find it. A potion is "a cloudy red potion" until
 you drink one or pay Ulric to tell you what it is, and the appearance of each
@@ -10,6 +10,8 @@ kind is shuffled per world, so last game's knowledge is no help.
 """
 
 import random
+
+from ..common.constants import COPPER_GRAMS
 
 # Copper is plentiful. Prices in the hundreds and thousands give the temple's
 # services and the better gear something to bite on, and make a purse heavy
@@ -27,7 +29,7 @@ def _new_id():
 # --------------------------------------------------------------------------
 #  Base item templates.
 #    slot   : which equipment slot it occupies, if any
-#    wt     : weight, tenths of a pound
+#    wt     : weight in grams
 #    dmg    : (count, sides) melee dice
 #    ac     : armour class contributed
 #    depth  : shallowest floor it is generated on
@@ -266,7 +268,7 @@ class Item:
     @property
     def weight(self):
         if self.kind == "coins":
-            return self.gold_amount // 10        # a hundred coins to the pound
+            return self.gold_amount * COPPER_GRAMS   # a coin weighs a gram
         w = self.base.get("wt", 10) * max(1, self.qty)
         if self.contents:
             w += sum(i.weight for i in self.contents)
