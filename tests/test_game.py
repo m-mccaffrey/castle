@@ -82,23 +82,27 @@ class TestEncumbrance(unittest.TestCase):
         self.assertEqual(encumbrance_for(int(cap * 0.95), cap)[0], "Stressed")
         self.assertIsNone(encumbrance_for(cap * 3, cap)[1], "overloaded should be immobile")
 
-    def test_gold_has_weight_and_slows_you(self):
+    def test_gold_weighs_and_slows_movement_but_not_other_actions(self):
+        """The manual is explicit that load touches movement alone."""
         p = Player("Miser", {"strength": 10, "dexterity": 10,
                              "intelligence": 10, "constitution": 10})
-        light = p.action_cost(100)
-        p.copper = 12000                       # 120 lb of coins
-        heavy = p.action_cost(100)
-        self.assertGreater(heavy, light, "a fortune in coin should slow you down")
+        light_move = p.action_cost(100, moving=True)
+        light_cast = p.action_cost(100)
+        p.copper = p.capacity * 15             # past the rated maximum
+        self.assertGreater(p.action_cost(100, moving=True), light_move,
+                           "a fortune in coin should slow you down")
+        self.assertEqual(p.action_cost(100), light_cast,
+                         "but you cast just as fast however laden you are")
 
     def test_heavy_armour_costs_time(self):
         p = Player("Knight", {"strength": 16, "dexterity": 10,
                               "intelligence": 8, "constitution": 12})
-        bare = p.action_cost(100)
+        bare = p.action_cost(100, moving=True)
         for key in ("platemail", "towershield", "helm"):
             it = Item(key)
             p.inventory.append(it)
             p.equip(it)
-        self.assertGreaterEqual(p.action_cost(100), bare)
+        self.assertGreaterEqual(p.action_cost(100, moving=True), bare)
 
 
 class TestCharacters(unittest.TestCase):
@@ -532,20 +536,50 @@ class TestStatusReadouts(unittest.TestCase):
 
         laden = Player("L", {"strength": 10, "dexterity": 12,
                              "intelligence": 8, "constitution": 8})
-        before = laden.speed_percent()
+        before = laden.move_speed_percent()
         # Copper weighs a hundredth of a pound a piece, so the pile has to be
         # sized against capacity rather than hardcoded - capacity moved when
         # the carry law was corrected against the original.
-        laden.copper = laden.capacity * 10
-        self.assertLess(laden.speed_percent(), before,
+        laden.copper = laden.capacity * 15
+        self.assertLess(laden.move_speed_percent(), before,
                         "a purse full of copper should slow you down")
 
     def test_an_immobile_character_reports_zero_rather_than_lying(self):
         stuck = Player("Stuck", {"strength": 8, "dexterity": 10,
                                  "intelligence": 8, "constitution": 8})
         stuck.copper = 200000
-        self.assertEqual(stuck.speed_percent(), 0)
-        self.assertIsNone(stuck.action_cost(100))
+        self.assertIsNone(stuck.move_speed_percent())
+        self.assertIsNone(stuck.action_cost(100, moving=True))
+        self.assertIsNotNone(stuck.action_cost(100),
+                             "pinned by your own loot, you can still cast")
+
+
+class TestCasting(unittest.TestCase):
+    def test_casting_time_varies_by_what_the_spell_does(self):
+        """Attack spells are fast, divination slow - the original's rule."""
+        from stormhold.game.spells import SPELLS
+        attack = next(v for v in SPELLS.values() if v["school"] == "Attack")
+        divine = next(v for v in SPELLS.values() if v["school"] == "Divination")
+        self.assertEqual(attack["cast_seconds"], 5)
+        self.assertEqual(divine["cast_seconds"], 30)
+        self.assertFalse(attack["interruptible"])
+        self.assertTrue(divine["interruptible"], "slow spells can be broken off")
+        self.assertEqual(SPELLS["Revelation"]["cast_seconds"], 60)
+
+    def test_you_may_overdraw_mana_and_pay_in_blood(self):
+        from stormhold.game.spells import SPELLS
+        world = World(seed=9)
+        p = world.add_player("Mage")
+        name = next(n for n, v in SPELLS.items() if v["school"] == "Attack")
+        p.spells.add(name)
+        p.mana = 0
+        hp = p.hp
+        shot = {"a": "cast", "spell": name, "x": p.x, "y": p.y}
+        world.submit(p, dict(shot))
+        self.assertEqual(p.hp, hp, "an unconfirmed overdraw costs nothing")
+        world.submit(p, dict(shot, confirm_overdraw=True))
+        self.assertEqual(p.hp, hp - SPELLS[name]["mana"],
+                         "the shortfall comes out of hit points")
 
 
 class TestSpellClasses(unittest.TestCase):
@@ -670,9 +704,9 @@ class TestEconomy(unittest.TestCase):
     def test_copper_still_weighs_enough_to_matter(self):
         p = Player("Hauler", {"strength": 12, "dexterity": 10,
                               "intelligence": 10, "constitution": 10})
-        light = p.speed_percent()
+        light = p.move_speed_percent()
         p.copper = 40000
-        self.assertLess(p.speed_percent(), light,
+        self.assertLess(p.move_speed_percent(), light,
                         "a fortune in copper should still slow you down")
 
     def test_temple_prices_are_reachable_but_not_trivial(self):

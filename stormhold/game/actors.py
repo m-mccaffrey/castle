@@ -9,6 +9,7 @@ Intelligence and bought tomes plays like a mage. Nothing enforces it.
 import random
 
 from ..common.constants import (
+    movement_speed,
     STATS, START_STAT, MAX_LEVEL, CARRY_PER_STRENGTH, encumbrance_for,
     xp_for_level, clamp, SLOTS, RING_SLOTS, TICKS_PER_TURN,
     BODY_BULK_CAPACITY, CARRY_BASE, START_COPPER, BARE_HANDS_WEIGHT, BARE_HANDS_BULK,
@@ -238,22 +239,33 @@ class Player(Actor):
         return max(0.4, 1.0 + (self.stat("dexterity") - 10) * 0.035)
 
     def speed_percent(self):
-        """What the status panel shows: 100% is an ordinary unburdened pace."""
+        """Overall speed: how fast every action goes. Load does not enter."""
         cost = self.action_cost(TICKS_PER_TURN)
         if cost is None:
             return 0
         return max(1, int(round(100.0 * TICKS_PER_TURN / cost)))
 
-    def action_cost(self, base):
-        """How long an action takes this character, all things considered."""
-        _, mult = self.encumbrance
-        if mult is None:
-            return None                       # too loaded to move at all
-        cost = base * mult / self.agility_factor
+    def move_speed_percent(self):
+        """Movement speed, which load alone drives. None means stuck.
+
+        The original's manual is explicit that the two are separate: "movement
+        speed (or slowness) doesn't affect other actions, so you can cast
+        spells at the same rate no matter how heavily loaded you are."
+        """
+        return movement_speed(self.carried_weight, self.capacity)
+
+    def action_cost(self, base, moving=False):
+        """How long an action takes. Only movement pays for what you carry."""
+        cost = base / self.agility_factor
         if self.has("haste"):
             cost *= 0.5
         if self.has("slowed"):
             cost *= 2.0
+        if moving:
+            mv = self.move_speed_percent()
+            if mv is None:
+                return None                   # too loaded to move at all
+            cost *= 100.0 / mv
         weapon = self.equipment.get("weapon")
         if weapon and base >= TICKS_PER_TURN:
             cost *= weapon.base.get("speed", 100) / 100.0
@@ -480,7 +492,9 @@ class Monster(Actor):
         n, s = self.tpl["dmg"]
         return max(1, sum(rng.randint(1, s) for _ in range(n)) + self.dmg_bonus)
 
-    def action_cost(self, base):
+    def action_cost(self, base, moving=False):
+        # Monsters carry nothing, so movement costs them no more than anything
+        # else; the argument exists so callers can treat them alike.
         cost = base * self.speed / 100.0
         if self.has("slowed"):
             cost *= 2.0

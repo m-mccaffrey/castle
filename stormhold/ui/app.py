@@ -9,6 +9,13 @@ import os
 import sys
 import time
 
+def speed_text(you):
+    """The original prints overall speed, then movement speed: "100% / 200%"."""
+    mv = you.get("move_speed")
+    if mv is None:
+        return "OVERLOADED"
+    return f"{you.get('speed', 100)}% / {mv}%"
+
 import pygame
 
 from ..common.constants import (
@@ -23,6 +30,18 @@ from . import widgets as W
 from .art import SpriteSheet, TILE
 from .palette import (BLACK, WHITE, SILVER, GRAY, NAVY, MAROON, GREEN, RED,
                       YELLOW, LIME, AQUA, TEAL, OLIVE, PURPLE, FUCHSIA, BLUE)
+
+
+def speed_text(you):
+    """The original prints overall speed, then movement speed: "100% / 200%".
+
+    The first figure is how fast every action goes; the second is movement
+    alone, which is what the load you carry actually affects.
+    """
+    mv = you.get("move_speed")
+    if mv is None:
+        return "OVERLOADED"
+    return f"{you.get('speed', 100)}% / {mv}%"
 
 SIDEBAR_W = 268
 LOG_H = 150
@@ -817,9 +836,8 @@ class PlayScene(Scene):
             ("Mana", f"{you.get('mana', 0)} ({you.get('max_mana', 0)})", BLACK),
             # A bare "0%" tells a player nothing. If they cannot move, say so.
             ("Speed",
-             "OVERLOADED" if you.get("speed", 100) <= 0
-             else f"100% / {you.get('speed', 100)}%",
-             (170, 0, 0) if you.get("speed", 100) < 80 else BLACK),
+             speed_text(you),
+             (170, 0, 0) if (you.get("move_speed") or 200) < 100 else BLACK),
             ("Time", format_clock(you.get("clock", 0)), BLACK),
         ]
         for label, value, colour in rows:
@@ -1623,7 +1641,7 @@ class SheetScene(OverlayScene):
             ("Weight:", f"{inv.get('weight', 0)} ({inv.get('capacity', 0)})"),
             ("Bulk:", f"{inv.get('bulk', 0)} ({inv.get('bulk_capacity', 0)})"),
             ("Burden:", you.get("encumbrance", "")),
-            ("Speed:", f"100% / {you.get('speed', 100)}%"),
+            ("Speed:", speed_text(you)),
             ("", ""),
             ("Hit Points:", f"{you.get('hp', 0)} ({you.get('max_hp', 0)})"),
             ("Mana Points:", f"{you.get('mana', 0)} ({you.get('max_mana', 0)})"),
@@ -1689,7 +1707,7 @@ class AttributesScene(OverlayScene):
             "",
             f"Armour value    {you.get('ac', 0)}",
             f"Chance to hit   {you.get('to_hit', 0):+d}",
-            f"Speed           100% / {you.get('speed', 100)}%",
+            f"Speed           {speed_text(you)}",
             f"Burden          {you.get('encumbrance', '')}",
             f"Carrying        {inv.get('weight', 0) / 10:.1f} lb of "
             f"{inv.get('capacity', 1) / 10:.0f} lb",

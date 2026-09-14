@@ -142,3 +142,10 @@ starting copper 1500, the chargen dialog and its four difficulty settings, the
 six starting spells, the inventory window's line-art paper doll, and the
 Options dialog. Items listed as ours below that are contradicted there have
 been corrected in the code.
+
+The game's own manual (CASTLE1.HLP, decoded by `tools/hlp.py`) has since
+settled the units (grams and cubic centimetres), the 0-100 attribute scale, the
+movement-speed law, regeneration rates, the full spell table with mana and
+casting times, and the fact that casting may be overdrawn at the cost of hit
+points. See `reference-run.md`. Per-monster and per-item numbers are still ours:
+the Bestiary and Object Directory are prose, not stat blocks.

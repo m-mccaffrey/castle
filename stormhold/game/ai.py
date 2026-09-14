@@ -102,24 +102,24 @@ def _step_toward(world, level, m, tx, ty):
                 step = (m.x + a, m.y + b)
                 break
         if step is None:
-            return m.action_cost(MOVE_COST)
+            return m.action_cost(MOVE_COST, moving=True)
 
     nx, ny = step
     tile = level.get(nx, ny)
     if tile == T.DOOR:
         world.set_tile(level, nx, ny, T.DOOR_OPEN)
         world.sound("door", nx, ny, level.depth)
-        return m.action_cost(MOVE_COST)
+        return m.action_cost(MOVE_COST, moving=True)
     if not level.walkable(nx, ny, m.id):
         m.path = None
-        return m.action_cost(MOVE_COST)
+        return m.action_cost(MOVE_COST, moving=True)
 
     m.facing = _dir_index(nx - m.x, ny - m.y)
     level.move_actor(m, nx, ny)
     if m.path:
         m.path.pop(0)
     extra = 1.5 if tile in (T.WATER, T.RUBBLE) else 1.0
-    return int(m.action_cost(MOVE_COST) * extra)
+    return int(m.action_cost(MOVE_COST, moving=True) * extra)
 
 
 def _step_away(world, level, m, tx, ty):
@@ -131,8 +131,8 @@ def _step_away(world, level, m, tx, ty):
         if (a or b) and level.walkable(m.x + a, m.y + b, m.id):
             m.facing = _dir_index(a, b)
             level.move_actor(m, m.x + a, m.y + b)
-            return m.action_cost(MOVE_COST)
-    return m.action_cost(MOVE_COST)
+            return m.action_cost(MOVE_COST, moving=True)
+    return m.action_cost(MOVE_COST, moving=True)
 
 
 def _wander(world, level, m):
@@ -140,7 +140,7 @@ def _wander(world, level, m):
     if level.walkable(m.x + dx, m.y + dy, m.id):
         m.facing = _dir_index(dx, dy)
         level.move_actor(m, m.x + dx, m.y + dy)
-    return int(m.action_cost(MOVE_COST) * 1.5)
+    return int(m.action_cost(MOVE_COST, moving=True) * 1.5)
 
 
 def _dir_index(dx, dy):
@@ -161,7 +161,7 @@ def take_turn(world, level, m):
         return 100
 
     if m.has("held"):
-        return m.action_cost(MOVE_COST)
+        return m.action_cost(MOVE_COST, moving=True)
     if m.has("afraid"):
         target = level.actors.get(m.target_id) if m.target_id else None
         if target:

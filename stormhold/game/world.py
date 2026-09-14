@@ -425,7 +425,7 @@ class World:
             self.set_tile(level, nx, ny, T.DOOR_OPEN)
             self.sound("door", nx, ny, level.depth)
             self.msg("You open the door.", "info", to=p)
-            return p.action_cost(MOVE_COST) or MOVE_COST
+            return p.action_cost(MOVE_COST, moving=True) or MOVE_COST
 
         other = level.actor_at(nx, ny)
         if other is not None and other.kind == "monster" and not other.dead:
@@ -444,7 +444,7 @@ class World:
         if dx and dy and is_solid(level.get(p.x + dx, p.y)) and is_solid(level.get(p.x, p.y + dy)):
             return FREE_COST                    # no squeezing through corners
 
-        cost = p.action_cost(MOVE_COST)
+        cost = p.action_cost(MOVE_COST, moving=True)
         if cost is None:
             self.msg("You are carrying far too much to move. Drop something, "
                      "or bank your copper in town.", "warn", to=p)
@@ -625,7 +625,7 @@ class World:
                 self.sound("door", spot[0], spot[1], level.depth)
                 self.msg("You open the door.", "info", to=p)
                 self.update_fov(p, force=True)
-                return p.action_cost(MOVE_COST) or MOVE_COST
+                return p.action_cost(MOVE_COST, moving=True) or MOVE_COST
         self.msg("There is nothing here to open.", "info", to=p)
         return FREE_COST
 
@@ -645,7 +645,7 @@ class World:
             self.sound("door", spot[0], spot[1], level.depth)
             self.msg("You close the door.", "info", to=p)
             self.update_fov(p, force=True)
-            return p.action_cost(MOVE_COST) or MOVE_COST
+            return p.action_cost(MOVE_COST, moving=True) or MOVE_COST
         self.msg("There is nothing here to close.", "info", to=p)
         return FREE_COST
 
@@ -711,7 +711,7 @@ class World:
             if prev_ways <= 3 and ways > prev_ways and step > 0:
                 break
             prev_ways = ways
-        return total or (p.action_cost(MOVE_COST) or MOVE_COST)
+        return total or (p.action_cost(MOVE_COST, moving=True) or MOVE_COST)
 
     # ---- fighting --------------------------------------------------------
     def _act_attack(self, level, p, action):
@@ -991,8 +991,13 @@ class World:
         if spell is None or name not in p.spells:
             self.msg("You do not know that spell.", "warn", to=p)
             return FREE_COST
-        if p.mana < spell["mana"]:
-            self.msg("You have not the mana for that.", "warn", to=p)
+        # The original lets you overdraw: "You don't have enough mana. Casting
+        # this spell may damage your health. Continue?" - you pay the shortfall
+        # in hit points instead of being refused.
+        shortfall = max(0, spell["mana"] - int(p.mana))
+        if shortfall and not action.get("confirm_overdraw"):
+            self.msg(f"You have not the mana for that. Casting it will cost "
+                     f"you {shortfall} hit points instead.", "warn", to=p)
             return FREE_COST
 
         tx = int(action.get("x", p.x))
@@ -1002,7 +1007,13 @@ class World:
             self.msg("That is beyond your reach.", "warn", to=p)
             return FREE_COST
 
-        p.mana -= spell["mana"]
+        p.mana = max(0, p.mana - spell["mana"])
+        if shortfall:
+            p.hp -= shortfall
+            self.msg("The spell tears at you as you force it out.", "bad", to=p)
+            if p.hp <= 0:
+                self.kill(p)
+                return p.action_cost(spell.get("cast_ticks", CAST_COST))
         now = level.clock
         self.sound("magic", p.x, p.y, level.depth)
         power = p.level
@@ -1135,7 +1146,7 @@ class World:
                 self.move_player_to(ally, TOWN_DEPTH)
 
         p.recalc()
-        return p.action_cost(CAST_COST) or CAST_COST
+        return p.action_cost(spell.get("cast_ticks", CAST_COST)) or CAST_COST
 
     # ---- stairs ----------------------------------------------------------
     def _act_stairs(self, level, p, action):
@@ -1716,6 +1727,7 @@ class World:
             "weight": weight, "capacity": p.capacity,
             "bulk": p.carried_bulk, "bulk_capacity": p.bulk_capacity,
             "encumbrance": enc_name, "speed": p.speed_percent(),
+            "move_speed": p.move_speed_percent(),
             "effects": {k: v[0] for k, v in p.effects.items()},
             "spells": sorted(p.spells),
             "deepest": p.deepest, "kills": p.kills, "deaths": p.deaths,

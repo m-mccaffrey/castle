@@ -8,6 +8,9 @@ been and what you spent your gold on.
 
 from collections import OrderedDict
 
+from ..common.constants import (CAST_SECONDS, CAST_SECONDS_SLOW,
+                                INTERRUPTIBLE_FROM_SECONDS, TICKS_PER_SECOND)
+
 # school     : for grouping in the spell book
 # level      : character level needed to learn it
 # int_req    : intelligence needed to learn it
@@ -93,3 +96,18 @@ def spells_for_sale(depth, rng, count=5):
     pool = [n for n, s in SPELLS.items() if s["level"] <= max(3, depth + 3)]
     rng.shuffle(pool)
     return pool[:count]
+
+
+# Casting time. The original varies it by what the spell does rather than by
+# how strong it is: "In general, attack spells are fast, but divination spells
+# are slow." Identify and Remove Curse are its two 60-second spells, and
+# anything from 30 seconds up can be interrupted.
+# Revelation is our Identify; it is the one that takes a full minute.
+_SLOW_SPELLS = ("Revelation",)
+
+for _name, _s in SPELLS.items():
+    _secs = CAST_SECONDS_SLOW if _name in _SLOW_SPELLS else \
+        CAST_SECONDS.get(_s["school"], 5)
+    _s["cast_seconds"] = _secs
+    _s["cast_ticks"] = _secs * TICKS_PER_SECOND
+    _s["interruptible"] = _secs >= INTERRUPTIBLE_FROM_SECONDS

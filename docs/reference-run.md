@@ -616,3 +616,150 @@ the game for feel, and it costs nothing but a message table.
 - The game warns before the point of no return: *"This is your last chance to
   save if you want to carry your character forward to part two."*
 - Quitting is called what it is: *"cowardly restart"*.
+
+# Fifth session: the manual, decoded
+
+You supplied `CASTLE1.HLP` and `CASTLE2.HLP`. WinHelp 3.0 stores its topics
+phrase-compressed, so `strings` shows only the file skeleton; `tools/hlp.py`
+reads the B-tree directory, rebuilds the phrase table and expands the topic
+text. That turns the game's own manual into something greppable, and it settles
+most of what was still guesswork.
+
+## Units: grams and cubic centimetres
+
+> "Weight: How much all the equipment you are currently carrying weighs,
+> **measured in grams**." ... "Bulk: A measure of how much space all your
+> equipment takes, **measured in cubic centimetres**."
+
+So the numbers read off the character sheet are plain metric: a fresh character
+carries 3300 g and is rated for 25000 g, a small pack weighs 1000 g and holds
+12000 g and 50 litres, and one copper piece is **1 gram**. My earlier guess of
+"hundredths of a pound" was wrong about the unit, though the 2000-per-strength
+law it was derived from stands.
+
+## Attributes run 0-100
+
+> "In each pair, the left bar gives your current value, and the right gives the
+> maximum value, **on a scale of 0-100**. Your current value can be above or
+> below your maximum if you are wearing magical items that modify an attribute."
+
+That explains the paired bars on the character sheet: current against maximum,
+not base against modified. A ring of strength pushes current *above* maximum.
+Our 3-18 style range is not what the original uses.
+
+## The speed model, which we had wrong
+
+Two numbers, and they measure different things:
+
+> "The first number is overall speed. This affects how long it takes you to
+> perform most actions, such as casting spells, searching, or combat."
+> "The second number is movement speed ... affected by how much weight the
+> character is carrying. If your character is lightly loaded (carrying less
+> than 1/2 his or her rated maximum) then he/she will be able to move at 200%
+> of normal speed. ... At your rated maximum you will be moving at 100%, and at
+> twice your rated maximum (the real limit on what you can carry) you will be
+> moving at 50%. Note that movement speed (or slowness) doesn't affect other
+> actions, so you can cast spells at the same rate no matter how heavily
+> loaded you are."
+
+Those three points - 0.5x load gives 200%, 1x gives 100%, 2x gives 50% - are
+exactly `100 / (load / rated)`, capped at 200, with 2x rated as the hard limit.
+A clean hyperbola, and it replaces the six invented encumbrance tiers.
+
+We had this materially wrong in two ways: load was slowing *every* action, and
+the status line printed a fixed "100%" for the first figure. Both are fixed;
+the readout now shows overall speed and movement speed, as the original does.
+
+## Regeneration rates
+
+> "Hit points regenerate fairly quickly as time passes, **about 1 per minute**."
+> "Mana ... replenished by going up a level in experience, by using certain
+> magic items, or slowly with time (**1 point per hour**)."
+
+Mana is sixty times slower to come back than health. That single ratio explains
+why the game feels the way it does - you rest off wounds freely and hoard
+spells.
+
+## Casting is not gated by mana
+
+> "You don't have enough mana. Casting this spell may damage your health.
+> Continue?"
+
+You may overdraw and pay the shortfall in hit points. Now implemented: an
+unconfirmed cast is refused with the cost quoted, a confirmed one takes the
+hit points, and it can kill you.
+
+## The full spell table
+
+Levels, mana and casting time, verbatim from the Spell Directory:
+
+    Detect Objects          1     1   30 seconds  (interruptible)
+    Heal Minor Wounds       1     1   5 seconds
+    Light                   1     1   5 seconds
+    Magic Arrow             1     1   5 seconds
+    Phase Door              1     1   5 seconds
+    Clairvoyance            2     3   30 seconds  (interruptible)
+    Cold Bolt               2     2   5 seconds
+    Detect Monsters         2     2   30 seconds  (interruptible)
+    Detect Traps            2     2   30 seconds  (interruptible)
+    Identify                2     2   60 seconds  (interruptible)
+    Levitation              2     2   5 seconds
+    Neutralize Poison       2     3   5 seconds
+    Cold Ball               3     4   5 seconds
+    Fire Bolt               3     3   5 seconds
+    Heal Medium Wounds      3     3   5 seconds
+    Lightning Bolt          3     3   5 seconds
+    Remove Curse            3     3   60 seconds  (interruptible)
+    Resist Cold             3     3   5 seconds
+    Resist Fire             3     3   5 seconds
+    Resist Lightning        3     3   5 seconds
+    Rune Of Return          3     3   5 seconds
+    Sleep Monster           3     4   5 seconds
+    Slow Monster            3     4   5 seconds
+    Teleport                3     3   5 seconds
+    Ball Lightning          4     4   5 seconds
+    Fireball                4     5   5 seconds
+    Heal Major Wounds       4     5   5 seconds
+    Healing                 5     6   5 seconds
+    Transmogrify Monster    5     6   5 seconds
+    Clone Monster          NA    NA   NA
+    Create Traps           NA    NA   NA
+    Haste Monster          NA    NA   NA
+    Teleport Away          NA    NA   NA
+
+The four marked NA are cast by monsters, not by the player - Clone Monster,
+Create Traps, Haste Monster, Teleport Away. Worth knowing before treating the
+spell list as the player's alone.
+
+The shape: mana runs 1-6 across five spell levels, so no spell is ever more
+than a few points. Casting time is set by what the spell does rather than how
+strong it is - attack, healing and movement at 5 seconds, all detection at 30,
+and Identify and Remove Curse at 60. Everything from 30 seconds up is marked
+"this spell can be interrupted". Adopted: our spells now carry the same cast
+times by school, with Revelation (our Identify) as the one-minute spell.
+
+## What else the manual settles
+
+- **Experience** is gained "for killing monsters and for certain actions such
+  as disarming traps" - so trap disarming is a deliberate second income.
+- **Undead drain levels**: "if you lose a level due to loss of experience to
+  undead such as ghosts and vampires, these added skills will be lost."
+- **Difficulty** changes four things at once: "more monsters and traps, less
+  treasure and objects to find, and you need more experience to increase in
+  levels of power." So it is not a damage multiplier.
+- **Constitution's real job** is per-level hit points: "Characters with a high
+  constitution will gain extra hit points for each level as well." That matches
+  the measurement - it barely moves level-1 HP, because its effect compounds.
+- **Strength** gates armour, not just carrying: "Playing a character with a low
+  strength will really cramp what armor you can wear!"
+- **Armour Value** is a to-hit reduction, not damage absorption: "A high armor
+  value means monsters have a lesser chance of making a hit that inflicts
+  damage." The author notes the simplification that it applies to every attack
+  rather than per body part.
+- **Ball spells** cover 3x3 and "the monster in the center takes the most
+  damage."
+- **Magic containers** can lighten what they hold: "certain magical containers
+  may cause the weight of their contents to be less than expected."
+- The bestiary and object directories are **prose, not stat blocks** - lore and
+  ecology rather than numbers. Per-monster and per-item figures are still only
+  in the code, so damage dice, hit points and experience values remain ours.

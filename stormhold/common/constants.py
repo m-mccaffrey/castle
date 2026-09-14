@@ -13,6 +13,14 @@ TICKS_PER_TURN = 100        # one unhurried action by an average person
 MOVE_COST = 100
 ATTACK_COST = 100
 CAST_COST = 100
+
+# How long a spell takes, from the original's Spell Directory: attack and
+# utility spells are 5 seconds, detection 30, and Identify and Remove Curse
+# 60 - and the slow ones are marked "this spell can be interrupted".
+CAST_SECONDS = {"Attack": 5, "Defense": 5, "Healing": 5, "Movement": 5,
+                "Miscellaneous": 5, "Divination": 30}
+CAST_SECONDS_SLOW = 60
+INTERRUPTIBLE_FROM_SECONDS = 30
 PICKUP_COST = 100
 DROP_COST = 50
 QUAFF_COST = 100
@@ -135,13 +143,39 @@ SHOP_SELL_RATE = 0.8
 # A character starts with this much copper in the purse.
 START_COPPER = 1500
 
+# Movement speed against load, from the original's own manual:
+#   "If your character is lightly loaded (carrying less than 1/2 his or her
+#    rated maximum) then he/she will be able to move at 200% of normal speed.
+#    ... At your rated maximum you will be moving at 100%, and at twice your
+#    rated maximum (the real limit on what you can carry) you will be moving
+#    at 50%."
+# Those three points are exactly 100 / (load / rated), capped at 200, and
+# immobile past twice rated.
+MOVE_SPEED_CAP = 200
+CARRY_HARD_LIMIT = 2.0
+
+
+def movement_speed(weight, capacity):
+    """Movement speed as a percentage. None means you are going nowhere."""
+    if capacity <= 0:
+        return None
+    ratio = weight / capacity
+    if ratio > CARRY_HARD_LIMIT:
+        return None
+    if ratio <= 0.5:
+        return MOVE_SPEED_CAP
+    return int(round(100.0 / ratio))
+
+
+# Words for the load, for the status line only - the original shows a
+# percentage rather than a tier, so these names remain ours.
 ENCUMBRANCE = (
     #  name           fraction of capacity,  multiplier on how long moving takes
     ("Unencumbered", 0.50, 1.00),
     ("Burdened",     0.75, 1.25),
     ("Stressed",     1.00, 1.50),
-    ("Strained",     1.25, 2.00),
-    ("Overtaxed",    1.50, 3.00),
+    ("Strained",     1.50, 2.00),
+    ("Overtaxed",    2.00, 3.00),
     ("Overloaded",   99.0, None),      # None means you are going nowhere
 )
 
