@@ -15,7 +15,7 @@ import random
 import time
 
 from ..common.constants import (
-    SHOP_BUY_MARKUP, SHOP_SELL_RATE, condition_for,
+    SHOP_BUY_MARKUP, SHOP_SELL_RATE, condition_for, COINS,
     T, DIRS, TOWN_DEPTH, MAX_DEPTH, GRACE_TICKS, MOVE_COST, ATTACK_COST,
     CAST_COST, PICKUP_COST, DROP_COST, EQUIP_COST, QUAFF_COST, READ_COST,
     STAIRS_COST, REST_COST, FREE_COST, SIGHT_DUNGEON, SIGHT_TOWN, REGEN_TICKS,
@@ -25,7 +25,8 @@ from ..common.constants import (
 from ..common.fov import compute_fov, has_los, line_between
 from .level import generate_dungeon, generate_town
 from .actors import Player, NPC, make_monster, stat_bonus
-from .items import Item, Appearances, generate_item, generate_gold, BASES
+from .items import (Item, Appearances, generate_item, generate_gold,
+                    coin_metal, BASES)
 from .monsters import spawn_table
 from .spells import SPELLS, can_learn, elemental_factor
 from .traps import TRAPS, search_here, disarm_at, a_or_an
@@ -90,7 +91,7 @@ class World:
             if not level.passable(x, y):
                 continue
             if rng.random() < 0.42:
-                level.add_ground_item(x, y, self._gold_item(generate_gold(level.depth, rng)))
+                level.add_ground_item(x, y, self._gold_item(generate_gold(level.depth, rng), level.depth))
             else:
                 level.add_ground_item(x, y, generate_item(level.depth, rng, rich))
 
@@ -111,9 +112,14 @@ class World:
                 return value
         return pairs[-1][0]
 
-    def _gold_item(self, amount):
+    def _gold_item(self, amount, depth=0):
         it = Item("coins")
         it.gold_amount = amount
+        it.metal = coin_metal(depth, self.rng)
+        worth = dict(COINS)[it.metal]
+        # round the value to whole coins of that metal
+        it.gold_amount = max(worth, (amount // worth) * worth)
+        it.base = dict(it.base, name=f"{it.metal} pieces")
         return it
 
     # ====================================================== events ==========
@@ -802,9 +808,13 @@ class World:
             return FREE_COST
         item = pile[0]
         if item.kind == "coins":
-            p.copper += item.gold_amount
+            worth = dict(COINS)[getattr(item, "metal", "copper")]
+            p.gain_coins(item.metal, max(1, item.gold_amount // worth))
             level.take_ground_item(p.x, p.y, item)
-            self.msg(f"You pick up {item.gold_amount} copper.", "loot", to=p)
+            metal = getattr(item, "metal", "copper")
+            n = max(1, item.gold_amount // dict(COINS)[metal])
+            self.msg(f"You pick up {n} {metal} pieces "
+                     f"(worth {item.gold_amount} copper).", "loot", to=p)
             self.sound("gold", p.x, p.y, level.depth)
             return p.action_cost(PICKUP_COST) or PICKUP_COST
         ok, why = p.room_for(item)
@@ -1300,7 +1310,8 @@ class World:
                 if self.rng.random() < (1.0 if target.boss else 0.5):
                     mult = 10 if target.boss else 1
                     level.add_ground_item(target.x, target.y,
-                                          self._gold_item(generate_gold(target.depth, self.rng) * mult))
+                                          self._gold_item(generate_gold(target.depth, self.rng) * mult,
+                                                          target.depth))
             nearby = [p for p in self.players_on(target.depth)
                       if not p.dead and chebyshev(p.x, p.y, target.x, target.y) <= 12]
             if nearby:

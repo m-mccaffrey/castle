@@ -11,7 +11,7 @@ kind is shuffled per world, so last game's knowledge is no help.
 
 import random
 
-from ..common.constants import COPPER_GRAMS
+from ..common.constants import COPPER_GRAMS, COINS
 
 # Copper is plentiful. Prices in the hundreds and thousands give the temple's
 # services and the better gear something to bite on, and make a purse heavy
@@ -225,7 +225,7 @@ class Item:
     """One concrete object in the world."""
 
     __slots__ = ("id", "key", "base", "enchant", "cursed", "known", "qty",
-                 "charges", "contents", "spell", "gold_amount", "custom_name")
+                 "charges", "contents", "spell", "gold_amount", "metal", "custom_name")
 
     def __init__(self, key, enchant=0, cursed=False, qty=1, charges=0, spell=None):
         self.id = _new_id()
@@ -238,7 +238,8 @@ class Item:
         self.charges = charges
         self.contents = [] if self.base.get("kind") == "container" else None
         self.spell = spell          # for spell books
-        self.gold_amount = 0        # only meaningful on a pile of coins
+        self.gold_amount = 0        # value in copper, on a pile of coins
+        self.metal = "copper"       # what that pile is actually made of
         self.custom_name = None     # whatever the player chose to call it
 
     # ------------------------------------------------------------ queries --
@@ -280,7 +281,10 @@ class Item:
         parent." So a pack of holding weighs the same full as it does empty.
         """
         if self.kind == "coins":
-            return self.gold_amount * COPPER_GRAMS   # a coin weighs a gram
+            # every coin weighs a gram, so a pile's weight is how many coins
+            # it is, not what it is worth
+            worth = dict(COINS)[self.metal]
+            return (self.gold_amount // worth) * COPPER_GRAMS
         fixed = self.base.get("wt_fixed")
         if fixed:
             return fixed
@@ -457,3 +461,21 @@ def generate_item(depth, rng, rich=False, kinds=None):
 def generate_gold(depth, rng):
     """A single find early on is a few hundred copper, not a handful."""
     return rng.randint(10 + depth * 6, 40 + depth * 22) * 12
+
+
+# Which metals turn up at which depth. Deep finds come in better coin, which
+# is the point: the same fortune weighs a thousandth as much in platinum, and
+# every coin weighs a gram whatever it is made of.
+COIN_DEPTHS = ((0, ("copper",)),
+               (3, ("copper", "silver")),
+               (8, ("silver", "gold")),
+               (14, ("gold", "platinum")),
+               (20, ("platinum",)))
+
+
+def coin_metal(depth, rng):
+    choices = COIN_DEPTHS[0][1]
+    for floor, metals in COIN_DEPTHS:
+        if depth >= floor:
+            choices = metals
+    return rng.choice(choices)

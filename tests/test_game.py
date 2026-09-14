@@ -629,6 +629,42 @@ class TestSpellRules(unittest.TestCase):
         self.assertEqual(coin_purse(1000), [("platinum", 1)])
         self.assertEqual(coin_purse(111), [("gold", 1), ("silver", 1), ("copper", 1)])
 
+    def test_every_coin_weighs_a_gram_whatever_it_is_worth(self):
+        """Why platinum matters: value per gram, not value per coin."""
+        p = Player("Rich", {"strength": 10, "dexterity": 10,
+                            "intelligence": 10, "constitution": 10})
+        p.copper = 0
+        p.gain_coins("copper", 1000)
+        heavy_value, heavy_weight = p.copper, p.coin_count
+        p.copper = 0
+        p.gain_coins("platinum", 1)
+        self.assertEqual(p.copper, heavy_value, "same value")
+        self.assertEqual(p.coin_count, 1)
+        self.assertEqual(heavy_weight, 1000, "a thousand copper is a kilogram")
+
+    def test_a_purse_is_not_silently_consolidated(self):
+        """Measured in the original: 1500 copper weighed 1500, not 12."""
+        p = Player("Hoarder", {"strength": 10, "dexterity": 10,
+                               "intelligence": 10, "constitution": 10})
+        p.copper = 1500
+        self.assertEqual(p.coin_count, 1500)
+
+    def test_spending_makes_change_from_larger_coins(self):
+        p = Player("Buyer", {"strength": 10, "dexterity": 10,
+                             "intelligence": 10, "constitution": 10})
+        p.copper = 0
+        p.gain_coins("gold", 2)
+        self.assertTrue(p.spend(150))
+        self.assertEqual(p.copper, 50)
+        self.assertFalse(p.spend(999), "you cannot spend what you have not got")
+
+    def test_deep_finds_come_in_better_metal(self):
+        import random as _r
+        from stormhold.game.items import coin_metal
+        rng = _r.Random(7)
+        self.assertEqual(coin_metal(1, rng), "copper")
+        self.assertIn(coin_metal(22, rng), ("platinum",))
+
 
 class TestCasting(unittest.TestCase):
     def test_casting_time_varies_by_what_the_spell_does(self):

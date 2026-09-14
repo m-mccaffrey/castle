@@ -1098,3 +1098,41 @@ ours.
 
 The armour value ladder (task #27) and thieves (task #29). Both are recorded
 above with reasons.
+
+## Currency, and why denominations are a mechanic
+
+The glossary gives four coinages, all quoted in copper:
+
+    CP  copper piece   1
+    SP  silver piece   10 copper
+    GP  gold piece     100 copper
+    PP  platinum piece 1000 copper   "these are quite rare"
+
+On its own that reads like flavour. It is not, because of a measurement taken
+earlier: buying a 1000 g sword for 1470 coins moved the character's total
+weight by exactly -470, which means **the purse held 1470 actual copper pieces
+weighing 1470 grams**. Had the game silently consolidated that into 1 platinum,
+4 gold and 7 silver, it would have weighed 12 g and the arithmetic would not
+have worked.
+
+So coins are not consolidated, every coin weighs a gram whatever it is made of,
+and the denomination you find your money in determines what it costs you to
+carry:
+
+| the same 201500 copper of value | weighs |
+|---|---|
+| as copper pieces | 201.5 kg - immovable |
+| as platinum pieces | 201 g |
+
+Against a rated capacity of 25 kg, that is the difference between a fortune you
+can walk home with and one you have to leave behind. It is also why the bank
+exists, and why deep levels paying in better metal is a reward in itself rather
+than just a bigger number.
+
+**Implemented.** The purse now holds counts per metal rather than a single
+total; `copper` remains the value, so every price still reads in copper.
+Spending breaks larger coins into change. Dungeon finds come in metal
+appropriate to the depth - copper in the first levels, silver from three, gold
+from eight, platinum from fourteen - so a find at depth 22 is four platinum
+pieces weighing four grams where the same value at depth 5 would be a kilogram
+of copper.

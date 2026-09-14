@@ -9,7 +9,7 @@ Intelligence and bought tomes plays like a mage. Nothing enforces it.
 import random
 
 from ..common.constants import (
-    movement_speed, COPPER_GRAMS, COPPER_CC,
+    movement_speed, COPPER_GRAMS, COPPER_CC, COINS,
     STATS, START_STAT, MAX_LEVEL, CARRY_PER_STRENGTH, encumbrance_for,
     xp_for_level, clamp, SLOTS, RING_SLOTS, TICKS_PER_TURN,
     BODY_BULK_CAPACITY, CARRY_BASE, START_COPPER, BARE_HANDS_WEIGHT, BARE_HANDS_BULK,
@@ -77,7 +77,8 @@ class Player(Actor):
             self.stats.update({k: v for k, v in stats.items() if k in STATS})
         self.level = 1
         self.xp = 0
-        self.copper = START_COPPER
+        self.coins = {"copper": START_COPPER, "silver": 0, "gold": 0,
+                      "platinum": 0}
         self.bank = 0
         self.equipment = {s: None for s in SLOTS}
         self.inventory = []
@@ -158,12 +159,59 @@ class Player(Actor):
         dmg += stat_bonus(self.stat("strength"))
         return max(1, dmg)
 
+    # ------------------------------------------------------------- money ---
+    @property
+    def copper(self):
+        """What the purse is worth, in copper. Prices are all quoted in it."""
+        return sum(n * worth for (metal, worth) in COINS
+                   for n in (self.coins.get(metal, 0),))
+
+    @copper.setter
+    def copper(self, value):
+        """Set the purse to a plain value. Used at creation and by saves."""
+        self.coins = {"copper": max(0, int(value)), "silver": 0, "gold": 0,
+                      "platinum": 0}
+
+    @property
+    def coin_count(self):
+        """How many actual coins you are carrying. This is what weighs."""
+        return sum(self.coins.values())
+
+    def gain_coins(self, metal, n):
+        self.coins[metal] = self.coins.get(metal, 0) + int(n)
+
+    def spend(self, amount):
+        """Pay a price, breaking larger coins into change as needed.
+
+        Coins are not silently consolidated - a purse of copper stays a purse
+        of copper, and keeps weighing what it weighs. That is the whole point
+        of finding platinum in the deep levels.
+        """
+        if amount > self.copper:
+            return False
+        left = int(amount)
+        for metal, worth in COINS:                    # smallest first
+            take = min(self.coins.get(metal, 0), left // worth)
+            self.coins[metal] -= take
+            left -= take * worth
+        if left:                                      # break one bigger coin
+            for metal, worth in reversed(COINS):
+                if worth > left and self.coins.get(metal, 0):
+                    self.coins[metal] -= 1
+                    change = worth - left
+                    left = 0
+                    for m2, w2 in reversed(COINS):
+                        n, change = divmod(change, w2)
+                        self.coins[m2] = self.coins.get(m2, 0) + n
+                    break
+        return left == 0
+
     # -------------------------------------------------------- encumbrance ---
     @property
     def carried_weight(self):
         w = sum(i.weight for i in self.inventory)
         w += sum(i.weight for i in self.equipment.values() if i)
-        w += self.copper * COPPER_GRAMS      # a coin weighs a gram
+        w += self.coin_count * COPPER_GRAMS   # every coin weighs a gram
         return w
 
     @property
@@ -180,7 +228,7 @@ class Player(Actor):
             worn = self.equipment.get(slot)
             if worn:
                 b += worn.base.get("bulk", 0)
-        b += self.copper * COPPER_CC
+        b += self.coin_count * COPPER_CC
         return b
 
     @property
@@ -432,7 +480,8 @@ class Player(Actor):
     def to_save(self):
         return {
             "name": self.name, "colour": self.colour, "stats": self.stats,
-            "level": self.level, "xp": self.xp, "copper": self.copper, "bank": self.bank,
+            "level": self.level, "xp": self.xp, "coins": dict(self.coins),
+            "bank": self.bank,
             "hp": self.hp, "mana": self.mana,
             "inventory": [i.to_dict() for i in self.inventory],
             "equipment": {k: (v.to_dict() if v else None) for k, v in self.equipment.items()},
@@ -446,7 +495,10 @@ class Player(Actor):
         self.colour = d.get("colour", self.colour)
         self.level = d.get("level", 1)
         self.xp = d.get("xp", 0)
-        self.copper = d.get("copper", START_COPPER)
+        if "coins" in d:
+            self.coins = dict(d["coins"])
+        else:
+            self.copper = d.get("copper", START_COPPER)
         self.bank = d.get("bank", 0)
         self.inventory = [Item.from_dict(x) for x in d.get("inventory", [])]
         self.equipment = {s: None for s in SLOTS}
