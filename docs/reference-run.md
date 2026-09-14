@@ -8,12 +8,16 @@ it a black-box measuring instrument. `tools/reference-harness.sh` sets that up.
 This is observation of behaviour, the same thing you would do by hand with the
 game open and a notebook. No code was decompiled and no assets were copied.
 
+`tools/reference_driver.py` sends keys and clicks and reads the status panel and
+message log back through OCR; `tools/reference_bot.py` is a small bot that plays
+using them. Both exist to measure the original, not to ship with the game.
+
 ## How to reproduce
 
     dpkg --add-architecture i386
     apt-get update
     apt-get install -y libgd3:i386     # install first; the resolver gives up otherwise
-    apt-get install -y wine wine32 xvfb imagemagick xdotool
+    apt-get install -y wine wine32 xvfb imagemagick xdotool tesseract-ocr
     tools/reference-harness.sh /path/to/CASTLE1.EXE
 
 Wine's 32-bit tree carries the real 16-bit modules (`krnl386.exe16`,
@@ -348,3 +352,80 @@ rule so the divergence stays a decision rather than a mistake.
 - monster statistics beyond "a kobold kills a level-1 character"
 - trap mechanics
 - spell costs other than Heal Minor Wounds at 1
+
+# Third session: a bot plays it
+
+To get past hand-driving, this session added OCR (tesseract) and a small bot
+that reads the game as text and plays it: `tools/reference-harness.sh` sets up
+the environment, and the driver and bot live in the scratchpad notes below.
+The bot finds the player by sprite colour, finds monsters as colour blobs that
+are neither terrain nor player, attacks what is adjacent, runs to explore, and
+writes every message it sees to a journal.
+
+## Character creation has caps and a costed pool
+
+Raising an attribute is not simply one point per click. Strength hit a **cap**
+partway through spending: the Available bar stopped falling while points were
+still left, and further clicks did nothing. The pool then had to be spent
+elsewhere. So chargen is a pool against per-attribute maxima, not a free
+allocation.
+
+The pool is worth about 12 increments from the starting values.
+
+## What Constitution buys
+
+A character with the whole pool in Constitution has **14 hit points** at level
+1, against **10** for one that spends nothing there. That is roughly one hit
+point per three points of Constitution - a much weaker return than the carry
+weight law, and worth knowing before treating Constitution as the survival
+stat. Armour is the better early buy.
+
+## Armour values
+
+| item | Armor Value | weight | bulk | base value |
+|---|---|---|---|---|
+| Normal Suit of Leather Armor | 6 | 5000 | 24000 | 750 |
+| Normal Leather Helmet | 3 | - | - | 375 |
+
+Armour Value is additive across pieces and starts at 0 with no armour.
+
+## A second shop, and spell books
+
+The town has more than the weaponsmith. The general/magic store stocks:
+
+    Potion of Levitation, Spell Book: Detect Objects, Spell Book: Magic Arrow,
+    Wool Cloak, Enchanted Cape of Protection, Normal Leather Boots,
+    2 Slot Belt, Small Pack, Medium Bag
+
+Three things follow. Spells are **bought as books**, so the starting spell is
+not the only way to learn one. Belts are sized in **slots** ("2 Slot Belt"), so
+the belt is itself a small container. And items carry quality prefixes -
+`Normal` for plain, `Enchanted` for better ("Enchanted Cape of Protection").
+
+The weaponsmith's full stock, for the item list: Club, Hammer, Hand Axe,
+Quarter Staff, Spear, Short Sword, Flail, Dagger, Suit of Leather Armor,
+Suit of Studded Leather Armor, Small Wooden Shield, Medium Wooden Shield,
+Large Wooden Shield, Medium Iron Shield, Leather Helmet, Bracers, Gauntlets.
+
+## One price that does not fit
+
+Every weapon and armour price so far is a clean 1.4x an integer base: 105/75,
+1470/1050, 525/375, 1050/750. **Spell Book: Magic Arrow costs 416**, which is
+not 1.4x a whole number (it implies 297.14). So either spell books are priced
+by a different rule, or something else - spell level, or a per-item modifier -
+enters for them. Flagged rather than guessed at.
+
+## Shops rearrange themselves
+
+The Store window auto-arranges after every purchase, so item positions shift.
+Anything scripted against the shop has to re-read the window between buys.
+
+## Two things that will bite anyone repeating this
+
+The game window must sit fully on screen at (0, 0). Moving it even 8 pixels
+above the top edge leaves menus working but **silently stops the game clock** -
+movement and actions are accepted and do nothing. It looks exactly like a
+wedged game and is not one.
+
+Resizing the window repeatedly while a game is running eventually leaves the
+map pane blank and unrecoverable. Set the size once, before starting a game.
