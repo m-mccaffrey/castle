@@ -666,6 +666,62 @@ class TestSpellRules(unittest.TestCase):
         self.assertIn(coin_metal(22, rng), ("platinum",))
 
 
+class TestBestiaryBehaviour(unittest.TestCase):
+    """Behaviours the original's bestiary describes in prose."""
+
+    def test_some_creatures_arrive_in_packs(self):
+        from stormhold.game.monsters import MONSTERS
+        packed = [k for k, v in MONSTERS.items() if v.get("pack")]
+        self.assertTrue(packed, "rats, wolves and goblins come in numbers")
+        for k in packed:
+            lo, hi = MONSTERS[k]["pack"]
+            self.assertGreaterEqual(lo, 1)
+            self.assertLessEqual(lo, hi)
+
+    def test_fearless_things_never_break_off(self):
+        import random as _r
+        from stormhold.game.ai import _will_flee
+        from stormhold.game.actors import make_monster
+        from stormhold.game.monsters import MONSTERS
+        brave = next(k for k, v in MONSTERS.items() if v.get("fearless"))
+        timid = next(k for k, v in MONSTERS.items() if not v.get("fearless"))
+        for key, expect in ((brave, False), (timid, True)):
+            m = make_monster(key, 1, 1, 1, _r.Random(2))
+            m.hp = 1
+            self.assertEqual(_will_flee(m), expect, key)
+
+    def test_immunity_beats_mere_resistance(self):
+        from stormhold.game.spells import elemental_factor
+        self.assertEqual(elemental_factor("fire", {"immune": ("fire",)}), 0.0)
+        self.assertEqual(elemental_factor("fire", {"element": "fire"}), 0.5)
+
+    def test_the_undead_take_different_things_from_you(self):
+        world = World(seed=8)
+        p = world.add_player("Victim")
+        p.mana = 10
+        world.drain_player(p, "mana")
+        self.assertLess(p.mana, 10, "a wraith takes your magic first")
+        p.mana = 0
+        before = p.stat("intelligence")
+        world.drain_player(p, "mana")
+        self.assertLess(p.stat("intelligence"), before,
+                        "and your wits when there is no magic left")
+
+    def test_resistances_stack_against_breath(self):
+        world = World(seed=5)
+        p = world.add_player("Warded")
+        p.spells.add("Ward Fire")
+        p.max_mana = 99
+        self.assertEqual(world.resisted(p, "fire", 100), 100)
+        for expect in (50, 25):
+            p.mana = 99
+            world.submit(p, {"a": "cast", "spell": "Ward Fire",
+                             "x": p.x, "y": p.y})
+            self.assertEqual(world.resisted(p, "fire", 100), expect)
+        self.assertEqual(world.resisted(p, "cold", 100), 100,
+                         "warding fire does nothing about cold")
+
+
 class TestCasting(unittest.TestCase):
     def test_casting_time_varies_by_what_the_spell_does(self):
         """Attack spells are fast, divination slow - the original's rule."""

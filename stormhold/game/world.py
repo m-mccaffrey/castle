@@ -86,6 +86,18 @@ class World:
             m.hp = m.max_hp
             m.xp_value = int(m.xp_value * (1 + (party - 1) * 0.22))
             level.place(m)
+            # "when found in numbers can be much more deadly" - rats, wolves,
+            # dogs and goblins arrive as a pack, not as a single specimen.
+            pack = m.tpl.get("pack")
+            if pack:
+                for _ in range(rng.randint(pack[0] - 1, pack[1] - 1)):
+                    spot = level.find_free(x, y, max_r=3)
+                    if not spot:
+                        break
+                    mate = make_monster(key, spot[0], spot[1], level.depth, rng)
+                    mate.max_hp = int(mate.max_hp * tough_mult)
+                    mate.hp = mate.max_hp
+                    level.place(mate)
 
         for x, y, rich in level.loot_spots:
             if not level.passable(x, y):
@@ -1140,6 +1152,17 @@ class World:
         if spell.get("cure"):
             for bad in ("poisoned", "burning", "afraid", "slowed"):
                 p.effects.pop(bad, None)
+        if spell.get("resist"):
+            el = spell["resist"]
+            stacks = getattr(p, "resist_stacks", None)
+            if stacks is None:
+                stacks = p.resist_stacks = {}
+            stacks[el] = stacks.get(el, 0) + 1
+            p.add_effect(f"resist_{el}", now + spell.get("dur", 90) * 10)
+            self.msg(f"You cast {name}. "
+                     + ("You are warded twice over." if stacks[el] > 1
+                        else f"{el.title()} will find you harder to hurt."),
+                     "good", to=p)
         if spell.get("ac"):
             dur = spell.get("dur", 40) * 10
             key = "stoneskin" if name == "Stoneskin" else "shield_spell"
@@ -1176,7 +1199,11 @@ class World:
             else:
                 self.msg("Choose something in your pack first.", "warn", to=p)
         if spell.get("blink"):
-            spot = self.random_safe_spot(level, p)
+            # "Phase Door ... transports the player to a random location from 5
+            # to 10 squares from his or her current position"; Teleport moves
+            # you "at least 10 squares".
+            lo, hi = spell["blink"]
+            spot = self.random_spot_between(level, p, lo, hi)
             if spot:
                 level.move_actor(p, *spot)
                 self.update_fov(p, force=True)
@@ -1246,6 +1273,29 @@ class World:
                 self.msg(entry, "bad", to=p)
 
     # ---- monsters acting -------------------------------------------------
+    def resisted(self, target, element, dmg):
+        """Damage after the target's resistances, which stack multiplicatively."""
+        if not element:
+            return dmg
+        stacks = getattr(target, "resist_stacks", {}).get(element, 0)
+        if target.has(f"resist_{element}"):
+            stacks = max(1, stacks)
+        return max(1, int(dmg * (0.5 ** stacks))) if stacks else dmg
+
+    def random_spot_between(self, level, p, lo, hi):
+        """A free square between lo and hi paces away, if there is one."""
+        over = None            # nearest candidate that is at least far enough
+        for _ in range(120):
+            spot = self.random_safe_spot(level, p)
+            if not spot:
+                continue
+            d = chebyshev(p.x, p.y, spot[0], spot[1])
+            if lo <= d <= hi:
+                return spot
+            if d >= lo and (over is None or d < over[1]):
+                over = (spot, d)
+        return over[0] if over else None
+
     def monster_ranged(self, level, m, target):
         kind = m.tpl.get("bolt", "spark")
         for (cx, cy) in line_between(m.x, m.y, target.x, target.y):
@@ -1260,6 +1310,10 @@ class World:
             self.msg(f"The {m.name}'s shot misses you.", "combat", to=target)
             return
         dmg = m.damage_roll(self.rng)
+        # A player's resistances halve elemental damage, and stack: "casting
+        # two Resist Cold spells cuts the damage from White Dragon breath to
+        # 1/4 its normal value."
+        dmg = self.resisted(target, kind, dmg)
         combat.apply_damage(self, target, dmg * (2 if crit else 1), m, crit=crit)
         self.msg(f"The {m.name} hits you for {dmg}.", "hurt", to=target)
         if m.tpl.get("burn") and not target.dead:
@@ -1403,14 +1457,39 @@ class World:
         ("restore_hp",   "Restore Drained Hit Points", 3000),
     )
 
+    # What each kind of undead takes from you, from the original's bestiary:
+    # a wight's touch drains "strength, constitution, and dexterity"; a wraith
+    # drains "the magical powers of men they encounter, or if that fails as
+    # well, drain the intelligence from their minds"; a vampire drains hit
+    # points "in such a manner that the victim will not recover without the aid
+    # of special enchantment".
+    BODY_STATS = ("strength", "constitution", "dexterity")
+
     def drain_player(self, player, kind, source=None):
         """Something took a piece of you that will not simply grow back."""
-        if kind == "hp":
+        lost = 0
+        if kind in ("hp", "maxhp"):
             lost = player.drain_hp(self.rng.randint(2, 5))
             if lost:
                 self.msg(f"You feel weaker. ({lost} hit points drained)", "bad", to=player)
+        elif kind == "mana":
+            take = min(int(player.mana), self.rng.randint(2, 6))
+            if take:
+                player.mana -= take
+                lost = take
+                self.msg("Your magic is drawn out of you.", "bad", to=player)
+            else:
+                # "or if that fails as well, drain the intelligence"
+                lost = player.drain_stat("intelligence", 1)
+                if lost:
+                    self.msg("It takes the sharpness from your mind.", "bad", to=player)
+        elif kind == "mind":
+            lost = player.drain_stat("intelligence", 1)
+            if lost:
+                self.msg("It takes the sharpness from your mind.", "bad", to=player)
         else:
-            stat = self.rng.choice(list(STATS))
+            stat = self.rng.choice(self.BODY_STATS if kind == "body"
+                                   else list(STATS))
             lost = player.drain_stat(stat, 1)
             if lost:
                 self.msg(f"You feel your {stat} ebbing away.", "bad", to=player)

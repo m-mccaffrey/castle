@@ -155,6 +155,17 @@ def _dir_index(dx, dy):
     return best
 
 
+def _will_flee(m):
+    """Most things break off when badly hurt; some never do.
+
+    The bestiary is explicit about the exceptions - "a ant will fight to the
+    death" - and mindless constructs and guards have no instinct to run.
+    """
+    if m.tpl.get("fearless"):
+        return False
+    return m.hp <= m.max_hp * 0.25
+
+
 def take_turn(world, level, m):
     """One creature's action. Returns the ticks it consumed."""
     if m.dead:
@@ -195,8 +206,10 @@ def take_turn(world, level, m):
     if los:
         m.last_seen = (target.x, target.y)
 
-    # A cornered rat runs.
-    if m.ai == "skittish" and m.hp < m.max_hp * 0.35 and dist <= 4:
+    # A cornered rat runs - and so does anything badly hurt that has the
+    # instinct for it. Constructs, guards and vermin do not.
+    if dist <= 4 and _will_flee(m) and (m.ai == "skittish" or
+                                        m.hp < m.max_hp * 0.2):
         return _step_away(world, level, m, target.x, target.y)
 
     if dist <= 1:
@@ -205,7 +218,20 @@ def take_turn(world, level, m):
         return m.action_cost(ATTACK_COST)
 
     rng_attack = m.tpl.get("rng", 0)
+    # A manticore "can exhaust the spines on its tail, though it will usually
+    # cease fire before such exhaustion and so hazard a few quills against
+    # emergency" - so ranged attackers hold a reserve and then close.
+    ammo = m.tpl.get("ammo")
+    if ammo is not None:
+        spent = getattr(m, "ammo_spent", 0)
+        reserve = max(1, ammo // 6)
+        if spent >= ammo - reserve and m.hp > m.max_hp * 0.4:
+            rng_attack = 0                       # save the last few
+        elif spent >= ammo:
+            rng_attack = 0
     if rng_attack and los and dist <= rng_attack and m.ai in ("archer", "caster", "boss"):
+        if ammo is not None:
+            m.ammo_spent = getattr(m, "ammo_spent", 0) + 1
         m.facing = _dir_index(target.x - m.x, target.y - m.y)
         world.monster_ranged(level, m, target)
         if dist < 3 and m.ai != "boss":

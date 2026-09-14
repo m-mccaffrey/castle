@@ -32,6 +32,12 @@ SPELLS = OrderedDict([
     ("Shield",          dict(school="Defense", level=2,  int_req=9,  mana=4,  rng=0, ac=4, dur=60, desc="Turns aside blows for a while.")),
     ("Stoneskin",       dict(school="Defense", level=7,  int_req=12, mana=9,  rng=0, ac=8, dur=45, desc="Your skin hardens. Slower, but far harder to hurt.")),
     ("Sanctuary",       dict(school="Defense", level=12, int_req=14, mana=16, rng=0, halve=True, dur=30, desc="Halves every wound taken for a short while.")),
+    # The original's three resistances, level 3 and 3 mana each. They halve
+    # damage of their element and stack: two castings take dragon breath to a
+    # quarter. Without these a breath weapon is simply a death sentence.
+    ("Ward Fire",       dict(school="Defense", level=5,  int_req=11, mana=3, rng=0, resist="fire",      dur=90, desc="Flame washes over you and does half what it should.")),
+    ("Ward Frost",      dict(school="Defense", level=5,  int_req=11, mana=3, rng=0, resist="cold",      dur=90, desc="Cold bites at half its strength.")),
+    ("Ward Storm",      dict(school="Defense", level=5,  int_req=11, mana=3, rng=0, resist="lightning", dur=90, desc="Lightning finds you a poor conductor.")),
     ("Bulwark",         dict(school="Defense", level=16, int_req=16, mana=20, rng=4, ac=6, dur=40, party=True, desc="Wards you and every companion nearby.")),
 
     # ---- Mending --------------------------------------------------------
@@ -49,9 +55,10 @@ SPELLS = OrderedDict([
     ("True Sight",      dict(school="Divination", level=13, int_req=14, mana=14, rng=0, truesight=True, dur=60, desc="See in the dark, and see what is hidden.")),
 
     # ---- Passage --------------------------------------------------------
-    ("Blink",           dict(school="Movement", level=4,  int_req=10, mana=6,  rng=0, blink=True, desc="A short hop out of trouble.")),
+    ("Blink",           dict(school="Movement", level=4,  int_req=10, mana=6,  rng=0, blink=(5, 10), desc="A short hop out of trouble.")),
     ("Haste",           dict(school="Movement", level=8,  int_req=12, mana=10, rng=0, haste=True, dur=40, desc="You move at twice your usual pace.")),
     ("Featherweight",   dict(school="Miscellaneous", level=6,  int_req=11, mana=8,  rng=0, feather=True, dur=90, desc="Your burden stops mattering for a while.")),
+    ("Farstep",         dict(school="Movement", level=10, int_req=13, mana=10, rng=0, blink=(10, 40), desc="A long jump, and no saying exactly where you land.")),
     ("Passwall",        dict(school="Miscellaneous", level=17, int_req=16, mana=18, rng=1, passwall=True, desc="Opens a way through solid stone.")),
     ("Recall",          dict(school="Movement", level=10, int_req=13, mana=22, rng=0, recall=True, desc="Pulls you and everyone with you back to Aldershade.")),
 ])
@@ -133,6 +140,8 @@ def elemental_factor(element, monster_tpl):
     """Damage multiplier for an elemental attack against this creature."""
     if not element:
         return 1.0
+    if element in (monster_tpl.get("immune") or ()):
+        return 0.0          # "totally immune to the deepest cold"
     kin = monster_tpl.get("element")
     if kin == element:
         return RESIST_FACTOR
