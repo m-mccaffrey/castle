@@ -63,6 +63,14 @@ class Scene:
     def __init__(self, app):
         self.app = app
 
+    def layout(self, size):
+        """Position widgets for a window of this size.
+
+        Called when the scene appears and again whenever the window changes.
+        Anything that builds click targets must do it here, not in __init__,
+        or the buttons end up drawn in one place and clickable in another.
+        """
+
     def handle(self, event):
         pass
 
@@ -81,17 +89,29 @@ class MenuScene(Scene):
     def __init__(self, app, message=""):
         super().__init__(app)
         self.message = message
-        cx = MIN_SIZE[0] // 2
+        self.layout(app.screen.get_size())
+        self.name.focused = not self.name.value
+
+    def layout(self, size):
+        app = self.app
+        cx = size[0] // 2
+        keep = {}
+        for field in ("name", "host", "port"):
+            widget = getattr(self, field, None)
+            if widget is not None:
+                keep[field] = (widget.value, widget.focused)
         self.name = W.TextField((cx - 90, 250, 220, 28), app.settings.get("name", ""), 14)
         self.host = W.TextField((cx - 90, 380, 220, 28), app.settings.get("host", "127.0.0.1"), 24)
         self.port = W.TextField((cx + 140, 380, 70, 28), str(app.settings.get("port", 7777)), 5, numeric=True)
+        for field, (value, focused) in keep.items():
+            widget = getattr(self, field)
+            widget.value, widget.focused = value, focused
         self.buttons = [
             W.Button((cx - 200, 300, 190, 34), "Host a game", "host"),
             W.Button((cx + 10, 300, 190, 34), "Join a game", "join"),
             W.Button((cx - 200, 430, 190, 34), "How to play", "help"),
             W.Button((cx + 10, 430, 190, 34), "Quit", "quit"),
         ]
-        self.name.focused = not self.name.value
 
     def handle(self, event):
         self.name.handle(event)
@@ -177,7 +197,10 @@ class CharGenScene(Scene):
         self.points = START_POINTS
         self.colour = 0
         self.error = ""
-        cx = MIN_SIZE[0] // 2
+        self.layout(app.screen.get_size())
+
+    def layout(self, size):
+        cx = size[0] // 2
         self.plus = {}
         self.minus = {}
         for i, stat in enumerate(STATS):
@@ -2053,6 +2076,7 @@ class App:
         return self.scenes[-2] if len(self.scenes) > 1 else self.scenes[0]
 
     def push(self, scene):
+        scene.layout(self.screen.get_size())
         self.scenes.append(scene)
 
     def pop(self):
@@ -2060,6 +2084,7 @@ class App:
             self.scenes.pop()
 
     def replace(self, scene):
+        scene.layout(self.screen.get_size())
         self.scenes = [scene]
 
     # ---------------------------------------------------------- networking -
@@ -2149,6 +2174,7 @@ class App:
                     self.screen = pygame.display.set_mode(
                         (max(MIN_SIZE[0], event.w), max(MIN_SIZE[1], event.h)),
                         pygame.RESIZABLE)
+                    self.scene.layout(self.screen.get_size())
                 else:
                     self.scene.handle(event)
 
