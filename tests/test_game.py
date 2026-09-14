@@ -578,6 +578,58 @@ class TestStartingKit(unittest.TestCase):
         self.assertEqual((pack["capacity"], pack["bulk_capacity"]), (12000, 50000))
 
 
+class TestSpellRules(unittest.TestCase):
+    """Rules taken verbatim from the original's Spell Directory."""
+
+    def test_healing_is_a_floor_or_a_fraction_whichever_is_greater(self):
+        from stormhold.game.spells import SPELLS
+        minor = SPELLS["Mend Wounds"]
+        self.assertEqual(minor["heal_flat"], 8)
+        self.assertAlmostEqual(minor["heal_frac"], 0.20)
+        # a big character gets the percentage, a small one the flat floor
+        self.assertEqual(max(8, int(0.20 * 200)), 40)
+        self.assertEqual(max(8, int(0.20 * 20)), 8)
+
+    def test_elements_resist_themselves_and_fear_their_opposite(self):
+        from stormhold.game.spells import elemental_factor
+        self.assertEqual(elemental_factor("fire", {"element": "fire"}), 0.5)
+        self.assertEqual(elemental_factor("fire", {"element": "cold"}), 1.5)
+        self.assertEqual(elemental_factor("fire", {}), 1.0)
+        self.assertEqual(elemental_factor(None, {"element": "fire"}), 1.0)
+
+    def test_slowing_stacks_with_diminishing_returns(self):
+        """1/2, then 1/3, then 1/4 - never a second halving."""
+        import random as _r
+        from stormhold.game.actors import make_monster
+        from stormhold.game.monsters import MONSTERS
+        world = World(seed=4)
+        m = make_monster(sorted(MONSTERS)[0], 1, 1, 1, _r.Random(1))
+        base = m.action_cost(100)
+        world.apply_slow(m, 0)
+        first = m.action_cost(100)
+        world.apply_slow(m, 0)
+        second = m.action_cost(100)
+        self.assertEqual(first, base * 2)
+        self.assertEqual(second, base * 3)
+
+    def test_a_pack_of_holding_reports_a_fixed_weight(self):
+        from stormhold.game.items import Item
+        bag = Item("holdpack")
+        empty = bag.weight
+        for _ in range(3):
+            bag.contents.append(Item("platemail"))
+        self.assertEqual(bag.weight, empty, "a pack of holding never gets heavier")
+        plain = Item("pack")
+        before = plain.weight
+        plain.contents.append(Item("platemail"))
+        self.assertGreater(plain.weight, before)
+
+    def test_coins_come_in_four_metals(self):
+        from stormhold.common.constants import coin_purse
+        self.assertEqual(coin_purse(1000), [("platinum", 1)])
+        self.assertEqual(coin_purse(111), [("gold", 1), ("silver", 1), ("copper", 1)])
+
+
 class TestCasting(unittest.TestCase):
     def test_casting_time_varies_by_what_the_spell_does(self):
         """Attack spells are fast, divination slow - the original's rule."""

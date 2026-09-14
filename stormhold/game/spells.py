@@ -35,11 +35,11 @@ SPELLS = OrderedDict([
     ("Bulwark",         dict(school="Defense", level=16, int_req=16, mana=20, rng=4, ac=6, dur=40, party=True, desc="Wards you and every companion nearby.")),
 
     # ---- Mending --------------------------------------------------------
-    ("Mend Wounds",     dict(school="Healing", level=1,  int_req=9,  mana=4,  rng=1, heal=(2, 6, 1.0), desc="Closes cuts. Yours or a friend's.")),
+    ("Mend Wounds",     dict(school="Healing", level=1,  int_req=9,  mana=4,  rng=1, heal_flat=8, heal_frac=0.20, desc="Closes cuts. Yours or a friend's.")),
     ("Cure Affliction", dict(school="Healing", level=4,  int_req=10, mana=6,  rng=1, cure=True, desc="Draws out poison and breaks a fever.")),
-    ("Greater Mending", dict(school="Healing", level=9,  int_req=13, mana=12, rng=1, heal=(4, 8, 1.6), desc="Knits deep wounds closed.")),
-    ("Circle of Mending", dict(school="Healing", level=15, int_req=15, mana=20, rng=4, heal=(4, 8, 1.4), party=True, desc="Heals every companion around you at once.")),
-    ("Restoration",     dict(school="Healing", level=20, int_req=18, mana=30, rng=1, heal=(8, 8, 2.0), cure=True, desc="Makes a body whole again.")),
+    ("Greater Mending", dict(school="Healing", level=9,  int_req=13, mana=12, rng=1, heal_flat=16, heal_frac=0.40, desc="Knits deep wounds closed.")),
+    ("Circle of Mending", dict(school="Healing", level=15, int_req=15, mana=20, rng=4, heal_flat=24, heal_frac=0.60, party=True, desc="Heals every companion around you at once.")),
+    ("Restoration",     dict(school="Healing", level=20, int_req=18, mana=30, rng=1, heal_full=True, cure=True, desc="Makes a body whole again.")),
 
     # ---- Seeking --------------------------------------------------------
     ("Detect Life",     dict(school="Divination", level=2,  int_req=9,  mana=3,  rng=0, detect="monsters", dur=80, desc="Shows every living thing on the floor.")),
@@ -111,3 +111,31 @@ for _name, _s in SPELLS.items():
     _s["cast_seconds"] = _secs
     _s["cast_ticks"] = _secs * TICKS_PER_SECOND
     _s["interruptible"] = _secs >= INTERRUPTIBLE_FROM_SECONDS
+
+
+# Which element each attack spell belongs to. The original's rule is symmetric:
+# a creature built of an element takes only partial damage from it, and extra
+# damage from its opposite - "fire-using creatures will take extra damage from
+# the [cold] bolt, but cold-using creatures will take only partial damage".
+ELEMENT_OF = {"Spark": "lightning", "Frost Shard": "cold", "Fire Bolt": "fire",
+              "Lightning": "lightning", "Fireball": "fire", "Ice Storm": "cold",
+              "Chain Lightning": "lightning"}
+OPPOSITE = {"fire": "cold", "cold": "fire"}
+RESIST_FACTOR = 0.5          # a creature of that element takes half
+VULNERABLE_FACTOR = 1.5      # its opposite takes half again
+
+for _n, _e in ELEMENT_OF.items():
+    if _n in SPELLS:
+        SPELLS[_n]["element"] = _e
+
+
+def elemental_factor(element, monster_tpl):
+    """Damage multiplier for an elemental attack against this creature."""
+    if not element:
+        return 1.0
+    kin = monster_tpl.get("element")
+    if kin == element:
+        return RESIST_FACTOR
+    if kin and OPPOSITE.get(kin) == element:
+        return VULNERABLE_FACTOR
+    return 1.0

@@ -112,7 +112,10 @@ def disarm_at(world, level, player, spot, rng):
         return False, "There is nothing there to disarm."
     if not trap["armed"]:
         return False, "That one is already dealt with."
-    skill = player.level + player.stat("dexterity")
+    # The glossary credits both: intelligence "gives you a better chance of
+    # disarming traps", and dexterity "improves your AV, your chance to hit,
+    # and your chance to disarm traps".
+    skill = player.level + player.stat("dexterity") + player.stat("intelligence") // 2
     roll = rng.randint(1, 20) + skill
     name = TRAPS[trap["kind"]]["name"]
     if roll >= 18:

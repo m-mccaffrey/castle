@@ -497,7 +497,8 @@ class Monster(Actor):
         # else; the argument exists so callers can treat them alike.
         cost = base * self.speed / 100.0
         if self.has("slowed"):
-            cost *= 2.0
+            # 1/2, then 1/3, then 1/4 ... each further slowing helps less
+            cost *= getattr(self, "slow_divisor", 2)
         if self.has("haste"):
             cost *= 0.5
         return max(10, int(cost))

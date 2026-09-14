@@ -80,6 +80,10 @@ def apply_damage(world, target, amount, source=None, crit=False):
         return 0
     if target.has("sanctuary"):
         amount = max(1, amount // 2)
+    if getattr(target, "resting", False):
+        # Being struck wakes you from anything, sleep included.
+        target.resting = False
+        world.msg("You are woken by the blow!", "bad", to=target)
     target.hp -= amount
     world.float_text(target.x, target.y, target.depth, str(amount),
                      "crit" if crit else ("hurt" if target.kind == "player" else "damage"))

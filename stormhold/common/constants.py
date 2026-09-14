@@ -135,6 +135,23 @@ CARRY_BASE = 1000
 COPPER_GRAMS = 1
 COPPER_CC = 1
 
+# Four coinages, all quoted in copper. From the original's glossary: a silver
+# piece is worth 10 copper, a gold piece 100, and a platinum piece 1000 -
+# "these are quite rare". Deeper finds come in better metal, which is how a
+# fortune stops weighing a fortune: 1000 copper is a kilo, one platinum is a
+# gram.
+COINS = (("copper", 1), ("silver", 10), ("gold", 100), ("platinum", 1000))
+
+
+def coin_purse(value):
+    """Split a value in copper into the coins it would actually be found as."""
+    out = []
+    for name, worth in reversed(COINS):
+        n, value = divmod(value, worth)
+        if n:
+            out.append((name, n))
+    return out
+
 # What a shop charges and what it pays. Measured: a short sword costs 1470 and
 # sells back for 840; a club costs 105 and sells back for 60. Both are the same
 # pair of multipliers on one base value (1050 and 75), and the 4/7 ratio holds

@@ -27,7 +27,7 @@ from .level import generate_dungeon, generate_town
 from .actors import Player, NPC, make_monster, stat_bonus
 from .items import Item, Appearances, generate_item, generate_gold, BASES
 from .monsters import spawn_table
-from .spells import SPELLS, can_learn
+from .spells import SPELLS, can_learn, elemental_factor
 from .traps import TRAPS, search_here, disarm_at, a_or_an
 from . import combat, ai
 
@@ -314,7 +314,10 @@ class World:
                 actor.resting = False
                 self.msg("You wake, clear-headed." if for_mana else "You feel rested.",
                          "good", to=actor)
-            elif combat.enemies_near(level, actor.x, actor.y, 8):
+            elif not for_mana and combat.enemies_near(level, actor.x, actor.y, 8):
+                # Resting breaks the moment something comes into view; sleep is
+                # deeper and breaks only when something actually hits you,
+                # which combat handles.
                 actor.resting = False
                 self.msg("Something disturbs your rest.", "bad", to=actor)
             else:
@@ -358,7 +361,9 @@ class World:
                 if actor.hp < actor.max_hp:
                     actor.hp = min(actor.max_hp, actor.hp + 1 + max(0, stat_bonus(con)))
                 if actor.mana < actor.max_mana:
-                    actor.mana = min(actor.max_mana, actor.mana + 1)
+                    # Sleeping restores mana at twice the waking rate.
+                    gain = 2 if actor.resting == "mana" else 1
+                    actor.mana = min(actor.max_mana, actor.mana + gain)
 
     # ====================================================== vision ==========
     def memory_for(self, p, level):
@@ -471,8 +476,14 @@ class World:
         if not trap or not trap["armed"]:
             return False
         if trap["found"] and not forced:
-            # You knew it was there, so you step around the trigger.
-            return False
+            # "A known trap is less likely to go off" - less likely, not
+            # never. A careless step still finds the trigger sometimes, and
+            # being nimble helps you avoid it.
+            dodge = 6 + max(0, stat_bonus(p.stat("dexterity")))
+            if self.rng.randint(1, max(2, dodge)) != 1:
+                return False
+            self.msg("You misjudge your step and catch the trigger anyway.",
+                     "bad", to=p)
         info = TRAPS[trap["kind"]]
         trap["found"] = True
         trap["armed"] = False
@@ -662,10 +673,13 @@ class World:
         return [(p.x + dx, p.y + dy) for dx, dy in DIRS]
 
     def _act_sleep(self, level, p, action):
-        """Sleep until your mana comes back. A separate command from resting."""
-        if combat.enemies_near(level, p.x, p.y, 8):
-            self.msg("Not with something watching you.", "warn", to=p)
-            return FREE_COST
+        """Sleep until your mana comes back.
+
+        A deeper thing than resting, and the original is precise about the
+        difference: "You regenerate mana at twice the normal rate, but it is
+        only interrupted when a monster attacks you, not when they come into
+        view." So you may lie down with something already watching.
+        """
         if p.mana >= p.max_mana:
             self.msg("Your mana is already full.", "info", to=p)
             return FREE_COST
@@ -991,6 +1005,17 @@ class World:
         return None
 
     # ---- spells ----------------------------------------------------------
+    def apply_slow(self, m, now):
+        """Slow stacks, but with diminishing returns.
+
+        The original: "a monster will move at 1/2, then 1/3, then 1/4, then
+        1/5 ... of its normal speed" - so each further casting adds one to the
+        divisor rather than halving again.
+        """
+        step = m.slow_steps = getattr(m, "slow_steps", 0) + 1
+        m.add_effect("slowed", now + 6000)        # ten minutes of game time
+        m.slow_divisor = step + 1
+
     def _act_cast(self, level, p, action):
         name = action.get("spell")
         spell = SPELLS.get(name)
@@ -1064,30 +1089,40 @@ class World:
                 dmg = roll()
                 if spell.get("undead_bonus") and m.tpl.get("undead"):
                     dmg = int(dmg * 1.5)
+                # "The monster on the target square takes full damage, and
+                # those on the eight adjoining squares take half damage."
+                if spell.get("burst") and (m.x, m.y) != (tx, ty):
+                    dmg = max(1, dmg // 2)
+                dmg = max(1, int(dmg * elemental_factor(spell.get("element"),
+                                                        m.tpl)))
                 self.fx("hit", m.x, m.y, level.depth)
                 combat.apply_damage(self, m, dmg, p)
                 if not m.dead:
                     if spell.get("burn"):
                         m.add_effect("burning", now + 400, 4)
                     if spell.get("slow"):
-                        m.add_effect("slowed", now + 400)
+                        self.apply_slow(m, now)
             if targets:
                 self.msg(f"You cast {name}.", "good", to=p)
 
         # --- healing ------------------------------------------------------
-        if spell.get("heal"):
-            n, s, per = spell["heal"]
-            amount = sum(self.rng.randint(1, s) for _ in range(n)) + int(per * power)
+        if spell.get("heal_flat") or spell.get("heal_full"):
+            def heal_amount(who):
+                if spell.get("heal_full"):
+                    return who.max_hp
+                return max(spell["heal_flat"],
+                           int(spell.get("heal_frac", 0) * who.max_hp))
+            amount = heal_amount(p)
             if spell.get("party"):
                 for ally in combat.players_near(level, p.x, p.y, spell.get("rng", 4)):
-                    combat.heal(self, ally, amount)
+                    combat.heal(self, ally, heal_amount(ally))
                     self.fx("heal", ally.x, ally.y, level.depth)
                 self.msg(f"You cast {name}. Everyone nearby is mended.", "good", to=p)
             else:
                 target = level.actor_at(tx, ty)
                 if target is None or target.kind != "player":
                     target = p
-                combat.heal(self, target, amount)
+                combat.heal(self, target, heal_amount(target))
                 self.fx("heal", target.x, target.y, level.depth)
                 self.msg(f"You cast {name}.", "good", to=p)
 

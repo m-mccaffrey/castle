@@ -923,3 +923,178 @@ toward keeping money in the purse or the bank and nowhere else.
 
 We have the strongroom and the weight relief. We have no thieves, so half the
 reason for the bank is missing; that is task #29.
+
+# Sixth session: reading the manual line by line
+
+You were right that one finding was not the end of it. Going through both help
+files in order, rather than grepping for what I expected, turned up a great
+deal more. What follows is organised by subject; the implemented items are
+marked.
+
+## Spell formulas, exact
+
+Every healing spell is **a floor or a fraction, whichever is greater**:
+
+| Spell | Restores |
+|---|---|
+| Heal Minor Wounds | the greater of 8 HP or 20% of maximum |
+| Heal Medium Wounds | the greater of 16 or 40% |
+| Heal Major Wounds | the greater of 24 or 60% |
+| Healing | all of it |
+
+That shape matters: the flat floor keeps the low spell useful at level 1, and
+the percentage keeps it useful at level 20. **Implemented.**
+
+**Resistances halve damage and stack multiplicatively** - "casting two Resist
+Cold spells cuts the damage from White Dragon breath to 1/4 its normal value".
+
+**Slowing stacks harmonically, not geometrically**: "a monster will move at
+1/2, then 1/3, then 1/4, then 1/5 ... of its normal speed", so each further
+casting helps less than the last. A lovely way to allow stacking without
+letting it run away. **Implemented.**
+
+**Ball spells**: the target square takes full damage, "those on the eight
+adjoining squares take half damage". **Implemented.**
+
+**Elements are symmetric**: a creature built of an element takes only partial
+damage from it and extra damage from its opposite - cold bolts hurt
+fire-creatures more and fire-creatures' own element less. Lightning creatures
+such as Blue Dragons resist lightning. **Implemented**, with monsters that
+attack with an element now made of it.
+
+Other exact figures: **Phase Door** moves you 5 to 10 squares; **Teleport** at
+least 10; **Clairvoyance** maps a 10x10 area including secret doors and traps;
+**Detect Monsters** lasts 30 minutes plus one per character level; **Detect
+Traps** is guaranteed within 10 squares and falls off with distance; **Light**
+lights a 3x3 in a corridor but the whole room in a room; **Sleep Monster** is
+broken by attacking the sleeper, and lasts 10 minutes; **Transmogrify**
+preserves the target's *fraction* of hit points, so a half-dead dragon becomes
+a half-dead hill giant.
+
+**Rune of Return works both ways**: from underground it returns you to the
+surface, and from the surface it sends you to the deepest level you have
+reached. That is the fast-travel system, and we had it as a one-way escape.
+
+## Mana is not a fixed cost
+
+"The mana required for a spell decreases as you go up in level. Casting a spell
+that is more powerful than you can normally handle requires extra mana, but
+casting low level spells gets easier." So the cost printed in the directory is
+a *base*, adjusted by the gap between your level and the spell's.
+
+Mana is also fully restored on gaining a level, and high intelligence gives
+extra mana per level, exactly as constitution gives extra hit points.
+
+## Rest and Sleep are different commands
+
+Resting recovers hit points and breaks "as soon as a monster comes in sight".
+Sleeping "regenerates mana at twice the normal rate, but it is only interrupted
+when a monster attacks you, not when they come into view". So sleep is the
+gamble: twice the recovery, but you let something walk up to you.
+**Implemented**, including waking when struck.
+
+## Containers, settled
+
+The Containers topic answers the question I left open: "If non-zero, the Wt. Fx
+and Bulk Fx columns are used **instead of** the sum of the contents ... in
+calculating the value reported to the parent." They are a **fixed reported
+figure, not a multiplier** - "the weight of a 'pack of holding' is constant no
+matter what you put inside". Bags' bulk fluctuates with contents; chests' bulk
+is fixed. **Implemented**, with a Pack of Holding added.
+
+## The belt is an inventory system, not a decoration
+
+Only objects in your equipment slots **or on your belt** can be activated -
+"Objects in your pack cannot be activated". Belts come in 2 and 3 slots
+commonly, and a 10-slot **Utility Belt** is rare and precious. The manual's own
+justification is the best argument for the mechanic: "Digging through your pack
+for that scroll of teleportation while the Ancient Red Dragon is breathing down
+your neck (literally) is a good recipe for roast adventurer."
+
+Weapon, Belt and Ready-hand slots take any object type; every other slot is
+type-restricted. Containers may not be nested circularly.
+
+## Identification has four distinct mechanisms
+
+- **Class identify**: identify one of a type and you recognise all others of
+  that type ever after - though not how many charges a wand has left.
+- **Identify on use**: using it tells you what it is.
+- **Identify on wield**: most armour and weapons.
+- The **Sage** identifies for a fee: drag the object into the sage's window and
+  he quotes a price.
+
+A popup always shows name, weight and bulk; an identified object also lists its
+properties, each in three parts - **what you must do** (wield or activate),
+**what it does**, and **how long it lasts** ("until removed", "for a period of
+time", or "permanently").
+
+Cursed items "may summon monsters, lower your attributes, or decrease your
+prowess in combat", are usually disguised as enchanted, and **cannot be removed
+until the curse is lifted**.
+
+There is a lovely deliberate design note about the temple: Remove Curse is the
+one service never greyed out, "since it would give the player hints about
+unidentified objects to gray it".
+
+## Attributes, precisely
+
+- **Strength**: damage per hit, carrying capacity, and it gates what armour you
+  can wear at all.
+- **Intelligence**: mana, and a better chance of disarming traps.
+- **Constitution**: hit points.
+- **Dexterity**: armour value, chance to hit, and chance to disarm traps.
+
+The chargen bars show three lines - an average person in the middle, and the
+minimum and maximum you may start at. And the manual gives strategic advice
+that is really a statement about the maths: "characters with above average
+abilities in an area receive bonuses, so it is usually to your advantage to
+improve your character's abilities in one area, rather than being equal in all
+of them and not receiving bonuses from any of them." Specialising beats
+spreading. **Implemented**: intelligence now contributes to disarming.
+
+## Coinage
+
+Four metals, all quoted in copper: silver is 10, gold is 100, and platinum is
+1000 "quite rare" copper. Since a coin weighs a gram, this is also the answer
+to carrying a fortune - a thousand copper is a kilogram, one platinum piece is
+a gram. **Implemented.**
+
+## Traps
+
+"A known trap is **less likely** to go off" - less likely, not impossible. Ours
+made a found trap perfectly safe. **Implemented** as a small chance, reduced by
+dexterity. Searching may need several attempts, and disarming "you may have to
+try more than once to be successful, and you run the risk of setting the trap
+off". Levitation avoids the gravity-operated ones.
+
+## Sites you can use
+
+**Fountains** and **thrones** are site-specific verbs, and both "can have
+beneficial or harmful effects, or may do nothing at all". Neither exists in
+ours.
+
+## Interface details worth copying
+
+- **Drag the player icon to walk**; mouse movement aborts if you are attacked
+  or hit a trap.
+- **Double-click yourself** to take the stairs. Left click an adjacent door to
+  open or close it, a monster to attack it.
+- **Right click anything, anywhere** - dungeon, map or inventory - for a popup
+  description. On a monster it gives the condition words. Capped at 10 lines,
+  with "more ..." pointing you at the keyboard version.
+- Targeting uses a **crosshair cursor** with a "Command Pending" message.
+- **Shift-Enter** is the keyboard popup; **Tab** moves between inventory
+  windows; objects move by Enter to pick up, move the cursor, Enter to drop.
+- The description window keeps about **30 messages** of scrollback, and the
+  three windows are resizable by dragging the dividers.
+- Time exists on the status line to let you track spell durations and
+  **item recharge** - some items work "once per day or once every few hours".
+- You may **rename your character** mid-game, "adding such descriptions as you
+  feel you deserve (the bold, the mighty)".
+- Fast Map draws objects as a dagger, monsters as a frowning face, stairs as
+  arrows, everything else as an asterisk.
+
+## Still not adopted
+
+The armour value ladder (task #27) and thieves (task #29). Both are recorded
+above with reasons.

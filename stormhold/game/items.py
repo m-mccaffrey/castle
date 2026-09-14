@@ -122,6 +122,7 @@ BASES = {
     "purse":       dict(name="Purse", slot="purse", icon="sack", bulk=500, wt=300, value=15, depth=0, kind="container", capacity=5000, bulk_capacity=6000, coins_only=True),
     "coins":       dict(name="copper pieces", icon="gold", bulk=0, wt=0, value=1, depth=0, kind="coins"),
     "pack":        dict(name="Backpack", slot="pack", icon="pack", bulk=1000, wt=1000, value=60, depth=0, kind="container", capacity=12000, bulk_capacity=50000),
+    "holdpack":    dict(name="Pack of Holding", slot="pack", icon="pack", bulk=1000, wt=1000, value=900, depth=9, kind="container", capacity=50000, bulk_capacity=150000, wt_fixed=5000, bulk_fixed=75000),
     "sack":        dict(name="Sack", slot=None, icon="sack", bulk=700, wt=500, value=25, depth=0, kind="container", capacity=10000, bulk_capacity=12000),
 }
 
@@ -255,6 +256,9 @@ class Item:
 
     @property
     def bulk(self):
+        fixed = self.base.get("bulk_fixed")
+        if fixed:
+            return fixed
         """How much room it takes up, as opposed to how much it weighs."""
         if self.kind == "coins":
             return max(0, self.gold_amount // 400)
@@ -267,8 +271,19 @@ class Item:
 
     @property
     def weight(self):
+        """What this weighs to whatever is carrying it.
+
+        A magical container reports a fixed figure instead of its contents.
+        The original's manual: "If non-zero, the Wt. Fx and Bulk Fx columns are
+        used instead of the sum of the contents (plus whatever intrinsic weight
+        and bulk the container has) in calculating the value reported to the
+        parent." So a pack of holding weighs the same full as it does empty.
+        """
         if self.kind == "coins":
             return self.gold_amount * COPPER_GRAMS   # a coin weighs a gram
+        fixed = self.base.get("wt_fixed")
+        if fixed:
+            return fixed
         w = self.base.get("wt", 10) * max(1, self.qty)
         if self.contents:
             w += sum(i.weight for i in self.contents)
