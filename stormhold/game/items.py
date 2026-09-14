@@ -57,7 +57,7 @@ BASES = {
     # ---- staves and wands ------------------------------------------------
     "quarterstaff": dict(name="Quarterstaff", slot="weapon", icon="staff", bulk=25200, wt=1800, value=60, dmg=(1, 6), depth=0, mana_bonus=4),
     "runestaff":   dict(name="Rune Staff", slot="weapon", icon="staff", bulk=25200, wt=2025, value=400, dmg=(1, 7), depth=10, mana_bonus=15),
-    "wand":        dict(name="Wand", slot="weapon", icon="wand", bulk=2700, wt=360, value=300, dmg=(1, 3), depth=5, charges=(4, 9)),
+    "wand":        dict(name="Wand", slot="weapon", icon="wand", bulk=2700, wt=360, value=300, dmg=(1, 3), depth=5, charges=(4, 9), recharge_hours=6),
 
     # ---- body armour -----------------------------------------------------
     "robe":        dict(name="Robe", slot="torso", icon="robe", bulk=12600, wt=900, value=25, ac=1, depth=0, mana_bonus=6),
@@ -79,7 +79,9 @@ BASES = {
     "boots":       dict(name="Boots", slot="feet", icon="boots", bulk=10800, wt=1125, value=30, ac=1, depth=0),
     "leggings":    dict(name="Leggings", slot="legs", icon="leggings", bulk=16200, wt=2700, value=95, ac=2, depth=3),
     "cloak":       dict(name="Cloak", slot="back", icon="cloak", bulk=12600, wt=675, value=40, ac=1, depth=1),
-    "belt":        dict(name="Girdle", slot="waist", icon="belt", bulk=4500, wt=450, value=35, ac=1, depth=1),
+    "belt":        dict(name="Two Slot Belt", slot="waist", icon="belt", bulk=4500, wt=450, value=35, ac=1, depth=1, kind="container", belt_slots=2, capacity=4000, bulk_capacity=8000),
+    "belt3":       dict(name="Three Slot Belt", slot="waist", icon="belt", bulk=4700, wt=500, value=90, ac=1, depth=5, kind="container", belt_slots=3, capacity=6000, bulk_capacity=12000),
+    "beltutil":    dict(name="Utility Belt", slot="waist", icon="belt", bulk=5200, wt=600, value=2400, ac=1, depth=14, kind="container", belt_slots=10, capacity=20000, bulk_capacity=40000),
 
     # ---- jewellery (always unidentified when found) ----------------------
     "ring_might":    dict(name="Ring of Might", slot="ring_left", icon="ring", bulk=900, wt=90, value=600, depth=3, kind="ring", bonus=("strength", 2)),
@@ -225,7 +227,8 @@ class Item:
     """One concrete object in the world."""
 
     __slots__ = ("id", "key", "base", "enchant", "cursed", "known", "qty",
-                 "charges", "contents", "spell", "gold_amount", "metal", "custom_name")
+                 "charges", "contents", "spell", "gold_amount", "metal",
+                 "recharge_at", "custom_name")
 
     def __init__(self, key, enchant=0, cursed=False, qty=1, charges=0, spell=None):
         self.id = _new_id()
@@ -236,6 +239,7 @@ class Item:
         self.known = False          # has THIS item's enchantment been revealed
         self.qty = qty
         self.charges = charges
+        self.recharge_at = None
         self.contents = [] if self.base.get("kind") == "container" else None
         self.spell = spell          # for spell books
         self.gold_amount = 0        # value in copper, on a pile of coins

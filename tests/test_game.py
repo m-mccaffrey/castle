@@ -52,6 +52,7 @@ class TestLevels(unittest.TestCase):
         self.assertIn(town.idx(*town.down_at), reach, "keep gate unreachable")
         trades = {n["shop"] for n in town.npcs}
         self.assertEqual(trades, {"weaponsmith", "armourer", "general", "magic",
+                                  "junk",
                                   "sage", "temple", "bank"})
         for npc in town.npcs:
             self.assertTrue(town.passable(npc["x"], npc["y"]), f"{npc['name']} is in a wall")
@@ -720,6 +721,78 @@ class TestBestiaryBehaviour(unittest.TestCase):
             self.assertEqual(world.resisted(p, "fire", 100), expect)
         self.assertEqual(world.resisted(p, "cold", 100), 100,
                          "warding fire does nothing about cold")
+
+
+class TestReachAndUpkeep(unittest.TestCase):
+    def test_only_worn_things_and_the_belt_can_be_activated(self):
+        from stormhold.game.items import Item
+        world = World(seed=13)
+        p = world.add_player("Belted")
+        pot = Item("potion_heal")
+        p.inventory.append(pot)
+        p.hp = 1
+        world.submit(p, {"a": "use", "id": pot.id})
+        self.assertEqual(p.hp, 1, "a potion in the pack cannot be reached")
+        belt = Item("belt")
+        p.equipment["waist"] = belt
+        p.inventory.remove(pot)
+        belt.contents.append(pot)
+        world.submit(p, {"a": "use", "id": pot.id})
+        self.assertGreater(p.hp, 1, "on the belt it is to hand")
+
+    def test_belts_hold_a_fixed_number_of_things(self):
+        from stormhold.game.items import Item
+        p = Player("B", {"strength": 12, "dexterity": 10,
+                         "intelligence": 10, "constitution": 10})
+        belt = Item("belt")
+        p.equipment["waist"] = belt
+        self.assertTrue(p.belt_has_room())
+        for _ in range(belt.base["belt_slots"]):
+            belt.contents.append(Item("potion_heal"))
+        self.assertFalse(p.belt_has_room(), "two slots means two things")
+        self.assertEqual(Item("beltutil").base["belt_slots"], 10)
+
+    def test_levelling_fills_your_mana(self):
+        p = Player("Caster", {"strength": 10, "dexterity": 10,
+                              "intelligence": 14, "constitution": 10})
+        p.mana = 0
+        p.add_xp(10_000)
+        self.assertEqual(p.mana, p.max_mana,
+                         "mana is restored on gaining a level, not topped up")
+
+    def test_a_spell_gets_cheaper_as_you_outgrow_it(self):
+        from stormhold.common.constants import mana_cost
+        self.assertEqual(mana_cost(6, 1, 1), 6)
+        self.assertLess(mana_cost(6, 10, 1), 6)
+        self.assertGreater(mana_cost(6, 5, 15), 6,
+                           "reaching beyond your level costs extra")
+
+    def test_the_junk_store_pays_a_flat_pittance(self):
+        from stormhold.game.items import Item
+        world = World(seed=12)
+        rich = Item("platemail")
+        self.assertEqual(world.junk_price(rich), world.JUNK_FLAT)
+        cursed = Item("leather")
+        cursed.cursed = True
+        self.assertEqual(world.junk_price(cursed), world.JUNK_FLAT)
+
+    def test_remove_curse_is_always_offered(self):
+        """Greying it out would leak whether your gear is cursed."""
+        world = World(seed=3)
+        p = world.add_player("Clean")
+        services = {s["key"]: s for s in world.temple_services(p)}
+        self.assertTrue(services["uncurse"]["useful"])
+
+    def test_wielding_identifies(self):
+        from stormhold.game.items import Item
+        world = World(seed=11)
+        p = world.add_player("Wielder")
+        it = Item("leather")
+        it.known = False
+        it.enchant = 2
+        p.inventory.append(it)
+        world.submit(p, {"a": "equip", "id": it.id})
+        self.assertTrue(it.known, "you learn what it is by putting it on")
 
 
 class TestCasting(unittest.TestCase):

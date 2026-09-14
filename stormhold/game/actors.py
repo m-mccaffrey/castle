@@ -244,6 +244,16 @@ class Player(Actor):
         """The container the loose items live in, if you are wearing one."""
         return self.equipment.get("pack")
 
+    def belt_has_room(self, item=None):
+        """A belt holds a fixed number of things, not a weight."""
+        belt = self.equipment.get("waist")
+        if belt is None:
+            return False
+        slots = belt.base.get("belt_slots")
+        if not slots:
+            return False
+        return len(getattr(belt, "contents", []) or []) < slots
+
     def pack_limits(self):
         """(weight, bulk) the pack can hold - or what two hands can, without one."""
         pack = self.pack
@@ -364,7 +374,9 @@ class Player(Actor):
             before_hp, before_mana = self.max_hp, self.max_mana
             self.recalc()
             self.hp += self.max_hp - before_hp
-            self.mana += self.max_mana - before_mana
+            # "Your mana is restored every time your player goes up a level in
+            # power" - not topped up by the increase, filled.
+            self.mana = self.max_mana
             gained.append(self.level)
         return gained
 
@@ -408,6 +420,11 @@ class Player(Actor):
         for it in self.equipment.values():
             if it and it.id == item_id:
                 return it
+        # things tucked into a worn container - the belt, chiefly
+        for it in self.equipment.values():
+            for inner in getattr(it, "contents", []) or []:
+                if inner.id == item_id:
+                    return inner
         return None
 
     def remove_item(self, item, qty=1):

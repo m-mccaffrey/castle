@@ -20,6 +20,20 @@ CAST_COST = 100
 CAST_SECONDS = {"Attack": 5, "Defense": 5, "Healing": 5, "Movement": 5,
                 "Miscellaneous": 5, "Divination": 30}
 CAST_SECONDS_SLOW = 60
+
+# What a spell actually costs you. The directory's figure is a base: "the mana
+# required for a spell decreases as you go up in level. Casting a spell that is
+# more powerful than you can normally handle requires extra mana, but casting
+# low level spells gets easier."
+MANA_STEP = 0.12          # per level of difference, up or down
+MANA_FLOOR = 0.34         # a spell never gets cheaper than a third of its base
+
+
+def mana_cost(base, caster_level, spell_level):
+    gap = caster_level - max(1, spell_level)
+    factor = 1.0 - MANA_STEP * gap
+    factor = max(MANA_FLOOR, factor)
+    return max(1, int(round(base * factor)))
 INTERRUPTIBLE_FROM_SECONDS = 30
 PICKUP_COST = 100
 DROP_COST = 50

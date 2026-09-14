@@ -444,12 +444,14 @@ def generate_town(seed=1):
         ("magic",       "The Gilded Retort",       w - 15, 7,  11, 7, "west", 3),
         ("sage",        "Ulric the Sage",          w - 15, 17, 11, 7, "west", 3),
         ("temple",      "Temple of the Quiet Hour", w - 15, 27, 11, 7, "west", 3),
+        ("junk",        "Rusty Nan's Oddments",    road_x + 8, h - 10, 11, 7, "north", 5),
         ("bank",        "Aldershade Strongroom",   road_x - 6, h - 10, 13, 7, "north", 6),
     ]
     sprites = {
         "weaponsmith": "npc_smith", "armourer": "npc_armourer",
         "general": "npc_trader", "magic": "npc_alchemist",
         "sage": "npc_sage", "temple": "npc_priest", "bank": "npc_banker",
+        "junk": "npc_trader",
     }
 
     for shop, name, bx, by, bw, bh, side, off in plan:

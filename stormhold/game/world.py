@@ -15,7 +15,8 @@ import random
 import time
 
 from ..common.constants import (
-    SHOP_BUY_MARKUP, SHOP_SELL_RATE, condition_for, COINS,
+    SHOP_BUY_MARKUP, SHOP_SELL_RATE, condition_for, COINS, mana_cost,
+    TICKS_PER_SECOND,
     T, DIRS, TOWN_DEPTH, MAX_DEPTH, GRACE_TICKS, MOVE_COST, ATTACK_COST,
     CAST_COST, PICKUP_COST, DROP_COST, EQUIP_COST, QUAFF_COST, READ_COST,
     STAIRS_COST, REST_COST, FREE_COST, SIGHT_DUNGEON, SIGHT_TOWN, REGEN_TICKS,
@@ -370,6 +371,7 @@ class World:
                 self.msg(f"Your {name.replace('_', ' ')} fades.", "info", to=actor)
 
         if actor.kind == "player" and not actor.dead:
+            self.recharge_items(actor)
             # Slow natural recovery, measured in ticks rather than turns so
             # that dawdling in heavy armour does not heal you faster.
             actor.regen_credit = getattr(actor, "regen_credit", 0) + MOVE_COST
@@ -384,6 +386,37 @@ class World:
                     actor.mana = min(actor.max_mana, actor.mana + gain)
 
     # ====================================================== vision ==========
+    def within_reach(self, p, item):
+        """Can this be activated where it is? Worn slots and the belt only."""
+        if item in p.equipment.values():
+            return True
+        belt = p.equipment.get("waist")
+        if belt is not None and item in getattr(belt, "contents", []):
+            return True
+        # equipping something out of the pack is always allowed; it is only
+        # activation that the belt gates
+        return bool(item.slot)
+
+    def recharge_items(self, p):
+        """Charged items come back on a clock: "(Once every N hours)"."""
+        now = self.clock_for(p.depth)
+        for item in list(p.inventory) + [i for i in p.equipment.values() if i]:
+            hours = item.base.get("recharge_hours")
+            if not hours:
+                continue
+            full = item.base.get("charges", (0, 0))[1]
+            if item.charges >= full:
+                item.recharge_at = None
+                continue
+            due = getattr(item, "recharge_at", None)
+            if due is None:
+                item.recharge_at = now + hours * 3600 * TICKS_PER_SECOND
+            elif now >= due:
+                item.charges += 1
+                item.recharge_at = now + hours * 3600 * TICKS_PER_SECOND
+                self.msg(f"Your {item.name(self.appearances)} hums as it "
+                         f"gathers power again.", "info", to=p)
+
     def memory_for(self, p, level):
         mem = p.memory.get(level.depth)
         if mem is None:
@@ -854,8 +887,21 @@ class World:
         item = p.find_item(int(action.get("id", 0)))
         if item is None:
             return FREE_COST
+        was_known = item.known
         ok, message = p.equip(item, action.get("slot"))
         self.msg(message, "info" if ok else "warn", to=p)
+        if ok and not was_known:
+            # "Most armor and weapons are marked as identify on wield. If you
+            # actually use the object, you'll find out whether or not it's
+            # enchanted." The curse is how you find out the hard way.
+            item.known = True
+            self.appearances.identify(item.key)
+            if item.cursed:
+                self.msg(f"The {item.name(self.appearances)} fastens itself to "
+                         f"you. It is cursed.", "bad", to=p)
+            elif item.enchant:
+                self.msg(f"You can feel the enchantment on it "
+                         f"({item.enchant:+d}).", "good", to=p)
         self.events.append({"t": "inv", "to": p.id})
         return (p.action_cost(EQUIP_COST) or EQUIP_COST) if ok else FREE_COST
 
@@ -868,6 +914,13 @@ class World:
     def _act_use(self, level, p, action):
         item = p.find_item(int(action.get("id", 0)))
         if item is None:
+            return FREE_COST
+        if not self.within_reach(p, item):
+            # "The Activate menu allows you to use objects you are carrying
+            # about your person, either in one of the inventory slots or on
+            # your belt (Objects in your pack cannot be activated)."
+            self.msg("That is buried in your pack. Put it on your belt if you "
+                     "want it to hand.", "warn", to=p)
             return FREE_COST
         kind = item.kind
         if kind == "potion":
@@ -1047,7 +1100,8 @@ class World:
         # The original lets you overdraw: "You don't have enough mana. Casting
         # this spell may damage your health. Continue?" - you pay the shortfall
         # in hit points instead of being refused.
-        shortfall = max(0, spell["mana"] - int(p.mana))
+        cost = mana_cost(spell["mana"], p.level, spell.get("level", 1))
+        shortfall = max(0, cost - int(p.mana))
         if shortfall and not action.get("confirm_overdraw"):
             self.msg(f"You have not the mana for that. Casting it will cost "
                      f"you {shortfall} hit points instead.", "warn", to=p)
@@ -1060,7 +1114,7 @@ class World:
             self.msg("That is beyond your reach.", "warn", to=p)
             return FREE_COST
 
-        p.mana = max(0, p.mana - spell["mana"])
+        p.mana = max(0, p.mana - cost)
         if shortfall:
             p.hp -= shortfall
             self.msg("The spell tears at you as you force it out.", "bad", to=p)
@@ -1219,9 +1273,25 @@ class World:
             self.msg("Stone flows aside." if opened else "There is no wall there.",
                      "good" if opened else "warn", to=p)
         if spell.get("recall"):
-            self.msg(f"{p.name} opens the road home.", "good", depth=level.depth)
-            for ally in self.players_on(level.depth):
-                self.move_player_to(ally, TOWN_DEPTH)
+            # The original's Rune of Return works both ways: "From inside the
+            # mine ... the spell will return the player to the ground level ...
+            # From ground level ... the spell teleports the player to the
+            # deepest place the player has visited so far." That second half is
+            # the whole point - you do not fight back down every time.
+            if level.is_town:
+                target = max(1, p.deepest or 1)
+                if target <= TOWN_DEPTH:
+                    self.msg("You have not yet been anywhere to return to.",
+                             "info", to=p)
+                else:
+                    self.msg(f"{p.name} steps back into the deep.", "good",
+                             depth=level.depth)
+                    for ally in self.players_on(level.depth):
+                        self.move_player_to(ally, target)
+            else:
+                self.msg(f"{p.name} opens the road home.", "good", depth=level.depth)
+                for ally in self.players_on(level.depth):
+                    self.move_player_to(ally, TOWN_DEPTH)
 
         p.recalc()
         return p.action_cost(spell.get("cast_ticks", CAST_COST)) or CAST_COST
@@ -1506,9 +1576,12 @@ class World:
                 useful = False
             elif key == "cure_poison" and not p.has("poisoned"):
                 useful = False
-            elif key == "uncurse" and not any(
-                    i and i.cursed for i in p.equipment.values()):
-                useful = False
+            elif key == "uncurse":
+                # Deliberately always offered. The original explains why: it is
+                # "always available since it would give the player hints about
+                # unidentified objects to gray it". Greying it out would tell
+                # you for free whether anything you are wearing is cursed.
+                useful = True
             elif key.startswith("restore_") and key != "restore_hp":
                 stat = key.split("_", 1)[1]
                 useful = p.drained.get(stat, 0) > 0
@@ -1650,6 +1723,17 @@ class World:
         self.shop_stock[shop] = items
         return items
 
+    # "The Junk Store ... will buy anything, for market price (if it's less
+    # than 25 C.P.), or for 25 C.P. if it's cursed or worthless. Anything sold
+    # to this store is gone for good."
+    JUNK_FLAT = 25
+
+    def junk_price(self, item):
+        value = item.value()
+        if item.cursed or value <= 0:
+            return self.JUNK_FLAT
+        return value if value < self.JUNK_FLAT else self.JUNK_FLAT
+
     def shop_price(self, item, selling=False):
         value = item.value()
         return (max(1, int(value * SHOP_SELL_RATE)) if selling
@@ -1697,10 +1781,18 @@ class World:
         item = p.find_item(int(action.get("id", 0)))
         if item is None or item not in p.inventory:
             return FREE_COST
-        price = self.shop_price(item, selling=True)
+        shop = action.get("shop")
+        price = (self.junk_price(item) if shop == "junk"
+                 else self.shop_price(item, selling=True))
         p.remove_item(item, item.qty)
         p.copper += price
-        self.msg(f"You sell {item.name(self.appearances)} for {price} copper.", "loot", to=p)
+        if shop == "junk":
+            self.msg(f"Nan takes {item.name(self.appearances)} off your hands "
+                     f"for {price} copper. You will not see it again.",
+                     "loot", to=p)
+        else:
+            self.msg(f"You sell {item.name(self.appearances)} for {price} copper.",
+                     "loot", to=p)
         self.sound("gold", p.x, p.y, level.depth)
         self.events.append({"t": "inv", "to": p.id})
         self.events.append({"t": "shop", "to": p.id, "npc": action.get("npc"),
@@ -1861,6 +1953,9 @@ class World:
             "move_speed": p.move_speed_percent(),
             "effects": {k: v[0] for k, v in p.effects.items()},
             "spells": sorted(p.spells),
+            "spell_costs": {n: mana_cost(SPELLS[n]["mana"], p.level,
+                                         SPELLS[n].get("level", 1))
+                            for n in p.spells if n in SPELLS},
             "deepest": p.deepest, "kills": p.kills, "deaths": p.deaths,
             "clock": self.clock_for(p.depth),
         }

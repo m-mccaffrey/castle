@@ -33,13 +33,13 @@ deliberate divergence.
 | Attributes on a 0-100 scale | ours - we use a 3-18 range |
 | Chargen is a pool against per-attribute caps | done |
 | Above-average attributes give bonuses; specialising beats spreading | partial |
-| Strength: damage, carrying, and gates what armour you may wear | partial - no armour gate |
+| Strength: damage, carrying, and gates what armour you may wear | done |
 | Intelligence: mana, and disarming traps | done |
-| Constitution: hit points, and extra per level | partial - no per-level bonus |
+| Constitution: hit points, and extra per level | done |
 | Dexterity: armour value, to-hit, disarming traps | done |
 | HP regenerate about 1 per minute | done |
 | Mana regenerates about 1 per hour | done |
-| Level gain restores mana fully | open (#31) |
+| Level gain restores mana fully | done |
 | Undead drain experience and can cost a level, losing its gains | partial |
 | Character may be renamed mid-game | open |
 
@@ -57,7 +57,7 @@ deliberate divergence.
 | Casting time by class - 5s, 30s detection, 60s identify | done |
 | Slow spells are interruptible | partial - flagged, not enforced |
 | Overdrawing mana costs hit points | done |
-| Mana cost falls as you outgrow a spell, rises above your level | open (#31) |
+| Mana cost falls as you outgrow a spell, rises above your level | done |
 | Spells are bought as books, not only chosen at creation | partial |
 | Ten spells on the menu and button bar, customisable | partial |
 | Phase Door 5-10 squares; Teleport at least 10 | done |
@@ -66,7 +66,7 @@ deliberate divergence.
 | Light: 3x3 in a corridor, the whole room in a room | open |
 | Sleep Monster broken by attacking it | open |
 | Transmogrify preserves the target's fraction of hit points | open |
-| Rune of Return is two-way fast travel | open (#30) |
+| Rune of Return is two-way fast travel | done |
 | Four spells are monster-only: Clone, Create Traps, Haste, Teleport Away | partial |
 
 ## Items
@@ -77,16 +77,16 @@ deliberate divergence.
 | Armour value ladder 0-54 in sixes; shields a size x material grid | open (#27) |
 | Weapon Class 0-12 sets damage; same class, same damage | open |
 | Quality prefixes: Broken, Ripped, Rusty, Normal, Enchanted, Cursed | partial |
-| Class identify: one of a type identifies all of that type | open |
-| Identify on use, identify on wield | open |
+| Class identify: one of a type identifies all of that type | done |
+| Identify on use, identify on wield | done |
 | The Sage identifies for a fee | partial - exists, not by drag |
-| Junk store buys anything, 25 CP for cursed or worthless | open |
+| Junk store buys anything, 25 CP for cursed or worthless | done |
 | Cursed items cannot be removed until uncursed | done |
 | Cursed items may summon monsters or lower attributes | partial |
 | Two-handed weapons conflict with shields | partial |
-| Charged items recharge on a timer | open |
-| Only worn slots and belt slots can be activated | open (#32) |
-| Belts are containers sized in slots; a 10-slot belt is rare | open (#32) |
+| Charged items recharge on a timer | done |
+| Only worn slots and belt slots can be activated | done |
+| Belts are containers sized in slots; a 10-slot belt is rare | done |
 | Wand Quiver slot | open |
 
 ## The world
@@ -94,7 +94,7 @@ deliberate divergence.
 | Rule | Status |
 |---|---|
 | Temple service list and prices | done |
-| Remove Curse never greyed, to avoid leaking identification | open |
+| Remove Curse never greyed, to avoid leaking identification | done |
 | Shops are the inventory screen with a Store container | partial |
 | Buy at 1.4x base, sell at 0.8x | done |
 | Fountains and thrones: may help, harm, or do nothing | open (#33) |
