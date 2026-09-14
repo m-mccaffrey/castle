@@ -15,7 +15,8 @@ from stormhold.common.fov import compute_fov, has_los
 from stormhold.game.level import generate_dungeon, generate_town, reachable
 from stormhold.game.ai import find_path
 from stormhold.game.actors import Player, make_monster, stat_bonus
-from stormhold.game.items import Item, Appearances, generate_item, pluralise, BASES
+from stormhold.game.items import (Item, Appearances, generate_item, generate_gold,
+                                   pluralise, BASES)
 from stormhold.game.spells import SPELLS, can_learn
 from stormhold.game.combat import attack_roll, apply_damage
 from stormhold.game.world import World
@@ -540,3 +541,123 @@ class TestSpellClasses(unittest.TestCase):
         for school in SCHOOLS:
             self.assertTrue(any(s["school"] == school for s in SPELLS.values()),
                             f"{school} has no spells in it")
+
+
+class TestDrainAndTemple(unittest.TestCase):
+    """Draining, and the only thing in the world that undoes it."""
+
+    def test_draining_an_attribute_lowers_what_depends_on_it(self):
+        p = Player("Sapped", {"strength": 14, "dexterity": 11,
+                              "intelligence": 10, "constitution": 12})
+        capacity = p.capacity
+        p.drain_stat("strength", 3)
+        self.assertEqual(p.stat("strength"), 11)
+        self.assertLess(p.capacity, capacity, "drained strength should carry less")
+        self.assertTrue(p.is_drained)
+
+    def test_draining_hit_points_lowers_the_maximum(self):
+        p = Player("Sapped", {"strength": 10, "dexterity": 10,
+                              "intelligence": 10, "constitution": 14})
+        before = p.max_hp
+        p.drain_hp(8)
+        self.assertEqual(p.max_hp, before - 8)
+        self.assertLessEqual(p.hp, p.max_hp, "current hp must not exceed a drained maximum")
+
+    def test_drain_never_takes_an_attribute_below_three(self):
+        p = Player("Husk", {"strength": 8, "dexterity": 8,
+                            "intelligence": 8, "constitution": 8})
+        p.drain_stat("strength", 99)
+        self.assertGreaterEqual(p.stat("strength"), 3)
+
+    def test_drain_survives_a_save_and_reload(self):
+        p = Player("Sapped", {"strength": 14, "dexterity": 11,
+                              "intelligence": 10, "constitution": 12})
+        p.drain_stat("intelligence", 2)
+        p.drain_hp(6)
+        data = p.to_save()
+        back = Player("Sapped")
+        back.load_save(data)
+        self.assertEqual(back.drained["intelligence"], 2)
+        self.assertEqual(back.drained_hp, 6)
+
+    def test_the_temple_restores_what_was_taken(self):
+        world = World(seed=9)
+        p = world.add_player("Pilgrim")
+        p.drain_stat("strength", 2)
+        p.drain_hp(7)
+        p.copper = 10000
+        before_hp, before_str = p.max_hp, p.stat("strength")
+
+        world.buy_service(p, "restore_strength")
+        self.assertGreater(p.stat("strength"), before_str)
+        self.assertEqual(p.copper, 7000)
+
+        world.buy_service(p, "restore_hp")
+        self.assertGreater(p.max_hp, before_hp)
+        self.assertFalse(p.is_drained)
+
+    def test_you_cannot_buy_what_you_cannot_afford(self):
+        world = World(seed=9)
+        p = world.add_player("Pauper")
+        p.drain_stat("dexterity", 1)
+        p.copper = 10
+        world.buy_service(p, "restore_dexterity")
+        self.assertEqual(p.copper, 10, "was charged despite being unable to pay")
+        self.assertTrue(p.is_drained, "was restored without paying")
+
+    def test_the_temple_only_offers_what_is_useful(self):
+        world = World(seed=9)
+        p = world.add_player("Hale")
+        p.copper = 99999
+        useful = {s["key"] for s in world.temple_services(p) if s["useful"]}
+        self.assertNotIn("restore_strength", useful, "offered to fix an undrained stat")
+        self.assertNotIn("heal_full", useful, "offered to heal an unwounded character")
+
+        p.drain_stat("strength", 1)
+        p.hp = 1
+        useful = {s["key"] for s in world.temple_services(p) if s["useful"]}
+        self.assertIn("restore_strength", useful)
+        self.assertIn("heal_full", useful)
+
+    def test_healing_tiers_restore_different_amounts(self):
+        world = World(seed=9)
+        p = world.add_player("Hurt")
+        p.copper = 99999
+        p.add_xp(40000)                 # a big enough pool for the tiers to differ
+        self.assertGreater(p.max_hp, 40)
+
+        p.hp = 1
+        world.buy_service(p, "heal_minor")
+        minor = p.hp
+        p.hp = 1
+        world.buy_service(p, "heal_major")
+        major = p.hp
+        p.hp = 1
+        world.buy_service(p, "heal_full")
+
+        self.assertGreater(major, minor, "a major heal should beat a minor one")
+        self.assertGreater(p.hp, major, "a full heal should beat a major one")
+        self.assertEqual(p.hp, p.max_hp)
+
+
+class TestEconomy(unittest.TestCase):
+    def test_an_early_find_is_worth_a_few_hundred_copper(self):
+        rng = random.Random(4)
+        haul = [generate_gold(1, rng) for _ in range(400)]
+        mean = sum(haul) / len(haul)
+        self.assertGreater(mean, 250, "early copper finds are too small to matter")
+        self.assertLess(mean, 900, "early copper finds are absurdly large")
+
+    def test_copper_still_weighs_enough_to_matter(self):
+        p = Player("Hauler", {"strength": 12, "dexterity": 10,
+                              "intelligence": 10, "constitution": 10})
+        light = p.speed_percent()
+        p.copper = 40000
+        self.assertLess(p.speed_percent(), light,
+                        "a fortune in copper should still slow you down")
+
+    def test_temple_prices_are_reachable_but_not_trivial(self):
+        rng = random.Random(11)
+        typical = sum(generate_gold(6, rng) for _ in range(8)) / 8
+        self.assertLess(typical, 3000, "a single find should not cover a restoration")
+        self.assertGreater(typical * 12, 3000, "restoration should be reachable at depth")

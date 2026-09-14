@@ -304,7 +304,7 @@ class HelpScene(Scene):
             y += 22
         y += 10
         for line in W.wrap(
-                "Weight matters. Armour and loot slow you down, and a hundred gold coins "
+                "Weight matters. Armour and loot slow you down, and a hundred copper "
                 "weigh a pound - which is why there is a strongroom in town. If you die "
                 "you drop your pack where you fell and wake at the temple, so the party "
                 "can go back for it.",
@@ -1763,7 +1763,7 @@ class ShopScene(OverlayScene):
         "magic": "The Gilded Retort: potions, scrolls, and tomes to learn spells from.",
         "sage": "Ulric will tell you what a thing really is, for a fee.",
         "temple": "The Quiet Hour will mend you, cleanse you, and break a curse.",
-        "bank": "The strongroom. Gold weighs a pound the hundred - leave it here.",
+        "bank": "The strongroom. Copper weighs a pound the hundred - leave it here.",
     }
 
     def __init__(self, app, data):
@@ -1775,6 +1775,8 @@ class ShopScene(OverlayScene):
         self.sell_list = W.ListBox((0, 0, 10, 10), row_height=34)
         self.selected_buy = None
         self.selected_sell = None
+        self.selected_service = None
+        self.service_rects = []
         self.amount = W.TextField((0, 0, 110, 26), "100", 6, numeric=True)
 
     @property
@@ -1786,6 +1788,11 @@ class ShopScene(OverlayScene):
 
     def handle(self, event):
         self.amount.handle(event)
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            for rect, key in self.service_rects:
+                if rect.collidepoint(event.pos):
+                    self.selected_service = key
+                    return
         i = self.buy_list.handle(event)
         if i is not None and i < len(self.data.get("stock", [])):
             self.selected_buy = self.data["stock"][i]
@@ -1806,6 +1813,11 @@ class ShopScene(OverlayScene):
             self.app.act({"a": "sell", "shop": self.shop, "id": self.selected_sell["id"],
                           "npc": npc, "name": self.data.get("name")})
             self.selected_sell = None
+        elif action == "service" and self.selected_service:
+            self.app.act({"a": "service", "what": self.selected_service,
+                          "temple": True, "npc": npc,
+                          "name": self.data.get("name")})
+            self.selected_service = None
         elif action == "identify" and self.selected_sell:
             self.app.act({"a": "service", "what": "identify", "id": self.selected_sell["id"]})
         elif action in ("heal", "uncurse"):
@@ -1817,6 +1829,63 @@ class ShopScene(OverlayScene):
                 amount = 0
             self.app.act({"a": "service", "what": action, "amount": amount})
 
+    def draw_temple(self, surf, client, top, list_h):
+        """Services and their prices, the way the temple presents them."""
+        data = self.data
+        services = data.get("services", [])
+        drained = data.get("drained", {})
+        drained_hp = data.get("drained_hp", 0)
+
+        W.text(surf, "Services", (client.x, top), 13, bold=True)
+        box = pygame.Rect(client.x, top + 18, client.width * 3 // 5, list_h)
+        W.panel(surf, box, raised=False, fill=(240, 240, 236))
+
+        self.service_rects = []
+        y = box.y + 6
+        for svc in services:
+            row = pygame.Rect(box.x + 6, y, box.width - 12, 22)
+            usable = svc["useful"] and svc["afford"]
+            dot = pygame.Rect(row.x, row.y + 5, 12, 12)
+            pygame.draw.ellipse(surf, WHITE if usable else (212, 212, 208), dot)
+            pygame.draw.ellipse(surf, (90, 90, 90), dot, 1)
+            if self.selected_service == svc["key"]:
+                pygame.draw.ellipse(surf, (20, 20, 90), dot.inflate(-6, -6))
+            colour = BLACK if usable else GRAY
+            W.text(surf, svc["label"], (row.x + 18, row.y + 3), 13, colour=colour)
+            W.text_right(surf, f"{svc['price']} CP", row.right - 4, row.y + 3, 12,
+                         mono=True, colour=colour if svc["afford"] else (150, 0, 0))
+            if usable:
+                self.service_rects.append((row, svc["key"]))
+            y += 23
+
+        # What is actually wrong with you, stated plainly.
+        side = pygame.Rect(box.right + 12, top + 18,
+                           client.right - box.right - 12, list_h)
+        W.text(surf, "The sisters look you over", (side.x, side.y), 12, bold=True)
+        sy = side.y + 20
+        notes = []
+        you = self.app.play.you
+        if you.get("hp", 1) < you.get("max_hp", 1):
+            notes.append(f"Wounded: {you['hp']} of {you['max_hp']}")
+        for stat, lost in sorted(drained.items()):
+            notes.append(f"{stat.title()} drained by {lost}")
+        if drained_hp:
+            notes.append(f"{drained_hp} hit points drained away")
+        if "poisoned" in (you.get("effects") or {}):
+            notes.append("Poison in the blood")
+        if not notes:
+            notes.append("Nothing ails you.")
+        for note in notes:
+            for line in W.wrap(note, side.width - 8, 12):
+                W.text(surf, line, (side.x, sy), 12, colour=(90, 30, 30))
+                sy += 16
+        sy += 8
+        for line in W.wrap("Draining is not an injury that heals on its own. "
+                           "Only the temple can give back what was taken.",
+                           side.width - 8, 11):
+            W.text(surf, line, (side.x, sy), 11, colour=(110, 110, 110))
+            sy += 14
+
     def draw(self, surf):
         self.app.scene_under.draw(surf)
         client, _ = self.frame(surf)
@@ -1825,7 +1894,7 @@ class ShopScene(OverlayScene):
 
         W.text(surf, self.SHOP_BLURB.get(self.shop, ""), (client.x + 4, client.y + 2), 12,
                colour=(70, 70, 70))
-        W.text_right(surf, f"You have {data.get('copper', 0)} gold", client.right - 4,
+        W.text_right(surf, f"You have {data.get('copper', 0)} CP", client.right - 4,
                      client.y + 2, 13, bold=True)
 
         col_w = (client.width - 20) // 2
@@ -1845,7 +1914,9 @@ class ShopScene(OverlayScene):
                              bold=True, colour=WHITE if selected else (110, 70, 0))
             return draw_row
 
-        if self.shop != "bank":
+        if self.shop == "temple":
+            self.draw_temple(surf, client, top, list_h)
+        elif self.shop != "bank":
             W.text(surf, "For sale", (client.x, top), 13, bold=True)
             self.buy_list.rect = pygame.Rect(client.x, top + 18, col_w, list_h)
             self.buy_list.draw(surf, data.get("stock", []), row_drawer("price"))
@@ -1853,15 +1924,18 @@ class ShopScene(OverlayScene):
             W.text(surf, "Your pack", (client.x + col_w + 20, top), 13, bold=True)
             self.sell_list.rect = pygame.Rect(client.x + col_w + 20, top + 18, col_w, list_h)
             self.sell_list.draw(surf, data.get("sell", []), row_drawer("price"))
+
+        elif self.shop == "temple":
+            pass
         else:
             W.text(surf, "The strongroom", (client.x, top), 15, bold=True)
-            W.text(surf, f"On you:        {data.get('copper', 0)} gold "
+            W.text(surf, f"On you:        {data.get('copper', 0)} CP "
                          f"({data.get('copper', 0)/100:.1f} lb to carry)",
                    (client.x, top + 30), 14, mono=True)
-            W.text(surf, f"In the vault:  {data.get('bank', 0)} gold  (weighs you nothing)",
+            W.text(surf, f"In the vault:  {data.get('bank', 0)} CP  (weighs you nothing)",
                    (client.x, top + 52), 14, mono=True)
             for i, line in enumerate(W.wrap(
-                    "A hundred coins weigh a pound. Carrying a fortune into the keep will "
+                    "A hundred copper weigh a pound. Carrying a fortune into the keep will "
                     "slow you to a crawl, and if you die down there you drop a fifth of it "
                     "on the floor. Leave it here.", client.width - 20, 13)):
                 W.text(surf, line, (client.x, top + 86 + i * 17), 13, colour=(70, 70, 70))
@@ -1871,7 +1945,12 @@ class ShopScene(OverlayScene):
 
         by = client.bottom - 38
         self.buttons = []
-        if self.shop == "bank":
+        if self.shop == "temple":
+            self.buttons += [
+                W.Button((client.x + 60, by, 110, 30), "Cast", "service",
+                         enabled=bool(self.selected_service)),
+            ]
+        elif self.shop == "bank":
             self.buttons += [
                 W.Button((client.x, by, 150, 30), "Deposit", "deposit"),
                 W.Button((client.x + 160, by, 150, 30), "Withdraw", "withdraw"),
@@ -1886,12 +1965,10 @@ class ShopScene(OverlayScene):
                 self.buttons.append(W.Button((client.x + col_w + 180, by, 190, 30),
                                              f"Identify ({data.get('identify_price', 0)}g)",
                                              "identify", enabled=bool(self.selected_sell)))
-            if self.shop == "temple":
-                self.buttons.append(W.Button((client.x + 160, by, 170, 30),
-                                             f"Heal ({data.get('heal_price', 0)}g)", "heal"))
-                self.buttons.append(W.Button((client.x + col_w + 180, by, 200, 30),
-                                             f"Uncurse ({data.get('uncurse_price', 0)}g)", "uncurse"))
-        self.buttons.append(W.Button((client.right - 100, by, 90, 30), "Leave", "close"))
+            if self.shop == "sage":
+                pass
+        self.buttons.append(W.Button((client.right - 100, by, 90, 30),
+                                     "Exit" if self.shop == "temple" else "Leave", "close"))
         for b in self.buttons:
             b.draw(surf)
 

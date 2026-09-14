@@ -42,10 +42,10 @@ def melee(world, attacker, defender, cost_free=False):
     rider = None
     if attacker.kind == "monster":
         tpl = attacker.tpl
-        if tpl.get("poison"):
+        if tpl.get("drain") and defender.kind == "player" and rng.random() < 0.3:
+            rider = ("drain", tpl["drain"])
+        elif tpl.get("poison"):
             rider = ("poisoned", tpl["poison"])
-        elif tpl.get("drain"):
-            rider = ("drained", 1)
         elif tpl.get("burn"):
             rider = ("burning", 4)
     else:
@@ -64,7 +64,10 @@ def melee(world, attacker, defender, cost_free=False):
 
     if rider and not defender.dead:
         name, power = rider
-        defender.add_effect(name, world.clock_for(defender.depth) + 500, power)
+        if name == "drain":
+            world.drain_player(defender, power, attacker)
+        else:
+            defender.add_effect(name, world.clock_for(defender.depth) + 500, power)
 
     kb = attacker.tpl.get("knockback") if attacker.kind == "monster" else 0
     if kb and not defender.dead:

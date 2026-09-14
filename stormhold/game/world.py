@@ -775,7 +775,7 @@ class World:
         if item.kind == "coins":
             p.copper += item.gold_amount
             level.take_ground_item(p.x, p.y, item)
-            self.msg(f"You pick up {item.gold_amount} gold pieces.", "loot", to=p)
+            self.msg(f"You pick up {item.gold_amount} copper.", "loot", to=p)
             self.sound("gold", p.x, p.y, level.depth)
             return p.action_cost(PICKUP_COST) or PICKUP_COST
         ok, why = p.room_for(item)
@@ -1314,6 +1314,127 @@ class World:
         return FREE_COST
 
     # ====================================================== shops ===========
+    # The temple's price list. Restoration costs the most because being
+    # drained is the worst thing that can quietly happen to a character.
+    TEMPLE_SERVICES = (
+        ("heal_minor",   "Heal Minor Wounds",        500),
+        ("heal_medium",  "Heal Medium Wounds",       900),
+        ("heal_major",   "Heal Major Wounds",       1400),
+        ("heal_full",    "Heal",                    2500),
+        ("uncurse",      "Remove Curse",            2500),
+        ("cure_poison",  "Neutralize Poison",       1800),
+        ("rune_return",  "Rune of Return",          1000),
+        ("restore_strength",     "Restore Strength",     3000),
+        ("restore_intelligence", "Restore Intelligence", 3000),
+        ("restore_constitution", "Restore Constitution", 3000),
+        ("restore_dexterity",    "Restore Dexterity",    3000),
+        ("restore_hp",   "Restore Drained Hit Points", 3000),
+    )
+
+    def drain_player(self, player, kind, source=None):
+        """Something took a piece of you that will not simply grow back."""
+        if kind == "hp":
+            lost = player.drain_hp(self.rng.randint(2, 5))
+            if lost:
+                self.msg(f"You feel weaker. ({lost} hit points drained)", "bad", to=player)
+        else:
+            stat = self.rng.choice(list(STATS))
+            lost = player.drain_stat(stat, 1)
+            if lost:
+                self.msg(f"You feel your {stat} ebbing away.", "bad", to=player)
+        if lost:
+            self.fx("death", player.x, player.y, player.depth)
+            self.events.append({"t": "inv", "to": player.id})
+
+    def temple_services(self, p):
+        """Which services are worth offering this character, and what they cost."""
+        out = []
+        for key, label, price in self.TEMPLE_SERVICES:
+            useful = True
+            if key.startswith("heal") and p.hp >= p.max_hp:
+                useful = False
+            elif key == "cure_poison" and not p.has("poisoned"):
+                useful = False
+            elif key == "uncurse" and not any(
+                    i and i.cursed for i in p.equipment.values()):
+                useful = False
+            elif key.startswith("restore_") and key != "restore_hp":
+                stat = key.split("_", 1)[1]
+                useful = p.drained.get(stat, 0) > 0
+            elif key == "restore_hp":
+                useful = p.drained_hp > 0
+            out.append({"key": key, "label": label, "price": price,
+                        "useful": useful, "afford": p.copper >= price})
+        return out
+
+    def buy_service(self, p, key):
+        price = dict((k, v) for k, _l, v in self.TEMPLE_SERVICES).get(key)
+        if price is None:
+            return
+        if p.copper < price:
+            self.msg(f"That costs {price} copper. You have {p.copper}.", "warn", to=p)
+            self.sound("deny", p.x, p.y, p.depth)
+            return
+
+        healed = {"heal_minor": 0.25, "heal_medium": 0.5,
+                  "heal_major": 0.75, "heal_full": 1.0}.get(key)
+        if healed is not None:
+            if p.hp >= p.max_hp:
+                self.msg("You are not hurt.", "info", to=p)
+                return
+            p.copper -= price
+            combat.heal(self, p, int(p.max_hp * healed) if healed < 1 else p.max_hp)
+            if healed >= 1.0:
+                p.mana = p.max_mana
+            self.sound("heal", p.x, p.y, p.depth)
+            self.msg("The sisters lay hands on you.", "good", to=p)
+        elif key == "cure_poison":
+            p.copper -= price
+            for bad in ("poisoned", "burning"):
+                p.effects.pop(bad, None)
+            self.msg("The sickness is drawn out of you.", "good", to=p)
+        elif key == "uncurse":
+            cursed = [i for i in p.equipment.values() if i and i.cursed]
+            if not cursed:
+                self.msg("Nothing you carry is cursed.", "info", to=p)
+                return
+            p.copper -= price
+            for item in cursed:
+                item.cursed = False
+            self.msg("The binding breaks.", "good", to=p)
+        elif key == "rune_return":
+            scroll = Item("scroll_teleport")
+            scroll.known = True
+            ok, why = p.room_for(scroll)
+            if not ok:
+                self.msg(why, "warn", to=p)
+                return
+            p.copper -= price
+            p.add_item(scroll)
+            self.appearances.identify("scroll_teleport")
+            self.msg("They cut a rune of return for you.", "good", to=p)
+        elif key == "restore_hp":
+            if not p.drained_hp:
+                self.msg("Nothing has been taken from you.", "info", to=p)
+                return
+            p.copper -= price
+            back = p.restore_hp_drain()
+            self.msg(f"You are made whole again. ({back} hit points restored)",
+                     "good", to=p)
+        elif key.startswith("restore_"):
+            stat = key.split("_", 1)[1]
+            if not p.drained.get(stat):
+                self.msg(f"Your {stat} is not diminished.", "info", to=p)
+                return
+            p.copper -= price
+            back = p.restore_stat(stat)
+            self.msg(f"Your {stat} returns to you. ({back} restored)", "good", to=p)
+        else:
+            return
+
+        p.recalc()
+        self.events.append({"t": "inv", "to": p.id})
+
     def stock_for(self, shop):
         """What a trader has on the shelves. Restocked when the party comes home."""
         cached = self.shop_stock.get(shop)
@@ -1413,7 +1534,7 @@ class World:
             return FREE_COST
         p.copper -= price
         self.appearances.identify(take.key)
-        self.msg(f"You buy {take.name(self.appearances)} for {price} gold.", "loot", to=p)
+        self.msg(f"You buy {take.name(self.appearances)} for {price} copper.", "loot", to=p)
         self.sound("buy", p.x, p.y, level.depth)
         self.events.append({"t": "inv", "to": p.id})
         self.events.append({"t": "shop", "to": p.id, "npc": action.get("npc"),
@@ -1427,7 +1548,7 @@ class World:
         price = self.shop_price(item, selling=True)
         p.remove_item(item, item.qty)
         p.copper += price
-        self.msg(f"You sell {item.name(self.appearances)} for {price} gold.", "loot", to=p)
+        self.msg(f"You sell {item.name(self.appearances)} for {price} copper.", "loot", to=p)
         self.sound("gold", p.x, p.y, level.depth)
         self.events.append({"t": "inv", "to": p.id})
         self.events.append({"t": "shop", "to": p.id, "npc": action.get("npc"),
@@ -1438,13 +1559,21 @@ class World:
         """The temple, the sage and the strongroom."""
         what = action.get("what")
 
+        if what and (what.startswith("heal_") or what.startswith("restore_")
+                     or what in ("cure_poison", "rune_return")
+                     or (what == "uncurse" and action.get("temple"))):
+            self.buy_service(p, what)
+            self.events.append({"t": "shop", "to": p.id, "npc": action.get("npc"),
+                                "shop": "temple", "name": action.get("name", "")})
+            return FREE_COST
+
         if what == "identify":
             item = p.find_item(int(action.get("id", 0)))
             if item is None:
                 return FREE_COST
             price = 60 + p.level * 10
             if p.copper < price:
-                self.msg(f"Ulric wants {price} gold for that.", "warn", to=p)
+                self.msg(f"Ulric wants {price} copper for that.", "warn", to=p)
                 return FREE_COST
             p.copper -= price
             item.known = True
@@ -1455,7 +1584,7 @@ class World:
         elif what == "heal":
             price = 30 + p.level * 12
             if p.copper < price:
-                self.msg(f"The offering is {price} gold.", "warn", to=p)
+                self.msg(f"The offering is {price} copper.", "warn", to=p)
                 return FREE_COST
             p.copper -= price
             p.hp = p.max_hp
@@ -1468,7 +1597,7 @@ class World:
         elif what == "uncurse":
             price = 150 + p.level * 20
             if p.copper < price:
-                self.msg(f"That rite costs {price} gold.", "warn", to=p)
+                self.msg(f"That rite costs {price} copper.", "warn", to=p)
                 return FREE_COST
             freed = [w for w in p.equipment.values() if w and w.cursed]
             if not freed:
@@ -1483,13 +1612,13 @@ class World:
             amount = max(0, min(int(action.get("amount", 0)), p.copper))
             p.copper -= amount
             p.bank += amount
-            self.msg(f"You deposit {amount} gold. The strongroom holds {p.bank}.", "info", to=p)
+            self.msg(f"You deposit {amount} copper. The strongroom holds {p.bank}.", "info", to=p)
 
         elif what == "withdraw":
             amount = max(0, min(int(action.get("amount", 0)), p.bank))
             p.bank -= amount
             p.copper += amount
-            self.msg(f"You withdraw {amount} gold.", "info", to=p)
+            self.msg(f"You withdraw {amount} copper.", "info", to=p)
 
         self.events.append({"t": "inv", "to": p.id})
         return FREE_COST
@@ -1620,6 +1749,9 @@ class World:
             "sell": [dict(self.item_view(i), price=self.shop_price(i, selling=True))
                      for i in p.inventory],
             "copper": p.copper, "bank": p.bank,
+            "services": self.temple_services(p) if shop == "temple" else [],
+            "drained": {k: v for k, v in p.drained.items() if v},
+            "drained_hp": p.drained_hp,
             "heal_price": 30 + p.level * 12,
             "identify_price": 60 + p.level * 10,
             "uncurse_price": 150 + p.level * 20,

@@ -76,7 +76,7 @@ class Player(Actor):
             self.stats.update({k: v for k, v in stats.items() if k in STATS})
         self.level = 1
         self.xp = 0
-        self.copper = 120
+        self.copper = 400
         self.bank = 0
         self.equipment = {s: None for s in SLOTS}
         self.inventory = []
@@ -84,6 +84,10 @@ class Player(Actor):
         self.deepest = 0
         self.deaths = 0
         self.kills = 0
+        # Drain is not an effect that wears off. It is damage to the character
+        # that only the temple can undo, which is what the temple is for.
+        self.drained = {k: 0 for k in STATS}
+        self.drained_hp = 0
 
         self.memory = {}            # depth -> bytearray of seen tiles
         self.fov = set()
@@ -98,8 +102,8 @@ class Player(Actor):
 
     # ------------------------------------------------------------ derived ---
     def stat(self, name):
-        """Base stat plus whatever your gear and potions are adding."""
-        value = self.stats.get(name, 10)
+        """Base stat, less anything drained out of you, plus what gear adds."""
+        value = self.stats.get(name, 10) - self.drained.get(name, 0)
         for item in self.equipment.values():
             if not item:
                 continue
@@ -120,7 +124,7 @@ class Player(Actor):
                 continue
             self.max_hp += item.base.get("hp_bonus", 0)
             self.max_mana += item.base.get("mana_bonus", 0)
-        self.max_hp = max(1, self.max_hp)
+        self.max_hp = max(1, self.max_hp - self.drained_hp)
         self.max_mana = max(0, self.max_mana)
         self.hp = min(getattr(self, "hp", self.max_hp), self.max_hp)
         self.mana = min(getattr(self, "mana", self.max_mana), self.max_mana)
@@ -256,6 +260,42 @@ class Player(Actor):
         return max(10, int(cost))
 
     # ------------------------------------------------------------ progress --
+    def drain_stat(self, name, amount=1):
+        """Permanently sap an attribute. Never below three."""
+        floor = 3
+        current = self.stats.get(name, 10) - self.drained.get(name, 0)
+        amount = min(amount, max(0, current - floor))
+        if amount <= 0:
+            return 0
+        self.drained[name] = self.drained.get(name, 0) + amount
+        self.recalc()
+        return amount
+
+    def drain_hp(self, amount=1):
+        amount = min(amount, max(0, self.max_hp - 5))
+        if amount <= 0:
+            return 0
+        self.drained_hp += amount
+        self.recalc()
+        self.hp = min(self.hp, self.max_hp)
+        return amount
+
+    def restore_stat(self, name):
+        lost = self.drained.get(name, 0)
+        self.drained[name] = 0
+        self.recalc()
+        return lost
+
+    def restore_hp_drain(self):
+        lost = self.drained_hp
+        self.drained_hp = 0
+        self.recalc()
+        return lost
+
+    @property
+    def is_drained(self):
+        return self.drained_hp > 0 or any(self.drained.values())
+
     def add_xp(self, amount):
         self.xp += amount
         gained = []
@@ -386,6 +426,7 @@ class Player(Actor):
             "equipment": {k: (v.to_dict() if v else None) for k, v in self.equipment.items()},
             "spells": sorted(self.spells),
             "deepest": self.deepest, "deaths": self.deaths, "kills": self.kills,
+            "drained": self.drained, "drained_hp": self.drained_hp,
         }
 
     def load_save(self, d):
@@ -393,7 +434,7 @@ class Player(Actor):
         self.colour = d.get("colour", self.colour)
         self.level = d.get("level", 1)
         self.xp = d.get("xp", 0)
-        self.copper = d.get("copper", 120)
+        self.copper = d.get("copper", 400)
         self.bank = d.get("bank", 0)
         self.inventory = [Item.from_dict(x) for x in d.get("inventory", [])]
         self.equipment = {s: None for s in SLOTS}
@@ -404,6 +445,8 @@ class Player(Actor):
         self.deepest = d.get("deepest", 0)
         self.deaths = d.get("deaths", 0)
         self.kills = d.get("kills", 0)
+        self.drained = {k: d.get("drained", {}).get(k, 0) for k in STATS}
+        self.drained_hp = d.get("drained_hp", 0)
         self.recalc()
         self.hp = clamp(d.get("hp", self.max_hp), 1, self.max_hp)
         self.mana = clamp(d.get("mana", self.max_mana), 0, self.max_mana)

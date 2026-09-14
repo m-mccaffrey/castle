@@ -11,6 +11,11 @@ kind is shuffled per world, so last game's knowledge is no help.
 
 import random
 
+# Copper is plentiful. Prices in the hundreds and thousands give the temple's
+# services and the better gear something to bite on, and make a purse heavy
+# enough that the strongroom is worth the walk.
+VALUE_SCALE = 8
+
 _next_item_id = [1]
 
 
@@ -268,8 +273,10 @@ class Item:
         return w
 
     def value(self, appearances=None):
-        v = self.base.get("value", 10) * max(1, self.qty)
-        v += self.enchant * 120
+        if self.kind == "coins":
+            return max(1, self.gold_amount)
+        v = self.base.get("value", 10) * VALUE_SCALE * max(1, self.qty)
+        v += self.enchant * 900
         if self.cursed:
             v = max(1, v // 8)
         return max(1, int(v))
@@ -431,4 +438,5 @@ def generate_item(depth, rng, rich=False, kinds=None):
 
 
 def generate_gold(depth, rng):
-    return rng.randint(10 + depth * 6, 40 + depth * 22)
+    """A single find early on is a few hundred copper, not a handful."""
+    return rng.randint(10 + depth * 6, 40 + depth * 22) * 12

@@ -65,6 +65,49 @@ Two of these imply mechanics rather than preferences: there is a **run** mode
 that travels until something interesting appears, and the map **scrolls by
 room** rather than keeping the character centred.
 
+## Verified: the temple
+
+The temple presents a priced list of services, not a heal button:
+
+| Service | Price |
+| --- | --- |
+| Heal Minor / Medium / Major Wounds | 500 / 900 / 1400 CP |
+| Heal | 2500 CP |
+| Remove Curse | 2500 CP |
+| Neutralize Poison | 1800 CP |
+| Rune of Return | 1000 CP |
+| Restore Strength / Intelligence / Constitution / Dexterity | 3000 CP each |
+| Restore Drained Hit Points | 3000 CP |
+
+Two mechanics follow from that list existing at all. **Attributes and maximum
+hit points can be permanently drained** - nobody sells restoration otherwise -
+and the **economy runs in hundreds and thousands of copper**, which is why a
+single early find here is worth a few hundred rather than a few dozen.
+
+## Verified: three more dialogs
+
+- **Select An Object** - a list of your pack, for spells and scrolls that need
+  a target.
+- **Call Object** - a single text field, which is the rename command.
+- **How many pieces?** - a number field with a scrollbar beside it, for
+  splitting stacks and naming an amount.
+
+## On the licence
+
+The question of whether the original's artwork could be reused was settled by
+the program itself. Its startup notice reads "Castle of the Winds is a
+shareware product, it is not freeware", above "Copyright (c) 1989-1993 by
+SaadaSoft" and "Published by Epic Megagames", and grants only the right to pass
+the complete package on to friends.
+
+Rick Saada later wrote on his homepage, "At this point, I give the game away
+for free" - which waives the registration fee and makes it freeware, but is a
+statement about price rather than a grant of rights. Nothing in either place
+relinquishes copyright.
+
+So: we match how the program behaves, which is not protected and is where all
+the value is anyway. Every sprite, name and line of text here is our own.
+
 ## Verified from screenshots
 
 - Layout: map across the top, message log bottom left, a five-line status
