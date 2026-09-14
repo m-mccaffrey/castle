@@ -8,7 +8,7 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from stormhold.common.constants import (
-    T, GRACE_TICKS, TOWN_DEPTH, MAX_DEPTH, encumbrance_for, CARRY_PER_STRENGTH,
+    T, GRACE_TICKS, TOWN_DEPTH, MAX_DEPTH, encumbrance_for, CARRY_PER_STRENGTH, CARRY_BASE,
     xp_for_level, MAX_LEVEL, SLOTS,
 )
 from stormhold.common.fov import compute_fov, has_los
@@ -76,7 +76,7 @@ class TestLevels(unittest.TestCase):
 
 class TestEncumbrance(unittest.TestCase):
     def test_tiers(self):
-        cap = 12 * CARRY_PER_STRENGTH
+        cap = 12 * CARRY_PER_STRENGTH + CARRY_BASE
         self.assertEqual(encumbrance_for(100, cap)[0], "Unencumbered")
         self.assertEqual(encumbrance_for(int(cap * 0.7), cap)[0], "Burdened")
         self.assertEqual(encumbrance_for(int(cap * 0.95), cap)[0], "Stressed")
@@ -517,7 +517,10 @@ class TestStatusReadouts(unittest.TestCase):
         laden = Player("L", {"strength": 10, "dexterity": 12,
                              "intelligence": 8, "constitution": 8})
         before = laden.speed_percent()
-        laden.copper = 9000
+        # Copper weighs a hundredth of a pound a piece, so the pile has to be
+        # sized against capacity rather than hardcoded - capacity moved when
+        # the carry law was corrected against the original.
+        laden.copper = laden.capacity * 10
         self.assertLess(laden.speed_percent(), before,
                         "a purse full of copper should slow you down")
 

@@ -131,3 +131,14 @@ Everything below is our own design and should not be assumed to match:
   now, and the numbers are tuned to our own item weights.)
 - The paper-doll figure drawing, all sprites, the palette, and every item,
   monster, spell and place name.
+
+## Measured from the running program
+
+Since this file was first written, the original has been run under Wine and
+measured directly - see `reference-run.md`. That supersedes guesswork for: the
+carry weight law (2000 units per strength point, linear), bulk not being a
+strength limit at all, the level-1 character sheet block, `Next Level At: 20`,
+starting copper 1500, the chargen dialog and its four difficulty settings, the
+six starting spells, the inventory window's line-art paper doll, and the
+Options dialog. Items listed as ours below that are contradicted there have
+been corrected in the code.

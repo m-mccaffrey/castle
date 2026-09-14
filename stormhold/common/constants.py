@@ -116,7 +116,13 @@ def xp_for_level(level):
 # ----------------------------------------------------------- encumbrance ---
 # Weight is in tenths of a pound, so a long sword at 60 is six pounds and a
 # hundred gold coins weigh one. That last detail is why the bank matters.
-CARRY_PER_STRENGTH = 100
+# Measured from the original by running it: max carry weight rises exactly
+# 2000 of its units per point of strength, dead linear across the whole
+# chargen range, with a constant offset. Its unit is a hundredth of a pound
+# (a small pack reads 1000, i.e. ten pounds); ours is a tenth, so the same
+# law in our units is 200 per point plus a 10lb offset.
+CARRY_PER_STRENGTH = 200
+CARRY_BASE = 100
 
 ENCUMBRANCE = (
     #  name           fraction of capacity,  multiplier on how long moving takes
@@ -188,8 +194,12 @@ RING_SLOTS = ("ring_left", "ring_right")
 BARE_HANDS_WEIGHT = 120
 BARE_HANDS_BULK = 30
 
-# Bulk you can carry on your body at all, however well packed.
-BULK_PER_STRENGTH = 24
+# Bulk is NOT a strength limit. In the original the character sheet reports a
+# body bulk maximum of 1000000 regardless of strength - it never binds. What
+# actually limits bulk is the pack you are wearing, whose own window caption
+# reads "Wt current (max) Bulk current (max)". So the body figure here is a
+# formality and the real constraint lives in pack_limits().
+BODY_BULK_CAPACITY = 1_000_000
 
 # --------------------------------------------------------------- world -----
 TOWN_DEPTH = 0

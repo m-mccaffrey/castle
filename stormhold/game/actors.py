@@ -11,7 +11,7 @@ import random
 from ..common.constants import (
     STATS, START_STAT, MAX_LEVEL, CARRY_PER_STRENGTH, encumbrance_for,
     xp_for_level, clamp, SLOTS, RING_SLOTS, TICKS_PER_TURN,
-    BULK_PER_STRENGTH, BARE_HANDS_WEIGHT, BARE_HANDS_BULK,
+    BODY_BULK_CAPACITY, CARRY_BASE, BARE_HANDS_WEIGHT, BARE_HANDS_BULK,
 )
 from .items import Item
 from .monsters import MONSTERS, scaled
@@ -184,11 +184,11 @@ class Player(Actor):
 
     @property
     def capacity(self):
-        return self.stat("strength") * CARRY_PER_STRENGTH
+        return self.stat("strength") * CARRY_PER_STRENGTH + CARRY_BASE
 
     @property
     def bulk_capacity(self):
-        return self.stat("strength") * BULK_PER_STRENGTH
+        return BODY_BULK_CAPACITY
 
     @property
     def pack(self):
