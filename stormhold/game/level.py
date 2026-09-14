@@ -333,6 +333,19 @@ def generate_dungeon(depth, seed):
         level.set(far["cx"], far["cy"], T.ALTAR)
     far["special"] = far.get("special") or "end"
 
+    # A fountain or a throne here and there: both "can have beneficial or
+    # harmful effects, or may do nothing at all", which is the point.
+    for room in level.rooms[1:]:
+        if room is far or room.get("special"):
+            continue
+        roll = rng.random()
+        if roll < 0.10:
+            level.set(room["cx"], room["cy"], T.FOUNTAIN)
+            room["special"] = "fountain"
+        elif roll < 0.15:
+            level.set(room["cx"], room["cy"], T.THRONE)
+            room["special"] = "throne"
+
     ok = _seal_unreachable(level, first["cx"], first["cy"])
 
     for room in level.rooms:

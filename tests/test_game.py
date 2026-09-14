@@ -795,6 +795,72 @@ class TestReachAndUpkeep(unittest.TestCase):
         self.assertTrue(it.known, "you learn what it is by putting it on")
 
 
+class TestSitesAndThieves(unittest.TestCase):
+    def test_a_thief_takes_coin_and_leaves(self):
+        import random as _r
+        from stormhold.game.actors import make_monster
+        from stormhold.game import combat
+        world = World(seed=22)
+        p = world.add_player("Mark")
+        level = world.levels[p.depth]
+        spot = level.find_free(p.x, p.y, max_r=4)
+        thief = make_monster("cutpurse", spot[0], spot[1], 1, _r.Random(5))
+        level.place(thief)
+        before, where = p.copper, (thief.x, thief.y)
+        for _ in range(12):
+            combat.melee(world, thief, p)
+            if p.copper < before:
+                break
+        self.assertLess(p.copper, before, "it goes for the purse")
+        self.assertNotEqual((thief.x, thief.y), where, "and then it is gone")
+
+    def test_banked_money_cannot_be_stolen(self):
+        """Half the reason the bank exists."""
+        import random as _r
+        from stormhold.game.actors import make_monster
+        from stormhold.game import combat
+        world = World(seed=22)
+        p = world.add_player("Prudent")
+        level = world.levels[p.depth]
+        p.bank = 5000
+        spot = level.find_free(p.x, p.y, max_r=4)
+        thief = make_monster("cutpurse", spot[0], spot[1], 1, _r.Random(5))
+        level.place(thief)
+        for _ in range(12):
+            combat.melee(world, thief, p)
+        self.assertEqual(p.bank, 5000, "the strongroom is out of its reach")
+
+    def test_fountains_and_thrones_can_help_or_harm(self):
+        from stormhold.common.constants import T
+        world = World(seed=31)
+        p = world.add_player("Sipper")
+        level = world.levels[p.depth]
+        level.set(p.x, p.y, T.FOUNTAIN)
+        outcomes = set()
+        for _ in range(60):
+            p.hp = max(1, p.max_hp // 2)
+            p.mana = 0
+            world.submit(p, {"a": "fountain"})
+            outcomes.add("good" if p.hp > p.max_hp // 2 or p.mana > 0 else "other")
+        self.assertEqual(outcomes, {"good", "other"},
+                         "a fountain is a gamble, not a free heal")
+
+    def test_reshaping_keeps_how_hurt_it_was(self):
+        import random as _r
+        from stormhold.game.actors import make_monster
+        from stormhold.game.monsters import MONSTERS
+        world = World(seed=21)
+        p = world.add_player("Mage")
+        level = world.levels[p.depth]
+        spot = level.find_free(p.x, p.y, max_r=6)
+        m = make_monster(sorted(MONSTERS)[0], spot[0], spot[1], 1, _r.Random(3))
+        level.place(m)
+        m.hp = max(1, m.max_hp // 2)
+        share = m.hp / m.max_hp
+        fresh = world.transmogrify(level, m)
+        self.assertAlmostEqual(fresh.hp / fresh.max_hp, share, delta=0.08)
+
+
 class TestCasting(unittest.TestCase):
     def test_casting_time_varies_by_what_the_spell_does(self):
         """Attack spells are fast, divination slow - the original's rule."""

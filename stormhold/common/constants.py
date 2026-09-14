@@ -81,6 +81,8 @@ class T:
     TREE = 11
     SHOP_FLOOR = 12
     ALTAR = 13
+    FOUNTAIN = 14
+    THRONE = 15
 
 
 TILE_NAMES = {

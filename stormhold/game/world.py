@@ -386,6 +386,40 @@ class World:
                     actor.mana = min(actor.max_mana, actor.mana + gain)
 
     # ====================================================== vision ==========
+    def steal_from(self, thief, victim):
+        """Take coin from the purse and go. The bank is why this is survivable."""
+        level = self.levels.get(victim.depth)
+        take = min(victim.copper, max(1, int(victim.copper * 0.25)))
+        if not take or not victim.spend(take):
+            return
+        thief.stolen = getattr(thief, "stolen", 0) + take
+        self.msg("You feel a tug on your purse!", "bad", to=victim)
+        spot = level.find_free(thief.x, thief.y, max_r=30) if level else None
+        if spot:
+            level.move_actor(thief, *spot)
+            thief.target_id = None
+            self.msg(f"The {thief.name} vanishes!", "bad", to=victim)
+        self.events.append({"t": "inv", "to": victim.id})
+
+    def transmogrify(self, level, m, caster=None):
+        """Turn one creature into another, keeping how hurt it was.
+
+        "Note that the 'injuredness' of a monster is preserved, so a Red Dragon
+        that has lost half its hit points and is transformed into a Hill Giant
+        will have half the normal hit points of a Hill Giant."
+        """
+        share = m.hp / max(1, m.max_hp)
+        table = spawn_table(level.depth)
+        key = self._weighted(table)
+        was = m.name
+        fresh = make_monster(key, m.x, m.y, level.depth, self.rng)
+        level.remove(m)
+        fresh.hp = max(1, int(fresh.max_hp * share))
+        level.place(fresh)
+        self.msg(f"The {was} twists and becomes a {fresh.name}.", "good",
+                 to=caster)
+        return fresh
+
     def within_reach(self, p, item):
         """Can this be activated where it is? Worn slots and the belt only."""
         if item in p.equipment.values():
@@ -681,7 +715,8 @@ class World:
                  T.DOOR_OPEN: "an open doorway", T.STAIRS_DOWN: "stairs leading down",
                  T.STAIRS_UP: "stairs leading up", T.WATER: "shallow water",
                  T.RUBBLE: "broken rubble", T.GRASS: "grass", T.ROAD: "a paved road",
-                 T.TREE: "a tree", T.SHOP_FLOOR: "a shop floor", T.ALTAR: "an altar"}
+                 T.TREE: "a tree", T.SHOP_FLOOR: "a shop floor", T.ALTAR: "an altar",
+                 T.FOUNTAIN: "a fountain", T.THRONE: "a throne"}
         self.msg(f"You see {names.get(tile, 'nothing of interest')}.", "info", to=p)
         return FREE_COST
 
@@ -1206,6 +1241,42 @@ class World:
         if spell.get("cure"):
             for bad in ("poisoned", "burning", "afraid", "slowed"):
                 p.effects.pop(bad, None)
+        if spell.get("light"):
+            # "Cast in a hallway, it will light the 3x3 square region around
+            # the target square. In a room, however, the entire room is lit."
+            room = next((r for r in level.rooms
+                         if r["x"] <= tx < r["x"] + r["w"]
+                         and r["y"] <= ty < r["y"] + r["h"]), None)
+            mem = self.memory_for(p, level)
+            if room:
+                for yy in range(room["y"], room["y"] + room["h"]):
+                    for xx in range(room["x"], room["x"] + room["w"]):
+                        mem[level.idx(xx, yy)] = 1
+                self.msg("Light fills the room.", "good", to=p)
+            else:
+                for yy in range(ty - 1, ty + 2):
+                    for xx in range(tx - 1, tx + 2):
+                        if level.in_bounds(xx, yy):
+                            mem[level.idx(xx, yy)] = 1
+                self.msg("A pool of light spreads around you.", "good", to=p)
+            self.events.append({"t": "map", "to": p.id})
+
+        if spell.get("sleep"):
+            occ = level.actor_at(tx, ty)
+            if occ is not None and occ.kind == "monster" and not occ.dead:
+                occ.add_effect("asleep", now + spell["sleep"] * 10)
+                occ.target_id = None
+                self.msg(f"The {occ.name} slumps where it stands.", "good", to=p)
+            else:
+                self.msg("Nothing there to lull.", "info", to=p)
+
+        if spell.get("transmogrify"):
+            occ = level.actor_at(tx, ty)
+            if occ is not None and occ.kind == "monster" and not occ.dead:
+                self.transmogrify(level, occ, p)
+            else:
+                self.msg("Nothing there to reshape.", "info", to=p)
+
         if spell.get("resist"):
             el = spell["resist"]
             stacks = getattr(p, "resist_stacks", None)
@@ -1297,6 +1368,73 @@ class World:
         return p.action_cost(spell.get("cast_ticks", CAST_COST)) or CAST_COST
 
     # ---- stairs ----------------------------------------------------------
+    # Drinking and sitting: "can have beneficial or harmful effects, or may do
+    # nothing at all". The gamble is the mechanic - you take it when you are
+    # desperate, and sometimes it is worse than being desperate.
+    def summon_near(self, level, p, n=2):
+        """Something notices you. Used by thrones, and by cursed items."""
+        table = spawn_table(level.depth)
+        called = 0
+        for _ in range(n):
+            spot = level.find_free(p.x + self.rng.randint(-4, 4),
+                                   p.y + self.rng.randint(-4, 4), 6)
+            if not spot or not level.walkable(*spot):
+                continue
+            m = make_monster(self._weighted(table), spot[0], spot[1],
+                             level.depth, self.rng)
+            m.target_id = p.id
+            level.place(m)
+            called += 1
+        if called:
+            self.msg("Something has been waiting for a sitter. It comes.",
+                     "bad", to=p)
+        return called
+
+    def _act_fountain(self, level, p, action):
+        if level.get(p.x, p.y) != T.FOUNTAIN:
+            self.msg("There is no fountain here.", "info", to=p)
+            return FREE_COST
+        roll = self.rng.random()
+        if roll < 0.30:
+            combat.heal(self, p, max(4, p.max_hp // 4))
+            self.msg("The water is cold and clean. You feel better.", "good", to=p)
+        elif roll < 0.45:
+            p.mana = p.max_mana
+            self.msg("The water sings on your tongue. Your magic returns.",
+                     "good", to=p)
+        elif roll < 0.60:
+            self.msg("The water is brackish and does nothing at all.", "info", to=p)
+        elif roll < 0.80:
+            p.add_effect("poisoned", level.clock + 500, 3)
+            self.msg("The water is foul. Your stomach turns.", "bad", to=p)
+        else:
+            self.drain_player(p, "body")
+        return p.action_cost(QUAFF_COST) or QUAFF_COST
+
+    def _act_throne(self, level, p, action):
+        if level.get(p.x, p.y) != T.THRONE:
+            self.msg("There is no throne here.", "info", to=p)
+            return FREE_COST
+        roll = self.rng.random()
+        if roll < 0.25:
+            got = self.rng.randint(200, 900) * max(1, p.depth)
+            p.gain_coins("gold", max(1, got // 100))
+            self.msg(f"A hidden compartment springs open. {got} copper of gold.",
+                     "loot", to=p)
+        elif roll < 0.40:
+            stat = self.rng.choice(list(STATS))
+            p.stats[stat] = min(25, p.stats[stat] + 1)
+            p.recalc()
+            self.msg(f"Something old and approving settles on you. "
+                     f"Your {stat} improves.", "good", to=p)
+        elif roll < 0.60:
+            self.msg("You sit. Nothing whatever happens.", "info", to=p)
+        elif roll < 0.80:
+            self.summon_near(level, p)
+        else:
+            self.drain_player(p, "body")
+        return p.action_cost(REST_COST) or REST_COST
+
     def _act_stairs(self, level, p, action):
         tile = level.get(p.x, p.y)
         if tile == T.STAIRS_DOWN:

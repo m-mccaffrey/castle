@@ -25,6 +25,8 @@ SPELLS = OrderedDict([
     ("Lightning",       dict(school="Attack", level=8,  int_req=13, mana=9,  rng=9,  dmg=(3, 5, 1.0), pierce=True, desc="A bolt that carries on through everything in a line.")),
     ("Fireball",        dict(school="Attack", level=11, int_req=14, mana=14, rng=8,  dmg=(3, 6, 1.0), burst=1, burn=True, desc="Bursts on impact, catching everything beside it.")),
     ("Ice Storm",       dict(school="Attack", level=14, int_req=15, mana=18, rng=0,  dmg=(3, 7, 1.1), burst=3, slow=True, desc="A freezing gale on every side of you.")),
+    ("Lull",            dict(school="Miscellaneous", level=6, int_req=12, mana=4, rng=7, sleep=600, desc="One creature sleeps, until something wakes it.")),
+    ("Reshape",         dict(school="Miscellaneous", level=16, int_req=16, mana=6, rng=6, transmogrify=True, desc="Turns one creature into another. Could go either way.")),
     ("Chain Lightning", dict(school="Attack", level=18, int_req=17, mana=24, rng=8,  dmg=(4, 7, 1.2), chain=3, desc="Leaps from one enemy to the next.")),
     ("Sunburst",        dict(school="Attack", level=22, int_req=19, mana=34, rng=0,  dmg=(5, 8, 1.4), burst=4, desc="A silent white flash. Undead fare worst of all.")),
 
@@ -57,6 +59,7 @@ SPELLS = OrderedDict([
     # ---- Passage --------------------------------------------------------
     ("Blink",           dict(school="Movement", level=4,  int_req=10, mana=6,  rng=0, blink=(5, 10), desc="A short hop out of trouble.")),
     ("Haste",           dict(school="Movement", level=8,  int_req=12, mana=10, rng=0, haste=True, dur=40, desc="You move at twice your usual pace.")),
+    ("Lantern",         dict(school="Miscellaneous", level=1, int_req=9, mana=1, rng=6, light=True, desc="Light. A corridor gets a pool of it; a room gets all of it.")),
     ("Featherweight",   dict(school="Miscellaneous", level=6,  int_req=11, mana=8,  rng=0, feather=True, dur=90, desc="Your burden stops mattering for a while.")),
     ("Farstep",         dict(school="Movement", level=10, int_req=13, mana=10, rng=0, blink=(10, 40), desc="A long jump, and no saying exactly where you land.")),
     ("Passwall",        dict(school="Miscellaneous", level=17, int_req=16, mana=18, rng=1, passwall=True, desc="Opens a way through solid stone.")),

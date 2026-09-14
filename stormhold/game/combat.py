@@ -42,6 +42,10 @@ def melee(world, attacker, defender, cost_free=False):
     rider = None
     if attacker.kind == "monster":
         tpl = attacker.tpl
+        if tpl.get("steals") and defender.kind == "player" and defender.copper:
+            # "You feel a tug on your purse" ... "The Thief vanishes!"
+            world.steal_from(attacker, defender)
+            return
         if tpl.get("drain") and defender.kind == "player" and rng.random() < 0.3:
             rider = ("drain", tpl["drain"])
         elif tpl.get("poison"):

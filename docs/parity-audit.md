@@ -63,9 +63,9 @@ deliberate divergence.
 | Phase Door 5-10 squares; Teleport at least 10 | done |
 | Clairvoyance maps 10x10 including secret doors and traps | open |
 | Detect Traps certain within 10 squares, falling off beyond | open |
-| Light: 3x3 in a corridor, the whole room in a room | open |
-| Sleep Monster broken by attacking it | open |
-| Transmogrify preserves the target's fraction of hit points | open |
+| Light: 3x3 in a corridor, the whole room in a room | done |
+| Sleep Monster broken by attacking it | done |
+| Transmogrify preserves the target's fraction of hit points | done |
 | Rune of Return is two-way fast travel | done |
 | Four spells are monster-only: Clone, Create Traps, Haste, Teleport Away | partial |
 
@@ -97,7 +97,7 @@ deliberate divergence.
 | Remove Curse never greyed, to avoid leaking identification | done |
 | Shops are the inventory screen with a Store container | partial |
 | Buy at 1.4x base, sell at 0.8x | done |
-| Fountains and thrones: may help, harm, or do nothing | open (#33) |
+| Fountains and thrones: may help, harm, or do nothing | done |
 | A known trap is less likely to spring, not immune | done |
 | Searching and disarming may take several tries; disarming can spring it | done |
 | Trap list: arrow, dart, blade, fire, acid, three gases, pit, deadfall, teleport, glyph | done |
@@ -121,7 +121,7 @@ is simply a death sentence.
 | Wraiths drain mana, or intelligence if there is no mana | done |
 | Vampires drain hit points that will not come back unaided | partial |
 | Summoners gate in more of their own kind | partial |
-| Thieves steal from the purse and vanish | open (#29) |
+| Thieves steal from the purse and vanish | done |
 | Earth elementals pass through rock and break doors | open |
 | Manticores taunt during combat | open |
 | Slime is sessile, drawn by vibration, and clings and grows | open |

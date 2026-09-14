@@ -25,6 +25,7 @@ MONSTERS = {
     "shambler":       dict(name="Shambler",         sprite="shambler",        min_d=3,  max_d=13, freq=9,  hp=40,  ac=6,  hit=4,  dmg=(2, 4), speed=150, xp=26,  ai="brute", undead=True),
     "dire_wolf":      dict(name="Dire Wolf",        sprite="dire_wolf",       min_d=4,  max_d=13, freq=10, hp=30,  ac=7,  hit=6,  dmg=(1, 9), speed=70,  xp=30,  ai="melee", pack=(2, 4)),
     "acid_pudding":   dict(name="Acid Pudding",     sprite="acid_pudding",    min_d=5,  max_d=14, freq=6,  hp=46,  ac=3,  hit=5,  dmg=(1, 8), speed=170, xp=34,  ai="brute", corrode=True),
+    "cutpurse":       dict(name="Smirking Cutpurse", sprite="goblin",          min_d=3,  max_d=14, freq=6,  hp=30,  ac=10, hit=7,  dmg=(1, 5), speed=130, xp=40,  ai="melee", steals=True),
     "orc":            dict(name="Orc Raider",       sprite="orc",             min_d=5,  max_d=15, freq=11, hp=46,  ac=9,  hit=7,  dmg=(2, 5), speed=100, xp=40,  ai="melee"),
     "ash_cultist":    dict(name="Ash Cultist",      sprite="ash_cultist",     min_d=6,  max_d=16, freq=8,  hp=36,  ac=7,  hit=7,  dmg=(1, 8), speed=100, xp=46,  ai="caster", rng=7, bolt="fire", element="fire", immune=("fire",)),
     "crypt_ghoul":    dict(name="Crypt Ghoul",      sprite="crypt_ghoul",     min_d=7,  max_d=16, freq=9,  hp=54,  ac=9,  hit=8,  dmg=(2, 6), speed=90,  xp=56,  ai="melee", poison=5, drain="body", undead=True),
