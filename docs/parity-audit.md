@@ -134,9 +134,9 @@ is simply a death sentence.
 | Rule | Status |
 |---|---|
 | Map view of the explored level, with a Fast Map option | partial |
-| Right click anything for a popup description, capped at 10 lines | partial |
+| Right click anything for a popup description, capped at 10 lines | done - on the map it names what is there and gives a creature's condition in words rather than numbers; in the pack and the store it gives name, weight, bulk and what the thing does. There was no popup of any kind. |
 | Drag the player icon to walk; aborts if attacked or trapped | open |
-| Double-click yourself to take stairs | open |
+| Double-click yourself to take stairs | done |
 | Crosshair targeting with a "Command Pending" message | partial |
 | About 30 messages of scrollback with its own scrollbar | done - the wheel scrolls the log, the knob tracks the position, and a new line brings you back to the bottom |
 | Resizable windows | open |

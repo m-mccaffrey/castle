@@ -15,6 +15,7 @@ from ..common.constants import (
     DIRS, STATS, STAT_ABBR, START_STAT, START_POINTS, PROTOCOL_VERSION,
     DIFFICULTIES, DEFAULT_DIFFICULTY,
     TILE_NAMES, T, SIGHT_DUNGEON, SIGHT_TOWN, chebyshev, xp_for_level,
+    condition_for,
 )
 from ..common.fov import compute_fov
 from ..game.spells import SPELLS, STARTING_SPELLS
@@ -414,6 +415,55 @@ class HelpScene(Scene):
 #  The play screen.
 # ===========================================================================
 
+def describe_item(item):
+    """Name, weight and bulk always; what it does once you know it.
+
+    "A popup always shows name, weight and bulk; an identified object also
+    lists its properties."
+    """
+    lines = [item.get("name", "Something")]
+    lines.append(f"Weight {item.get('weight', 0)} g   Bulk {item.get('bulk', 0)} cc")
+    # The detail line ends with the weight and bulk, which the line above
+    # already says properly.
+    parts = [bit for bit in (item.get("desc") or "").split(", ")
+             if not bit.endswith(" g") and not bit.startswith("bulk ")]
+    if parts:
+        lines.extend(W.wrap(", ".join(parts), 300, 12))
+    if item.get("cursed"):
+        lines.append("It is cursed.")
+    if item.get("price") is not None:
+        lines.append(f"Asking {item['price']} C.P.")
+    return lines
+
+
+def draw_popup(surf, at, lines):
+    """A small description window that follows the cursor.
+
+    The original answers a right click anywhere with one of these, and it is
+    how you learn what a thing is without spending a turn on it.
+    """
+    font = W.font(12)
+    width = max(140, max(font.size(line)[0] for line in lines) + 22)
+    height = 12 + 16 * len(lines)
+    box = pygame.Rect(at[0] + 14, at[1] + 10, width, height)
+    screen = surf.get_rect()
+    if box.right > screen.right - 6:
+        box.right = at[0] - 10
+    if box.bottom > screen.bottom - 6:
+        box.bottom = max(6, at[1] - 8)
+    box.clamp_ip(screen)
+
+    shadow = box.move(3, 3)
+    pygame.draw.rect(surf, (0, 0, 0, 60), shadow)
+    W.panel(surf, box, raised=True, fill=(252, 252, 232))
+    y = box.y + 6
+    for i, line in enumerate(lines):
+        W.text(surf, line, (box.x + 10, y), 12,
+               bold=(i == 0), colour=(60, 60, 60) if i else BLACK)
+        y += 16
+    return box
+
+
 class MapView:
     """The client's own copy of what it has been told about a floor."""
 
@@ -456,6 +506,8 @@ class PlayScene(Scene):
         self.chatting = False
         self.chat_text = ""
         self.log_scroll = 0           # lines back from the newest
+        self.popup = None             # {"lines": [...], "at": (x, y)}
+        self.last_click = (0.0, None)  # (when, square) for double clicks
         self.dirty = True
 
     # ------------------------------------------------------------ network --
@@ -573,6 +625,19 @@ class PlayScene(Scene):
                     self.begin_target(value, SPELLS[value])
             return
 
+        if self.popup is not None and event.type in (
+                pygame.MOUSEBUTTONDOWN, pygame.KEYDOWN):
+            self.popup = None
+            self.dirty = True
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                return                    # the click that dismisses it, only
+
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
+            cell = self.screen_to_tile(event.pos)
+            if cell is not None:
+                self.show_popup(event.pos, self.describe_tile(*cell))
+            return
+
         if event.type == pygame.MOUSEWHEEL:
             if self.log_rect(self.app.screen).collidepoint(pygame.mouse.get_pos()):
                 self.log_scroll = max(0, self.log_scroll + event.y * 3)
@@ -664,6 +729,17 @@ class PlayScene(Scene):
         me = self.me()
         if not me:
             return
+
+        # "Double-click yourself to take the stairs."
+        when, where = self.last_click
+        now = time.time()
+        self.last_click = (now, cell)
+        if (not self.target_mode and where == cell
+                and now - when < 0.45 and (tx, ty) == (me["x"], me["y"])):
+            self.last_click = (0.0, None)
+            self.send_action({"a": "stairs"})
+            return
+
         if self.target_mode:
             kind, name = self.target_mode
             self.target_mode = None
@@ -676,6 +752,47 @@ class PlayScene(Scene):
         dy = (ty > me["y"]) - (ty < me["y"])
         if dx or dy:
             self.send_action({"a": "move", "dx": dx, "dy": dy})
+
+    # "Right click anything, anywhere - dungeon, map or inventory - for a
+    # popup description. On a monster it gives the condition words. Capped at
+    # 10 lines, with 'more ...' pointing you at the keyboard version."
+    POPUP_LINES = 10
+
+    def describe_tile(self, tx, ty):
+        """Everything you can say about one square, best thing first."""
+        lines = []
+        for a in self.actors:
+            if (a["x"], a["y"]) != (tx, ty):
+                continue
+            share = a.get("hp", 1) / max(1, a.get("mhp", 1))
+            who = a.get("n", "Someone")
+            if a.get("k") == "player":
+                lines.append(f"{who}, level {a.get('lv', 1)}.")
+            else:
+                lines.append(f"{who}.")
+            lines.append(condition_for(share) + ".")
+        for item in self.items:
+            if (item["x"], item["y"]) == (tx, ty):
+                lines.append(item["n"] + ("  (and more beneath)" if item.get("many")
+                                          else ""))
+        for hazard in getattr(self, "hazards", []):
+            if (hazard["x"], hazard["y"]) == (tx, ty):
+                lines.append(f"A {hazard['kind']}, and you have found it.")
+        if self.map:
+            tile = self.map.tiles[ty * self.map.w + tx]
+            known = self.map.known[ty * self.map.w + tx]
+            lines.append(TILE_NAMES.get(tile, "something") .replace("_", " ")
+                         if known else "You have not been here.")
+        return lines
+
+    def show_popup(self, pos, lines):
+        if not lines:
+            lines = ["Nothing to say about that."]
+        capped = lines[:self.POPUP_LINES]
+        if len(lines) > self.POPUP_LINES:
+            capped[-1] = "more ...  (Examine says the rest)"
+        self.popup = {"lines": capped, "at": pos}
+        self.dirty = True
 
     def begin_target(self, spell_name, spell):
         if spell.get("rng", 0) == 0:
@@ -785,6 +902,8 @@ class PlayScene(Scene):
         spells = self.you.get("spells", []) if self.you else []
         self.toolbar.draw(surf, surf.get_width(), self.app.sheet, spells)
         self.menubar.draw(surf, surf.get_width())
+        if self.popup is not None:
+            draw_popup(surf, self.popup["at"], self.popup["lines"])
 
     def draw_map(self, surf, view):
         pygame.draw.rect(surf, BLACK, view)
@@ -1145,6 +1264,7 @@ class PackScene(OverlayScene):
         self.drag = None            # {"item", "from", "icon", "pos"}
         self.hover_slot = None
         self.naming = None          # a TextField while renaming something
+        self.popup = None           # ((x, y), lines) from a right click
         self.grid_rect = pygame.Rect(0, 0, 10, 10)
         self.scroll = 0
 
@@ -1189,6 +1309,16 @@ class PackScene(OverlayScene):
         if event.type == pygame.MOUSEWHEEL and self.grid_rect.collidepoint(pygame.mouse.get_pos()):
             self.scroll = max(0, self.scroll - event.y)
             return
+
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
+            item, _ = self.item_at(event.pos)
+            self.popup = ((event.pos, describe_item(item)) if item else None)
+            return
+        if self.popup is not None and event.type in (pygame.MOUSEBUTTONDOWN,
+                                                     pygame.KEYDOWN):
+            self.popup = None
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                return
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             # The buttons get first refusal. Without this the press never
@@ -1309,6 +1439,8 @@ class PackScene(OverlayScene):
             if img:
                 surf.blit(img, (self.drag["pos"][0] - TILE // 2,
                                 self.drag["pos"][1] - TILE // 2))
+        if self.popup is not None:
+            draw_popup(surf, self.popup[0], self.popup[1])
         if self.naming is not None:
             self.draw_naming(surf, client)
 

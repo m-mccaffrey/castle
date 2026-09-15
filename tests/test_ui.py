@@ -20,7 +20,7 @@ from stormhold.ui.app import (App, MenuScene, CharGenScene,      # noqa: E402
                               StoreScene, ServiceScene, PackScene,
                               SpellScene, SheetScene, AttributesScene,
                               MenuOverlay, HelpScene, OverlayScene,
-                              PlayScene)
+                              PlayScene, draw_popup)
 from stormhold.game.world import World                            # noqa: E402
 
 SIZES = [(1024, 700), (1280, 800), (1440, 900), (1920, 1080)]
@@ -707,3 +707,163 @@ class TestTargetingASpell(unittest.TestCase):
         self.assertIsNone(self.play.target_mode)
         self.assertEqual(self.sent, [])
         self.assertTrue(any("Never mind" in m[0] for m in self.play.messages))
+
+
+class TestRightClickPopups(unittest.TestCase):
+    """"Right click anything, anywhere - dungeon, map or inventory - for a
+    popup description. On a monster it gives the condition words. Capped at
+    10 lines, with 'more ...' pointing you at the keyboard version."
+
+    There was no popup of any kind.
+    """
+
+    def setUp(self):
+        import stormhold.net.protocol as P
+        self.app = make_app()
+        self.app.screen = pygame.display.set_mode((1280, 800))
+        self.world = World(seed=3)
+        self.player = self.world.add_player("Looker", spell="Spark")
+        self.world.move_player_to(self.player, 1)
+        self.world.update_fov(self.player, force=True)
+        self.play = PlayScene(self.app)
+        self.app.play = self.play
+        self.app.inventory = self.world.inventory_view(self.player)
+        self.app.replace(self.play)
+        level = self.world.levels[1]
+        self.play.on_message(P.S_LEVEL, {"w": level.w, "h": level.h, "depth": 1,
+                                         "name": level.name, "town": False})
+        view = self.world.snapshot_for(self.player)
+        self.play.you, self.play.actors = view["you"], view["actors"]
+        self.play.items, self.play.party = view["items"], view["party"]
+        self.world.resend_level(self.player)
+        self.play.map.apply(self.player.pending_tiles)
+        self.play.draw(self.app.screen)
+
+    def pixel_for(self, tx, ty):
+        view = self.play.viewport(self.app.screen)
+        for py in range(view.y + 2, view.bottom - 2, 4):
+            for px in range(view.x + 2, view.right - 2, 4):
+                if self.play.screen_to_tile((px, py)) == (tx, ty):
+                    return (px, py)
+        return None
+
+    def right_click(self, tx, ty):
+        pixel = self.pixel_for(tx, ty)
+        self.assertIsNotNone(pixel)
+        self.play.handle(pygame.event.Event(pygame.MOUSEBUTTONDOWN,
+                                            pos=pixel, button=3))
+        return self.play.popup
+
+    def test_right_clicking_yourself_says_who_and_how_you_are(self):
+        me = self.play.me()
+        popup = self.right_click(me["x"], me["y"])
+        self.assertIsNotNone(popup, "right click did nothing")
+        self.assertIn("Looker", popup["lines"][0])
+        self.assertIn("Uninjured", " ".join(popup["lines"]))
+
+    def test_a_creature_is_described_in_words_not_numbers(self):
+        from stormhold.common.constants import CONDITION
+        words = [w for _share, w in CONDITION]
+        me = self.play.me()
+        self.play.actors = self.play.actors + [
+            {"id": 999, "k": "monster", "x": me["x"] + 1, "y": me["y"],
+             "f": 0, "hp": 3, "mhp": 10, "n": "Kobold"}]
+        popup = self.right_click(me["x"] + 1, me["y"])
+        text = " ".join(popup["lines"])
+        self.assertIn("Kobold", text)
+        self.assertTrue(any(w in text for w in words), text)
+        self.assertNotIn("3", text, "it printed a number")
+
+    def test_it_is_capped_at_ten_lines(self):
+        me = self.play.me()
+        self.play.items = [{"x": me["x"], "y": me["y"], "icon": "gold",
+                            "n": f"Thing {i}", "many": False}
+                           for i in range(30)]
+        popup = self.right_click(me["x"], me["y"])
+        self.assertLessEqual(len(popup["lines"]), self.play.POPUP_LINES)
+        self.assertIn("more ...", popup["lines"][-1])
+
+    def test_any_click_or_key_dismisses_it(self):
+        me = self.play.me()
+        self.right_click(me["x"], me["y"])
+        self.assertIsNotNone(self.play.popup)
+        self.play.handle(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_j,
+                                            unicode="j", mod=0))
+        self.assertIsNone(self.play.popup)
+
+    def test_it_draws_without_running_off_the_screen(self):
+        me = self.play.me()
+        for corner in ((2, 2), (1270, 2), (2, 620), (1270, 620)):
+            with self.subTest(corner=corner):
+                self.play.show_popup(corner, ["A very long line of description "
+                                              "indeed, quite wide", "and more"])
+                box = draw_popup(self.app.screen, corner, self.play.popup["lines"])
+                self.assertTrue(self.app.screen.get_rect().contains(box), box)
+
+    def test_the_pack_answers_a_right_click_too(self):
+        scene = PackScene(self.app)
+        self.app.push(scene)
+        scene.draw(self.app.screen)
+        worn = [(slot, rect) for slot, rect in scene.slot_rects.items()
+                if scene.equipment().get(slot)]
+        self.assertTrue(worn, "nothing is being worn to right click")
+        scene.handle(pygame.event.Event(pygame.MOUSEBUTTONDOWN,
+                                        pos=worn[0][1].center, button=3))
+        self.assertIsNotNone(scene.popup, "the pack ignored a right click")
+        lines = scene.popup[1]
+        self.assertIn("Weight", " ".join(lines))
+        self.assertIn("Bulk", " ".join(lines))
+
+
+class TestDoubleClickTakesTheStairs(unittest.TestCase):
+    """"Double-click yourself to take the stairs."""
+
+    def setUp(self):
+        import stormhold.net.protocol as P
+        self.app = make_app()
+        self.app.screen = pygame.display.set_mode((1280, 800))
+        self.world = World(seed=3)
+        self.player = self.world.add_player("Descender", spell="Spark")
+        self.world.move_player_to(self.player, 1)
+        self.world.update_fov(self.player, force=True)
+        self.play = PlayScene(self.app)
+        self.app.play = self.play
+        self.app.replace(self.play)
+        level = self.world.levels[1]
+        self.play.on_message(P.S_LEVEL, {"w": level.w, "h": level.h, "depth": 1,
+                                         "name": level.name, "town": False})
+        view = self.world.snapshot_for(self.player)
+        self.play.you, self.play.actors = view["you"], view["actors"]
+        self.play.items, self.play.party = view["items"], view["party"]
+        self.world.resend_level(self.player)
+        self.play.map.apply(self.player.pending_tiles)
+        self.play.draw(self.app.screen)
+        self.sent = []
+        self.play.send_action = self.sent.append
+
+    def my_pixel(self):
+        me = self.play.me()
+        view = self.play.viewport(self.app.screen)
+        for py in range(view.y + 2, view.bottom - 2, 4):
+            for px in range(view.x + 2, view.right - 2, 4):
+                if self.play.screen_to_tile((px, py)) == (me["x"], me["y"]):
+                    return (px, py)
+        return None
+
+    def test_two_quick_clicks_on_yourself_take_the_stairs(self):
+        pixel = self.my_pixel()
+        self.play.click_map(pixel)
+        self.play.click_map(pixel)
+        self.assertIn({"a": "stairs"}, self.sent)
+
+    def test_one_click_does_not(self):
+        self.play.click_map(self.my_pixel())
+        self.assertNotIn({"a": "stairs"}, self.sent)
+
+    def test_two_slow_clicks_do_not(self):
+        import time
+        pixel = self.my_pixel()
+        self.play.click_map(pixel)
+        self.play.last_click = (time.time() - 5, self.play.screen_to_tile(pixel))
+        self.play.click_map(pixel)
+        self.assertNotIn({"a": "stairs"}, self.sent)

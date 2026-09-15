@@ -121,7 +121,9 @@ def crawl(s, to_depth=5, turns=3000, log=print):
             m = min(near, key=lambda m: max(abs(m.x - p.x), abs(m.y - p.y)))
             gap = max(abs(m.x - p.x), abs(m.y - p.y))
             spell = best_attack_spell(s)
-            if spell and gap > 1 and p.mana >= SPELLS[spell]["mana"]:
+            reach = SPELLS[spell]["rng"] if spell else 0
+            if (spell and 1 < gap <= reach
+                    and p.mana >= SPELLS[spell]["mana"]):
                 s.app.play.send_action({"a": "cast", "spell": spell,
                                         "x": m.x, "y": m.y})
                 s.step(4); note(); continue
