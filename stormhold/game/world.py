@@ -954,8 +954,9 @@ class World:
             item.known = True
             self.appearances.identify(item.key)
             if item.cursed:
-                self.msg(f"The {item.name(self.appearances)} fastens itself to "
-                         f"you. It is cursed.", "bad", to=p)
+                self.msg(f"A chill runs up your arm. The "
+                         f"{item.name(self.appearances)} fastens itself to you "
+                         f"- it is cursed.", "bad", to=p)
             elif item.enchant:
                 self.msg(f"You can feel the enchantment on it "
                          f"({item.enchant:+d}).", "good", to=p)

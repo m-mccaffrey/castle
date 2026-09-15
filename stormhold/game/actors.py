@@ -478,7 +478,8 @@ class Player(Actor):
         self.recalc()
         if item.cursed:
             item.known = True
-            return True, f"You put on {item.name()}. A chill runs up your arm - it is cursed."
+        # The world announces a curse, with the name the party knows it by;
+        # saying it here too printed the discovery twice.
         return True, f"You are now using {item.name()}."
 
     def unequip(self, slot):

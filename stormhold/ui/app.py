@@ -770,7 +770,9 @@ class PlayScene(Scene):
             self.target_mode = ("examine", None)
             self.add_message("Click something to examine it.", "info")
         elif action == "save":
-            self.add_message("The server saves everyone automatically.", "info")
+            # It used to say the server handled it, which was only true when
+            # somebody disconnected.
+            self.app.client.send(P.C_SAVE, {})
         elif action:
             self.send_action({"a": action})
 

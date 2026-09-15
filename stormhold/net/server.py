@@ -79,6 +79,8 @@ class Session:
 
 
 class GameServer:
+    AUTOSAVE_SECONDS = 60.0
+
     def __init__(self, host="0.0.0.0", port=7777, seed=None, save_path=None,
                  idle_seconds=45.0):
         self.idle_seconds = idle_seconds
@@ -92,6 +94,8 @@ class GameServer:
         self.sock = None
         self.save_path = save_path
         self.saves = {}
+        self._save_lock = threading.Lock()
+        self._last_save = time.time()
         self.load_saves()
 
     # ------------------------------------------------------------ saves ----
@@ -109,17 +113,39 @@ class GameServer:
         self.saves[player.name.lower()] = player.to_save()
 
     def flush_saves(self):
+        """Write the party to disk, atomically.
+
+        Two threads can reach this at once - a player disconnecting while the
+        server is shutting down - and they were racing on one shared
+        `party.json.tmp`, so whichever lost printed a save failure. The
+        temporary name is unique per write and the whole thing is serialised.
+        """
         if not self.save_path:
             return
-        try:
-            os.makedirs(os.path.dirname(self.save_path) or ".", exist_ok=True)
-            tmp = self.save_path + ".tmp"
-            with open(tmp, "w", encoding="utf-8") as fh:
-                json.dump({"version": 1, "seed": self.world.seed,
-                           "players": self.saves}, fh, indent=1)
-            os.replace(tmp, self.save_path)
-        except OSError as exc:
-            print(f"[stormhold] save failed: {exc}")
+        with self._save_lock:
+            tmp = f"{self.save_path}.{os.getpid()}.{threading.get_ident()}.tmp"
+            try:
+                os.makedirs(os.path.dirname(self.save_path) or ".", exist_ok=True)
+                with open(tmp, "w", encoding="utf-8") as fh:
+                    json.dump({"version": 1, "seed": self.world.seed,
+                               "players": self.saves}, fh, indent=1)
+                os.replace(tmp, self.save_path)
+            except OSError as exc:
+                print(f"[stormhold] save failed: {exc}")
+            finally:
+                # Whatever happened, do not leave a half-written file behind.
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
+
+    def save_everyone(self):
+        """Snapshot every player who is currently in the keep."""
+        with self.lock:
+            for session in self.sessions.values():
+                if session.player:
+                    self.store_save(session.player)
+        self.flush_saves()
 
     # ----------------------------------------------------------- serving ---
     def start(self):
@@ -143,6 +169,11 @@ class GameServer:
                 self.world.events.clear()
                 if self.world.nudge_idle(self.idle_seconds):
                     self.dispatch()
+            # Saving only when somebody leaves means a power cut costs the
+            # whole evening. Once a minute is cheap and no one notices it.
+            if time.time() - self._last_save > self.AUTOSAVE_SECONDS:
+                self._last_save = time.time()
+                self.save_everyone()
 
     def stop(self):
         self.running = False
@@ -219,6 +250,11 @@ class GameServer:
                 self.world.events.clear()
                 self.world.submit(player, data)
                 self.dispatch()
+            elif kind == P.C_SAVE:
+                self.store_save(player)
+                self.flush_saves()
+                session.send(P.S_MSG, {"text": f"{player.name} is written down "
+                                               f"in the keep's book.", "kind": "good"})
             elif kind == P.C_CHAT:
                 text = "".join(c for c in str(data.get("text", "")) if c.isprintable())[:160].strip()
                 if text:

@@ -50,6 +50,7 @@ C_HELLO = "hello"
 C_ACTION = "act"
 C_CHAT = "chat"
 C_PING = "ping"
+C_SAVE = "save"
 
 # server -> client
 S_WELCOME = "welcome"
