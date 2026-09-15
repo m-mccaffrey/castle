@@ -1413,6 +1413,8 @@ class World:
         if spell.get("truesight"):
             p.add_effect("truesight", now + spell.get("dur", 60) * 10)
             self.update_fov(p, force=True)
+            self.msg("The dark thins, and the walls give up what they hide.",
+                     "good", to=p)
         if spell.get("detect"):
             p.add_effect(f"detect_{spell['detect']}", now + spell.get("dur", 80) * 10)
             self.msg(f"You sense the {spell['detect']} on this floor.", "good", to=p)

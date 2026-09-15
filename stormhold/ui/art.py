@@ -835,6 +835,19 @@ def icon_gauntlets():
     return ic.outline().shade()
 
 
+def icon_bracers():
+    """Forearm guards: two banded cuffs, laced down the inside."""
+    ic = Icon()
+    for x in (4, 18):
+        ic.rect(x, 8, 10, 17, DARK_BROWN)
+        ic.rect(x, 8, 10, 2, BROWN)
+        ic.rect(x, 23, 10, 2, BROWN)
+        for y in (12, 16, 20):
+            ic.rect(x + 1, y, 8, 1, (MAROON, YELLOW, 0.3))
+        ic.rect(x + 4, 10, 2, 13, SILVER)          # the lacing
+    return ic.outline().shade()
+
+
 def icon_boots():
     ic = Icon()
     for x in (4, 18):
@@ -1018,35 +1031,6 @@ def icon_gem():
     ic.line(16, 3, 16, 29, WHITE)
     ic.line(5, 14, 27, 14, WHITE)
     ic.rect(12, 8, 3, 3, WHITE)
-    return ic.outline().shade()
-
-
-def icon_food():
-    ic = Icon()
-    ic.oval(16, 18, 12, 9, BROWN)
-    ic.oval(16, 16, 12, 8, (MAROON, YELLOW, 0.35))
-    for x in (10, 16, 22):
-        ic.rect(x, 11, 2, 3, DARK_BROWN)
-    return ic.outline().shade()
-
-
-def icon_torch():
-    ic = Icon()
-    ic.rect(14, 12, 4, 19, BROWN)
-    ic.oval(16, 9, 6, 8, RED)
-    ic.oval(16, 8, 4, 5, YELLOW)
-    ic.oval(16, 7, 2, 3, WHITE)
-    return ic.outline().shade()
-
-
-def icon_lantern():
-    ic = Icon()
-    ic.rect(11, 4, 10, 3, GRAY)
-    ic.line(16, 1, 11, 5, GRAY); ic.line(16, 1, 21, 5, GRAY)
-    ic.rect(9, 7, 14, 18, SILVER)
-    ic.rect(11, 9, 10, 14, YELLOW)
-    ic.oval(16, 16, 3, 4, WHITE)
-    ic.rect(8, 25, 16, 4, GRAY)
     return ic.outline().shade()
 
 
