@@ -29,7 +29,7 @@ from .level import generate_dungeon, generate_town
 from .actors import Player, NPC, make_monster, stat_bonus
 from .items import (Item, Appearances, generate_item, generate_gold,
                     coin_metal, article, with_article, BASES)
-from .monsters import spawn_table
+from .monsters import spawn_table, MONSTERS
 from .spells import SPELLS, can_learn, elemental_factor, starting_spell
 from .traps import TRAPS, search_here, disarm_at, a_or_an
 from . import combat, ai
@@ -98,6 +98,12 @@ class World:
             # act as a guard" - a pack that turns up with something worse
             # standing behind it.
             hire = m.tpl.get("hires")
+            # ...but it cannot hire something from further down than this.
+            # A Shambler lives from floor 3; standing one behind a goblin
+            # pack on floor 2 put a creature a whole band out of place in
+            # front of a character with nineteen hit points.
+            if hire and MONSTERS[hire]["min_d"] > level.depth:
+                hire = None
             if hire and rng.random() < m.tpl.get("hire_chance", 0.25):
                 spot = level.find_free(x, y, max_r=4)
                 if spot:
@@ -108,7 +114,18 @@ class World:
 
             pack = m.tpl.get("pack")
             if pack:
-                for _ in range(rng.randint(pack[0] - 1, pack[1] - 1)):
+                # The first floor a creature lives on gets a scouting party,
+                # not the whole pack. Full strength arrives once you are
+                # three floors into its range. Measured against the game's
+                # own combat code, four dire wolves in the open on floor 4
+                # is a 0% fight for the character you would be; two is a
+                # fight you can lose and learn from.
+                low, high = pack
+                over = max(0, level.depth - m.tpl["min_d"])
+                if over < 3:
+                    high = low + (high - low) * over // 3
+                    low = max(1, low - 1) if over == 0 else low
+                for _ in range(rng.randint(low - 1, max(low - 1, high - 1))):
                     spot = level.find_free(x, y, max_r=3)
                     if not spot:
                         break
@@ -128,8 +145,18 @@ class World:
         if level.boss_key:
             bx, by = level.find_floor(level.boss_room["cx"], level.boss_room["cy"])
             boss = self.spawn(level.boss_key, bx, by, level.depth)
-            boss.max_hp = int(boss.max_hp * (1 + (party - 1) * 0.5))
+            # A boss facing a party is outnumbered in the one currency that
+            # decides a fight: actions. Four people get four swings to its
+            # one, so health alone cannot keep up - at half again per head a
+            # party of four walked over both bosses while one person could
+            # not touch either. It also hits harder and moves faster against
+            # a crowd, which is the only thing that holds the odds steady
+            # from one player to four.
+            crowd = party - 1
+            boss.max_hp = int(boss.max_hp * (1 + crowd * 0.9))
             boss.hp = boss.max_hp
+            boss.dmg_bonus = getattr(boss, "dmg_bonus", 0) + crowd * 2
+            boss.speed = max(40, int(boss.speed / (1 + crowd * 0.2)))
             level.place(boss)
             level.boss = boss
 

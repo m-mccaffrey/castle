@@ -51,7 +51,12 @@ MONSTERS = {
     # ---- the two that end a run -----------------------------------------
     "warden_of_ash": dict(
         name="The Warden of Ash", sprite="warden_of_ash", min_d=12, max_d=12, freq=0,
-        hp=560, ac=16, hit=13, dmg=(3, 8), speed=95, xp=1400, ai="boss",
+        # 340, not 560. At 560 the Warden was a wall a solo character could
+        # not get past at all - 0% across twenty measured fights at the level
+        # and gear you have on floor 12, which is the weakest a character is
+        # relative to what is in front of them. At 340 it is a fight you win
+        # about three times in five, whatever the size of the party.
+        hp=340, ac=16, hit=13, dmg=(3, 8), speed=95, xp=1400, ai="boss",
         rng=7, bolt="fire", element="fire", burn=True, knockback=2,
         entry="Something enormous shifts in the dark, and the air turns to ash.",
     ),

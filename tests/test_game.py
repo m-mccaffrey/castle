@@ -808,6 +808,74 @@ class TestBestiaryBehaviour(unittest.TestCase):
                          "warding fire does nothing about cold")
 
 
+class TestDifficultyCurve(unittest.TestCase):
+    """The rules that decide what is standing in front of you, and how hard.
+
+    These are balance decisions with measurements behind them (docs/balance.md
+    and tools/balance.py). They are tested because they are easy to undo by
+    accident and expensive to notice: the symptom is a game that is quietly
+    unfair on floor two.
+    """
+
+    def test_a_pack_is_a_scouting_party_on_its_first_floor(self):
+        """Full strength arrives once you are into the creature's range.
+
+        Counted as goblins per spawn point rather than goblins per floor,
+        because the number of spawn points is not what changed.
+        """
+        from stormhold.game.world import World
+
+        def goblins_per_floor(depth):
+            total = []
+            for seed in range(10):
+                w = World(seed=seed, difficulty="Intermediate")
+                p = w.add_player("H", spell="Spark")
+                w.move_player_to(p, depth)
+                total.append(sum(1 for m in w.levels[depth].actors.values()
+                                 if m.kind == "monster" and m.key == "goblin"))
+            return sum(total) / len(total)
+
+        first = goblins_per_floor(2)          # goblins live from floor 2
+        settled = goblins_per_floor(6)
+        self.assertLess(first, settled,
+                        "a goblin pack on floor 2 should be smaller than a "
+                        "goblin pack on floor 6")
+
+    def test_nothing_hires_a_guard_from_below_its_own_floor(self):
+        from stormhold.game.world import World
+        from stormhold.game.monsters import MONSTERS
+        for depth in (2, 3, 4):
+            for seed in range(10):
+                w = World(seed=seed, difficulty="Intermediate")
+                p = w.add_player("H", spell="Spark")
+                w.move_player_to(p, depth)
+                for m in w.levels[depth].actors.values():
+                    if m.kind != "monster":
+                        continue
+                    self.assertLessEqual(
+                        MONSTERS[m.key]["min_d"], depth,
+                        f"{m.name} lives below floor {depth} and should not "
+                        f"be standing on it")
+
+    def test_a_boss_scales_with_the_party_in_more_than_health(self):
+        from stormhold.game.world import World
+        solo = World(seed=3, difficulty="Intermediate")
+        solo.add_player("H", spell="Spark")
+        lone = solo.get_level(12).boss
+
+        crowd = World(seed=3, difficulty="Intermediate")
+        for n in range(4):
+            crowd.add_player(f"H{n}", spell="Spark")
+        many = crowd.get_level(12).boss
+
+        self.assertGreater(many.max_hp, lone.max_hp * 2)
+        self.assertGreater(many.dmg_bonus, lone.dmg_bonus)
+        self.assertLess(many.speed, lone.speed,
+                        "a lower speed number is a shorter turn: the boss "
+                        "must act more often against a crowd, or four people "
+                        "simply out-swing it")
+
+
 class TestReachAndUpkeep(unittest.TestCase):
     def test_only_worn_things_and_the_belt_can_be_activated(self):
         from stormhold.game.items import Item
