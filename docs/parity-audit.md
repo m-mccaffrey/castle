@@ -152,6 +152,23 @@ is simply a death sentence.
 | Ours | Status |
 |---|---|
 | Rations, and eating them for hit points | removed - the original has no food, hunger or eating of any kind; "Food" appears once in the executable as an object category and nowhere in the manual |
+| Torches and lanterns, and a light radius that gear widened | removed - the original has no light sources at all. Sight is a flat radius and the Light spell is the only thing that changes what you can see. Pell's stocks what the original's general store stocked instead. |
+| Dexterity raising overall speed | removed - the original reads 100% for every fresh character whatever their Dexterity |
+| A weapon's speed applying to every action | removed - a heavy weapon is slow to swing, not slow to read or walk with |
+| A Burden row on the character sheet | removed - the original's sheet has no such row; the speed law replaced the tiers |
+
+## Found by playing it (this pass)
+
+| Item | Status |
+|---|---|
+| A starting spell chosen from six at creation | done - was missing entirely |
+| Four difficulty settings | done, with our own multipliers |
+| Level 2 costs 20 experience | done - was 18 |
+| "Normal"/"Enchanted" grade in gear names | done |
+| Character sheet row order: Copper then Armor Value | done |
+| The clock is the character's, not the floor's | done - it restarted at zero on every staircase |
+| Status bar names the floor it is standing on | done - it said "Dungeon Level 1" while the log said "the Cellars" |
+| Inventory weight shown in grams, not tenths of a pound | done |
 
 ## Known rough edges in our own window
 

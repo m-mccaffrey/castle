@@ -1564,7 +1564,7 @@ class World:
                 combat.knock_back(self, m, victim, m.tpl.get("knockback", 1))
 
     # ---- death -----------------------------------------------------------
-    def kill(self, target, source=None):
+    def kill(self, target, source=None, announce=True):
         if target.dead:
             return
         level = self.levels.get(target.depth)
@@ -1596,7 +1596,9 @@ class World:
                         self.sound("levelup", p.x, p.y, target.depth)
             if source is not None and source.kind == "player":
                 source.kills += 1
-            self.msg(f"The {target.name} dies.", "kill", depth=target.depth)
+            if announce:
+                # A blow that killed it has already said so, in better words.
+                self.msg(f"The {target.name} dies.", "kill", depth=target.depth)
             if target.boss:
                 self.msg(f"{target.name} falls!", "good", depth=target.depth)
                 if target.key == "vaelrik":

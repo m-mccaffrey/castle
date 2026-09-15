@@ -39,15 +39,14 @@ def melee(world, attacker, defender, cost_free=False):
     a_hit = attacker.to_hit
     hit, crit = attack_roll(rng, a_hit, defender.armour_class)
 
-    a_name = attacker.name
-    d_name = defender.name
-
     if not hit:
         world.fx("miss", defender.x, defender.y, defender.depth)
-        if attacker.kind == "player":
-            world.msg(f"You miss the {d_name}.", "combat", to=attacker)
-        else:
-            world.msg(f"The {a_name} misses you.", "combat", to=defender)
+        shield = (getattr(defender, "equipment", {}) or {}).get("shield")
+        blocked = bool(shield) and rng.random() < 0.5
+        text = (blow_message(rng, attacker, defender, 0, False, blocked=True)
+                if blocked else miss_message(rng, attacker, defender))
+        world.msg(text, "combat",
+                  to=attacker if attacker.kind == "player" else defender)
         return False
 
     dmg = attacker.damage_roll(rng)
@@ -73,13 +72,20 @@ def melee(world, attacker, defender, cost_free=False):
             rider = ("burning", 4)
 
     world.fx("hit", defender.x, defender.y, defender.depth)
-    apply_damage(world, defender, dmg, attacker, crit=crit)
+    # The swing narrates its own kill, so kill() must not add "The Kobold
+    # dies." underneath it.
+    apply_damage(world, defender, dmg, attacker, crit=crit,
+                 killed_by_a_blow=True)
 
-    verb = "hit" if not crit else "land a solid blow on"
+    # One sentence, from the attacker's side: "You stab the Kobold in the
+    # arm!" or "The Kobold smashes you in the head!". The damage number is
+    # not in it - it floats over the target instead, as the original's does
+    # not appear at all.
+    text = blow_message(rng, attacker, defender, dmg, defender.dead)
     if attacker.kind == "player":
-        world.msg(f"You {verb} the {d_name} for {dmg}.", "combat", to=attacker)
-    if defender.kind == "player":
-        world.msg(f"The {a_name} hits you for {dmg}.", "hurt", to=defender)
+        world.msg(text, "combat", to=attacker)
+    elif defender.kind == "player":
+        world.msg(text, "hurt", to=defender)
 
     if rider and not defender.dead:
         name, power = rider
@@ -94,7 +100,8 @@ def melee(world, attacker, defender, cost_free=False):
     return True
 
 
-def apply_damage(world, target, amount, source=None, crit=False):
+def apply_damage(world, target, amount, source=None, crit=False,
+                 killed_by_a_blow=False):
     if target.dead:
         return 0
     if target.has("sanctuary"):
@@ -110,7 +117,7 @@ def apply_damage(world, target, amount, source=None, crit=False):
         target.target_id = source.id
         target.last_seen = (source.x, source.y)
     if target.hp <= 0:
-        world.kill(target, source)
+        world.kill(target, source, announce=not killed_by_a_blow)
         return amount
     return amount
 
@@ -151,3 +158,129 @@ def players_near(level, x, y, radius):
     return [a for a in level.actors.values()
             if a.kind == "player" and not a.dead
             and chebyshev(a.x, a.y, x, y) <= radius]
+
+
+# ---------------------------------------------------------------------------
+#  What a blow reads like
+#
+#  The original never prints a damage number in the log. It prints a sentence
+#  built from the weapon in your hand, where the blow landed, and how hard it
+#  was, and the reference notes this is "the single most copyable thing in the
+#  game for feel, and it costs nothing but a message table". So here is the
+#  table. The number still floats over the target for anyone who wants it.
+# ---------------------------------------------------------------------------
+
+WEAPON_CLASS = {
+    "dagger": "pierce", "shortsword": "slash", "sabre": "slash",
+    "longsword": "slash", "broadsword": "slash", "greatsword": "slash",
+    "mace": "crush", "warhammer": "crush", "quarterstaff": "crush",
+    "runestaff": "crush", "club": "crush",
+    "axe": "chop", "halberd": "chop",
+    "spear": "pierce", "shortbow": "shoot", "longbow": "shoot",
+    "crossbow": "shoot", "wand": "blast",
+}
+
+PLACES = ("in the arm", "in the chest", "in the head", "in the leg",
+          "on the flank")
+
+# by weapon class: (a graze, an ordinary blow, a solid blow, a crushing blow)
+STRIKES = {
+    "slash":  ("{A} slash{s} {D}, opening a bloodless cut.",
+               "{A} hit{s} {D} {where}!",
+               "{A} deal{s} {D} a solid blow!",
+               "{A} deal{s} {D} a crushing blow!"),
+    "chop":   ("{A} chop{s} at {D} and catch{es} nothing but hide.",
+               "{A} chop{s} {D} {where}!",
+               "{A} deal{s} {D} a solid blow!",
+               "{A} sink{s} the blade into {D} to the haft!"),
+    "crush":  ("{A} clip{s} {D} a glancing blow.",
+               "{A} smash{es} {D} {where}!",
+               "{A} deal{s} {D} a solid blow!",
+               "{A} deal{s} {D} a crushing blow!"),
+    "pierce": ("{A} prick{s} {D}, no deeper than a thorn.",
+               "{A} stab{s} {D} {where}!",
+               "{A} run{s} {D} through the guard!",
+               "{A} drive{s} the point home to the hilt!"),
+    "shoot":  ("{A} graze{s} {D} in passing.",
+               "{A} hit{s} {D} {where}!",
+               "{A} put{s} a shaft deep into {D}!",
+               "{A} nail{s} {D} clean through!"),
+    "blast":  ("{A} scorch{es} {D}.",
+               "{A} sear{s} {D} {where}!",
+               "{A} blast{s} {D} off {their} feet!",
+               "{A} engulf{s} {D} in fire!"),
+    "fist":   ("{A} cuff{s} {D} without much conviction.",
+               "{A} strike{s} {D} {where}!",
+               "{A} deal{s} {D} a solid blow!",
+               "{A} deal{s} {D} a crushing blow!"),
+}
+
+KILLS = {
+    "slash":  ("{A} slash{es} through {Dp} throat with a neat lunge and slice.",
+               "{A} deal{s} {D} a final murderous cut."),
+    "chop":   ("{A} chop{s} open {Dp} chest, splintering ribs.",
+               "{A} take{s} {D} apart at the shoulder."),
+    "crush":  ("{A} crush{es} {Dp} skull into jelly.",
+               "{A} pound{s} {D} until it stops moving."),
+    "pierce": ("{A} run{s} {D} through, and it folds around the blade.",
+               "{A} put{s} the point through {Dp} heart."),
+    "shoot":  ("{A} drop{s} {D} where it stands.",
+               "{A} put{s} the last shaft through {D}."),
+    "blast":  ("{A} burn{s} {D} to a cinder.",
+               "Nothing much is left of {D}."),
+    "fist":   ("{A} beat{s} {D} down, and it does not get up.",
+               "{A} finish{es} {D} bare-handed."),
+}
+
+MISSES = ("{A} miss{es} {D}.",
+          "{A} miss{es} {D} by a league!",
+          "{A} swing{s} at air as {D} dances back.")
+
+BLOCK = "{A} smash{es} into {Dp} shield, striking sparks."
+
+
+def _conjugate(text, you):
+    """Second person for your own blows, third person for everything else."""
+    if you:
+        return (text.replace("{s}", "").replace("{es}", "")
+                    .replace("{their}", "their"))
+    return (text.replace("{s}", "s").replace("{es}", "es")
+                .replace("{their}", "its"))
+
+
+def weapon_class(actor):
+    """What sort of blow this attacker deals."""
+    if actor.kind != "player":
+        return "fist"
+    weapon = actor.equipment.get("weapon")
+    if weapon is None:
+        return "fist"
+    return WEAPON_CLASS.get(weapon.key, "crush")
+
+
+def blow_message(rng, attacker, defender, dmg, killed, blocked=False):
+    """One sentence for one blow, from the attacker's point of view."""
+    you = attacker.kind == "player"
+    A = "You" if you else f"The {attacker.name}"
+    D = "you" if defender.kind == "player" else f"the {defender.name}"
+    Dp = "your" if defender.kind == "player" else f"the {defender.name}'s"
+    style = weapon_class(attacker)
+
+    if blocked:
+        text = BLOCK
+    elif killed:
+        text = rng.choice(KILLS[style])
+    else:
+        share = dmg / max(1, defender.max_hp)
+        rung = 0 if share < 0.08 else 1 if share < 0.25 else 2 if share < 0.5 else 3
+        text = STRIKES[style][rung]
+    return _conjugate(text, you).format(A=A, D=D, Dp=Dp,
+                                       where=rng.choice(PLACES))
+
+
+def miss_message(rng, attacker, defender):
+    you = attacker.kind == "player"
+    A = "You" if you else f"The {attacker.name}"
+    D = "you" if defender.kind == "player" else f"the {defender.name}"
+    Dp = "your" if defender.kind == "player" else f"the {defender.name}'s"
+    return _conjugate(rng.choice(MISSES), you).format(A=A, D=D, Dp=Dp, where="")

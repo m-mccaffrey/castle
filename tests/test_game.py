@@ -1059,3 +1059,87 @@ class TestEconomy(unittest.TestCase):
         typical = sum(generate_gold(6, rng) for _ in range(8)) / 8
         self.assertLess(typical, 3000, "a single find should not cover a restoration")
         self.assertGreater(typical * 12, 3000, "restoration should be reachable at depth")
+
+
+class TestBlowMessages(unittest.TestCase):
+    """The original builds a sentence per blow and never prints a number.
+
+    The reference calls this "the single most copyable thing in the game for
+    feel, and it costs nothing but a message table", so it is worth holding
+    to: the right verb for the weapon, a place on the body, an escalation
+    with the size of the wound, and a shield block of its own.
+    """
+
+    def setUp(self):
+        import random
+        from stormhold.game.actors import Player, make_monster
+        self.rng = random.Random(4)
+        self.p = Player("Striker", {"strength": 14, "dexterity": 12,
+                                    "intelligence": 10, "constitution": 11})
+        self.m = make_monster("kobold", 0, 0, 1, self.rng)
+
+    def graze(self):
+        return max(1, int(self.m.max_hp * 0.05))
+
+    def glancing(self):
+        return max(2, int(self.m.max_hp * 0.15))
+
+    def blows(self, key, dmg=6, killed=False, n=40):
+        from stormhold.game.combat import blow_message
+        from stormhold.game.items import Item
+        self.p.equipment["weapon"] = Item(key) if key else None
+        return {blow_message(self.rng, self.p, self.m, dmg, killed)
+                for _ in range(n)}
+
+    def test_the_verb_follows_the_weapon(self):
+        self.assertTrue(any("slash" in t for t in self.blows("shortsword", self.graze())))
+        self.assertTrue(any("chop" in t for t in self.blows("axe", self.graze())))
+        self.assertTrue(any("crush" in t or "smash" in t or "clip" in t
+                            for t in self.blows("mace", self.graze())))
+        self.assertTrue(any("stab" in t or "point" in t or "prick" in t
+                            for t in self.blows("dagger", self.graze())))
+
+    def test_a_blow_can_land_somewhere(self):
+        places = ("arm", "chest", "head", "leg", "flank")
+        texts = self.blows("shortsword", self.glancing())
+        self.assertTrue(any(any(p in t for p in places) for t in texts))
+
+    def test_a_worse_wound_reads_worse(self):
+        from stormhold.game.combat import blow_message
+        from stormhold.game.items import Item
+        self.p.equipment["weapon"] = Item("mace")
+        graze = blow_message(self.rng, self.p, self.m, 1, False)
+        mortal = blow_message(self.rng, self.p, self.m, self.m.max_hp, False)
+        self.assertNotEqual(graze, mortal)
+        self.assertIn("crushing", mortal)
+
+    def test_no_damage_number_appears_in_the_sentence(self):
+        from stormhold.game.combat import blow_message, miss_message
+        for dmg in (1, 5, 17, 99):
+            text = blow_message(self.rng, self.p, self.m, dmg, False)
+            self.assertNotIn(str(dmg), text, text)
+        self.assertNotIn("0", miss_message(self.rng, self.p, self.m))
+
+    def test_a_kill_gets_its_own_line(self):
+        ordinary = self.blows("shortsword", 6, killed=False)
+        final = self.blows("shortsword", 6, killed=True)
+        self.assertFalse(ordinary & final, "a kill must not read like a hit")
+
+    def test_the_shield_block_is_its_own_message(self):
+        from stormhold.game.combat import blow_message
+        from stormhold.game.items import Item
+        self.p.equipment["shield"] = Item("buckler")
+        text = blow_message(self.rng, self.m, self.p, 0, False, blocked=True)
+        self.assertIn("shield", text)
+        self.assertIn("your", text, "it is your shield, not you's")
+
+    def test_your_blows_read_in_the_second_person_and_theirs_do_not(self):
+        from stormhold.game.combat import blow_message
+        from stormhold.game.items import Item
+        self.p.equipment["weapon"] = Item("shortsword")
+        yours = blow_message(self.rng, self.p, self.m, 5, False)
+        theirs = blow_message(self.rng, self.m, self.p, 5, False)
+        self.assertTrue(yours.startswith("You "), yours)
+        self.assertTrue(theirs.startswith("The Kobold "), theirs)
+        for text in (yours, theirs):
+            self.assertNotIn("{", text, "an unsubstituted token escaped")

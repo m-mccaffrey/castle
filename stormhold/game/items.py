@@ -61,12 +61,12 @@ BASES = {
 
     # ---- body armour -----------------------------------------------------
     "robe":        dict(name="Robe", slot="torso", icon="robe", bulk=12600, wt=900, value=25, ac=3, depth=0, mana_bonus=6),
-    "leather":     dict(name="Leather Armour", slot="torso", icon="leather", bulk=24000, wt=5000, value=80, ac=6, depth=0),
-    "studded":     dict(name="Studded Leather", slot="torso", icon="studded", bulk=25000, wt=7000, value=170, ac=12, depth=2),
-    "ringmail":    dict(name="Ring Mail", slot="torso", icon="ringmail", bulk=30000, wt=8000, value=290, ac=18, depth=4, str_req=11),
-    "chainmail":   dict(name="Chain Mail", slot="torso", icon="chainmail", bulk=30000, wt=10000, value=520, ac=30, depth=7, str_req=13),
-    "scalemail":   dict(name="Scale Mail", slot="torso", icon="scalemail", bulk=30000, wt=9000, value=760, ac=24, depth=10, str_req=14),
-    "platemail":   dict(name="Plate Armour", slot="torso", icon="platemail", bulk=40000, wt=15000, value=1400, ac=42, depth=14, str_req=16),
+    "leather":     dict(name="Suit of Leather Armour", slot="torso", icon="leather", bulk=24000, wt=5000, value=80, ac=6, depth=0),
+    "studded":     dict(name="Suit of Studded Leather", slot="torso", icon="studded", bulk=25000, wt=7000, value=170, ac=12, depth=2),
+    "ringmail":    dict(name="Suit of Ring Mail", slot="torso", icon="ringmail", bulk=30000, wt=8000, value=290, ac=18, depth=4, str_req=11),
+    "chainmail":   dict(name="Suit of Chain Mail", slot="torso", icon="chainmail", bulk=30000, wt=10000, value=520, ac=30, depth=7, str_req=13),
+    "scalemail":   dict(name="Suit of Scale Mail", slot="torso", icon="scalemail", bulk=30000, wt=9000, value=760, ac=24, depth=10, str_req=14),
+    "platemail":   dict(name="Suit of Plate Armour", slot="torso", icon="platemail", bulk=40000, wt=15000, value=1400, ac=42, depth=14, str_req=16),
     # ---- shields ---------------------------------------------------------
     "buckler":     dict(name="Buckler", slot="shield", icon="buckler", bulk=15000, wt=3000, value=45, ac=3, depth=0),
     "shield":      dict(name="Kite Shield", slot="shield", icon="shield", bulk=23400, wt=4050, value=140, ac=9, depth=3),
