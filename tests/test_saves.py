@@ -76,8 +76,12 @@ class TestSaveAndResume(unittest.TestCase):
         again.settle(2)
         scene = again.app.scene
         self.assertTrue(scene.resume_buttons, "nothing offered to carry on as")
-        self.assertIn("Keeper", scene.resume_buttons[0].label)
-        again.click(scene.resume_buttons[0].rect.center)
+        # Other characters may be in the same file; find ours by name rather
+        # than trusting the order.
+        mine = [b for b in scene.resume_buttons if "Keeper" in b.label]
+        self.assertTrue(mine, f"Keeper is not offered: "
+                              f"{[b.label for b in scene.resume_buttons]}")
+        again.click(mine[0].rect.center)
         again.settle(2.5)
         try:
             self.assertEqual(snapshot(again.me()), before)
