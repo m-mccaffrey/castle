@@ -282,3 +282,42 @@ class TestEveryVerb(unittest.TestCase):
         world, p, level = archmage(depth=4, seed=23)
         world.do_player_action(level, p, {"a": "dance"})
         world.do_player_action(level, p, {})
+
+
+class TestActionsAreSanitisedAtTheDoor(unittest.TestCase):
+    """A client's action is a suggestion, not a promise.
+
+    Every verb used to coerce its own arguments, so a client sending
+    {"id": "not a number"} raised out of the verb, cost that player their
+    turn and printed a traceback on the server. Coercion happens once now,
+    before any verb sees it.
+    """
+
+    def test_a_number_that_is_not_a_number_is_dropped(self):
+        cleaned = World.clean_action({"a": "drop", "id": "not a number"})
+        self.assertEqual(cleaned, {"a": "drop"})
+
+    def test_numbers_that_are_numbers_survive_as_numbers(self):
+        cleaned = World.clean_action({"a": "move", "dx": "1", "dy": -1,
+                                      "x": 4.0})
+        self.assertEqual(cleaned["dx"], 1)
+        self.assertEqual(cleaned["dy"], -1)
+        self.assertEqual(cleaned["x"], 4)
+
+    def test_structures_are_not_let_through(self):
+        cleaned = World.clean_action({"a": "cast", "spell": {"nested": True},
+                                      "slot": ["a", "list"]})
+        self.assertNotIn("spell", cleaned)
+        self.assertNotIn("slot", cleaned)
+
+    def test_something_that_is_not_an_action_at_all(self):
+        for rubbish in (None, [], "move", 5):
+            self.assertEqual(World.clean_action(rubbish), {"a": None})
+
+    def test_a_verb_given_rubbish_still_does_not_raise(self):
+        rubbish = {"id": "x", "slot": ["a"], "x": None, "dx": "east",
+                   "spell": {"no": 1}, "amount": "lots", "qty": [], "npc": "?"}
+        for verb in TestEveryVerb.VERBS:
+            with self.subTest(verb=verb):
+                world, p, level = archmage(depth=4, seed=24)
+                world.do_player_action(level, p, dict(rubbish, a=verb))

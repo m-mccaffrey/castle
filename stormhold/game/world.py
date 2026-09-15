@@ -241,6 +241,7 @@ class World:
         """Queue a player's chosen action, then let the floor run."""
         if player.dead:
             return
+        action = self.clean_action(action)
         level = self.levels.get(player.depth)
         if level is not None and action.get("a") in self.FREE_ACTIONS:
             self.do_player_action(level, player, action)
@@ -536,8 +537,37 @@ class World:
                 p.pending_tiles.extend((i % level.w, i // level.w, level.tiles[i]))
 
     # ====================================================== actions =========
+    # The fields a verb may treat as numbers. Anything arriving from a client
+    # is only a suggestion: a string, a list or None must not reach int().
+    NUMERIC_FIELDS = ("id", "x", "y", "dx", "dy", "qty", "amount", "npc",
+                      "target", "slotn")
+
+    @classmethod
+    def clean_action(cls, action):
+        """Make one client's action safe to act on.
+
+        Every verb used to coerce its own arguments, so a client sending
+        {"id": "not a number"} raised out of the verb. Coercing once, at the
+        door, is the only place it can be done exactly once.
+        """
+        if not isinstance(action, dict):
+            return {"a": None}
+        out = {}
+        for key, value in action.items():
+            if not isinstance(key, str):
+                continue
+            if key in cls.NUMERIC_FIELDS:
+                try:
+                    out[key] = int(value)
+                except (TypeError, ValueError):
+                    continue            # as if it had not been sent
+            elif isinstance(value, (str, int, float, bool)) or value is None:
+                out[key] = value
+        return out
+
     def do_player_action(self, level, p, action):
         """Carry out one chosen action. Returns the ticks it cost."""
+        action = self.clean_action(action)
         kind = action.get("a")
         handler = getattr(self, f"_act_{kind}", None)
         if handler is None:
