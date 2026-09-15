@@ -179,3 +179,53 @@ class TestOnDifferentFloors(TwoPlayers):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestAMisbehavingActionDoesNotEndYourGame(TwoPlayers):
+    """A crash inside one action used to raise out of the client's thread.
+
+    The `finally` dropped that player from the game, so a bug in a verb read
+    as "the connection was lost" - with no message, and no sign to anyone
+    else that anything had happened. Sitting on a throne did exactly this:
+    `_act_throne` referred to a name that was never imported.
+    """
+
+    def test_a_verb_that_raises_leaves_you_playing(self):
+        world = self.world
+        guest = self.player("Guest")
+
+        def explode(level, p, action):
+            raise RuntimeError("a deliberate bug")
+
+        world._act_wait = explode
+        try:
+            self.send(self.guest, {"a": "wait"}, pumps=15)
+        finally:
+            del world._act_wait
+
+        self.assertIn(guest.id, world.players, "the player was dropped")
+        self.assertTrue(self.guest.app.client.connected,
+                        "the client was disconnected")
+        self.assertTrue(any("went wrong" in m for m in self.guest.log(6)),
+                        self.guest.log(6))
+
+    def test_and_you_can_carry_on_afterwards(self):
+        world = self.world
+        guest = self.player("Guest")
+
+        def explode(level, p, action):
+            raise RuntimeError("a deliberate bug")
+
+        world._act_wait = explode
+        try:
+            self.send(self.guest, {"a": "wait"}, pumps=15)
+        finally:
+            del world._act_wait
+
+        moved = 0
+        for _ in range(6):
+            where = (guest.x, guest.y)
+            self.send(self.guest, {"a": "move", "dx": 0, "dy": 1})
+            if (guest.x, guest.y) != where:
+                moved += 1
+        self.assertGreater(moved, 0, "the game was stuck after the error")

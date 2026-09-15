@@ -1992,3 +1992,82 @@ class TestEveryBlowIsNarrated(unittest.TestCase):
         self.assertLessEqual(len(said), 4, said)
         if len(said) == 4:
             self.assertIn("other", said[-1])
+
+
+class TestSitesAndServices(unittest.TestCase):
+    """Fountains, thrones, and the temple putting back what was drained.
+
+    All three were built and none had ever been run. Sitting on a throne
+    raised a NameError - `STATS` was used in world.py and never imported -
+    which in a real game dropped that player from the server without a word.
+    """
+
+    def world_at(self, depth=8, seed=13):
+        from stormhold.game.world import World
+        world = World(seed=seed)
+        p = world.add_player("Pilgrim", spell="Spark")
+        p.stats = {k: 14 for k in p.stats}
+        p.level = 10
+        p.recalc()
+        p.hp = p.max_hp
+        world.move_player_to(p, depth)
+        return world, p, world.levels[depth]
+
+    def use(self, site, verb, seed):
+        world, p, level = self.world_at(seed=seed)
+        level.set(p.x, p.y, site)
+        world.events.clear()
+        world.do_player_action(level, p, {"a": verb})
+        return [e["text"] for e in world.events if e["t"] == "msg"]
+
+    def test_a_throne_never_raises_and_always_says_something(self):
+        outcomes = set()
+        for seed in range(200, 260):
+            said = self.use(T.THRONE, "throne", seed)
+            self.assertTrue(said, "sitting on a throne said nothing")
+            outcomes.add(said[0])
+        self.assertGreater(len(outcomes), 3,
+                           "a throne should not always do the same thing")
+
+    def test_a_fountain_never_raises_and_always_says_something(self):
+        outcomes = set()
+        for seed in range(300, 360):
+            said = self.use(T.FOUNTAIN, "fountain", seed)
+            self.assertTrue(said, "drinking said nothing")
+            outcomes.add(said[0])
+        self.assertGreater(len(outcomes), 3,
+                           "a fountain should not always do the same thing")
+
+    def test_both_can_help_and_both_can_hurt(self):
+        """"Can have beneficial or harmful effects, or may do nothing at
+        all", which is the point of them."""
+        for site, verb, seeds in ((T.THRONE, "throne", range(200, 280)),
+                                  (T.FOUNTAIN, "fountain", range(300, 380))):
+            said = " ".join(t for seed in seeds for t in self.use(site, verb, seed))
+            with self.subTest(site=verb):
+                self.assertRegex(said, r"ebbing away|foul|It comes")
+                self.assertRegex(said, r"improves|better|magic returns|compartment")
+                self.assertRegex(said, r"[Nn]othing")
+
+    def test_the_temple_gives_back_what_was_drained(self):
+        world, p, _level = self.world_at(depth=10)
+        for kind in ("body", "mana", "mind", "hp"):
+            world.drain_player(p, kind)
+        self.assertTrue(any(p.drained.values()) or p.drained_hp,
+                        "nothing was drained, so this proves nothing")
+        world.move_player_to(p, 0)
+        town = world.levels[0]
+        p.copper = 99999
+        for what in ("restore_strength", "restore_intelligence",
+                     "restore_constitution", "restore_dexterity",
+                     "restore_hp"):
+            world.do_player_action(town, p, {"a": "service", "what": what,
+                                             "temple": True})
+        self.assertEqual({k: v for k, v in p.drained.items() if v}, {})
+        self.assertEqual(p.drained_hp, 0)
+
+    def test_drain_never_raises_for_any_kind_it_is_asked_for(self):
+        world, p, _level = self.world_at(depth=10)
+        for kind in ("body", "mana", "mind", "hp", "maxhp", "anything else"):
+            with self.subTest(kind=kind):
+                world.drain_player(p, kind)

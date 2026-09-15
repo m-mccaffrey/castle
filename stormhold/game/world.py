@@ -22,7 +22,7 @@ from ..common.constants import (
     STAIRS_COST, REST_COST, FREE_COST, SIGHT_DUNGEON, SIGHT_TOWN, REGEN_TICKS,
     DEFAULT_DIFFICULTY, difficulty_factors,
     DEATH_GOLD_PENALTY, DEATH_XP_PENALTY, RESURRECT_HP_FRACTION,
-    chebyshev, clamp, is_solid,
+    chebyshev, clamp, is_solid, STATS,
 )
 from ..common.fov import compute_fov, has_los, line_between
 from .level import generate_dungeon, generate_town

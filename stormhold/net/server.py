@@ -10,6 +10,7 @@ almost all of its time asleep.
 
 import json
 import os
+import traceback
 import socket
 import threading
 import time
@@ -248,7 +249,20 @@ class GameServer:
                 return
             if kind == P.C_ACTION:
                 self.world.events.clear()
-                self.world.submit(player, data)
+                try:
+                    self.world.submit(player, data)
+                except Exception:
+                    # One bad action used to raise out of the client's thread,
+                    # which dropped that player from the game without a word.
+                    # The rest of the party never noticed, and neither did
+                    # they - the window simply said the connection was lost.
+                    traceback.print_exc()
+                    self.world.events.clear()
+                    player.pending = None
+                    session.send(P.S_MSG, {
+                        "text": "Something went wrong with that. It has been "
+                                "noted; carry on.", "kind": "warn"})
+                    return
                 self.dispatch()
             elif kind == P.C_SAVE:
                 self.store_save(player)
