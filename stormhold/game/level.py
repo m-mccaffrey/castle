@@ -123,6 +123,16 @@ class Level:
         return (x, y)
 
 
+def can_walk_through(level, x, y):
+    """Can a person get through this square, given enough turns?
+
+    A closed door counts: you walk into it and it opens. Anything that asks
+    "is the far side of the map reachable" has to think so too, or it will
+    decide the whole keep behind the first door is unreachable.
+    """
+    return level.passable(x, y) or level.get(x, y) == T.DOOR
+
+
 def reachable(level, sx, sy):
     """Flood fill of walkable terrain from a starting tile."""
     seen = {level.idx(sx, sy)}
@@ -131,7 +141,7 @@ def reachable(level, sx, sy):
         x, y = stack.pop()
         for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
             nx, ny = x + dx, y + dy
-            if not level.passable(nx, ny):
+            if not level.in_bounds(nx, ny) or not can_walk_through(level, nx, ny):
                 continue
             i = level.idx(nx, ny)
             if i in seen:
@@ -263,7 +273,7 @@ def _seal_unreachable(level, sx, sy):
     for y in range(level.h):
         for x in range(level.w):
             i = level.idx(x, y)
-            if level.passable(x, y) and i not in ok:
+            if can_walk_through(level, x, y) and i not in ok:
                 level.tiles[i] = T.WALL
     return ok
 
@@ -318,8 +328,11 @@ def generate_dungeon(depth, seed):
         rng.choice(level.rooms[1:])["special"] = "vault"
 
     _decorate(level, water, rubble, rng)
-    _add_doors(level, rng)
+    # Walls first: doors are placed where a floor square has wall on both
+    # sides, and until _wallify has run there are no walls to find - so this
+    # ran in the wrong order and the whole keep had no doors at all.
     _wallify(level)
+    _add_doors(level, rng)
 
     first = level.rooms[0]
     level.up_at = (first["cx"], first["cy"])

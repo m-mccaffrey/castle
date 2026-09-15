@@ -152,7 +152,10 @@ class Session:
                         continue
                     if not (0 <= nxt[0] < lv.w and 0 <= nxt[1] < lv.h):
                         continue
-                    if not lv.passable(*nxt) and nxt != (tx, ty):
+                    # A closed door is a step, not a wall: you walk into it
+                    # and it opens.
+                    from stormhold.game.level import can_walk_through
+                    if not can_walk_through(lv, *nxt) and nxt != (tx, ty):
                         continue
                     seen[nxt] = cur
                     q.append(nxt)

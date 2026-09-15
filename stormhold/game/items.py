@@ -216,6 +216,9 @@ def with_article(name):
         return name
     if name[:1].isdigit():
         return name
+    first = name.split()[0].lower()
+    if first in ("a", "an", "the"):
+        return name          # an unidentified thing describes itself already
     last = name.split()[-1].lower().strip('.,!"')
     if last.endswith("s") and not last.endswith("ss"):
         return name

@@ -221,14 +221,14 @@ KILLS = {
                "{A} take{s} {D} apart at the shoulder."),
     "crush":  ("{A} crush{es} {Dp} skull into jelly.",
                "{A} pound{s} {D} until it stops moving."),
-    "pierce": ("{A} run{s} {D} through, and it folds around the blade.",
+    "pierce": ("{A} run{s} {D} through, and {Dsub} fold{Ds} around the blade.",
                "{A} put{s} the point through {Dp} heart."),
-    "shoot":  ("{A} drop{s} {D} where it stands.",
+    "shoot":  ("{A} drop{s} {D} where {Dsub} stand{Ds}.",
                "{A} put{s} the last shaft through {D}."),
     "blast":  ("{A} burn{s} {D} to a cinder.",
                "Nothing much is left of {D}."),
-    "fist":   ("{A} beat{s} {D} down, and it does not get up.",
-               "{A} finish{es} {D} bare-handed."),
+    "fist":   ("{A} beat{s} {D} down, and {Dsub} {Ddo} not get up.",
+               "{A} finish{es} {D} off bare-handed."),
 }
 
 MISSES = ("{A} miss{es} {D}.",
@@ -280,6 +280,10 @@ def blow_message(rng, attacker, defender, dmg, killed, blocked=False):
     A = "You" if you else _leading(_name_of(attacker))
     D = "you" if defender.kind == "player" else _name_of(defender)
     Dp = "your" if defender.kind == "player" else f"{_name_of(defender)}'s"
+    # A second mention of the defender wants a pronoun, and "you" takes a
+    # different verb from "it": "you do not get up", "it does not get up".
+    Dsub = "you" if defender.kind == "player" else "it"
+    Ddo = "do" if defender.kind == "player" else "does"
     style = weapon_class(attacker)
 
     if blocked:
@@ -291,7 +295,7 @@ def blow_message(rng, attacker, defender, dmg, killed, blocked=False):
         rung = 0 if share < 0.08 else 1 if share < 0.25 else 2 if share < 0.5 else 3
         text = STRIKES[style][rung]
     return _conjugate(text, you, defender.kind == "player").format(
-        A=A, D=D, Dp=Dp, where=rng.choice(PLACES))
+        A=A, D=D, Dp=Dp, Dsub=Dsub, Ddo=Ddo, where=rng.choice(PLACES))
 
 
 def miss_message(rng, attacker, defender):
@@ -299,5 +303,7 @@ def miss_message(rng, attacker, defender):
     A = "You" if you else _leading(_name_of(attacker))
     D = "you" if defender.kind == "player" else _name_of(defender)
     Dp = "your" if defender.kind == "player" else f"{_name_of(defender)}'s"
-    return _conjugate(rng.choice(MISSES), you,
-                      defender.kind == "player").format(A=A, D=D, Dp=Dp, where="")
+    Dsub = "you" if defender.kind == "player" else "it"
+    return _conjugate(rng.choice(MISSES), you, defender.kind == "player").format(
+        A=A, D=D, Dp=Dp, Dsub=Dsub, Ddo="do" if Dsub == "you" else "does",
+        where="")

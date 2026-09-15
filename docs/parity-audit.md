@@ -173,6 +173,9 @@ is simply a death sentence.
 | The message log actually scrolls | done - the scrollbar used to be decoration |
 | The keep can be finished | checked - all 25 floors generate, both bosses are placed, and the last one ends the game |
 | Named bosses take no article | done |
+| Doors on every floor, opened by walking into them | done - the keep had none at all: the pass that places them ran before the pass that builds the walls it looks for, so Open, Close, the blocked-door message and the door-opening code in the monster AI were all dead |
+| A closed door blocks sight, so a room is a sealed box | done, and now actually reachable |
+| Two people in one keep | tested - joining, chat, seeing each other, split floors, and an idle player not freezing the rest |
 
 ## Known rough edges in our own window
 

@@ -28,8 +28,10 @@ class TestLevels(unittest.TestCase):
     def test_every_floor_is_fully_connected(self):
         for depth in range(1, MAX_DEPTH + 1):
             level = generate_dungeon(depth, 555)
+            # A closed door is walkable: you open it by walking into it.
+            from stormhold.game.level import can_walk_through
             walkable = sum(1 for y in range(level.h) for x in range(level.w)
-                           if level.passable(x, y))
+                           if can_walk_through(level, x, y))
             reach = reachable(level, *level.up_at)
             self.assertEqual(len(reach), walkable,
                              f"floor {depth} has tiles nothing can reach")
@@ -403,10 +405,12 @@ class TestVerbs(unittest.TestCase):
         level.set(spot[0], spot[1], T.DOOR)
         level.move_actor(p, *level.find_free(spot[0] + 1, spot[1]))
         world.events.clear()
-        world.submit(p, {"a": "open"})
+        # Name the square: floors have their own doors now, and an
+        # unqualified Open takes whichever one it finds first.
+        world.submit(p, {"a": "open", "x": spot[0], "y": spot[1]})
         self.assertEqual(level.get(*spot), T.DOOR_OPEN)
         world.events.clear()
-        world.submit(p, {"a": "close"})
+        world.submit(p, {"a": "close", "x": spot[0], "y": spot[1]})
         self.assertEqual(level.get(*spot), T.DOOR)
 
     def test_a_door_will_not_close_on_somebody(self):
@@ -1268,3 +1272,113 @@ class TestTheKeepCanBeFinished(unittest.TestCase):
         said = [e.get("text") for e in self.world.events if e.get("t") == "msg"]
         falls = said.index("Vaelrik, the Storm-Bound falls!")
         self.assertGreater(falls, 0, "the killing blow was never described")
+
+
+class TestDoorsExist(unittest.TestCase):
+    """The keep had no doors at all - on any floor, on any seed.
+
+    _add_doors places a door where a floor square has wall on both sides, and
+    it ran before the pass that builds the walls, so it never found one. The
+    Open and Close verbs, the blocked-door message and the door-opening
+    behaviour in the monster AI were all dead code.
+    """
+
+    def levels(self, seeds=(1, 2, 3), depths=(1, 5, 12, 20)):
+        from stormhold.game.level import generate_dungeon
+        for seed in seeds:
+            for depth in depths:
+                yield seed, depth, generate_dungeon(depth, seed)
+
+    def test_every_floor_has_doors(self):
+        for seed, depth, level in self.levels():
+            with self.subTest(seed=seed, depth=depth):
+                doors = sum(1 for t in level.tiles if t == T.DOOR)
+                self.assertGreater(doors, 0, "a floor with no doors")
+
+    def test_doors_never_wall_off_the_stairs(self):
+        """A closed door is a step, not a wall, and the sealing pass must
+        agree - it used to wall off everything behind the first door."""
+        from stormhold.game.level import reachable
+        for seed, depth, level in self.levels(depths=(1, 3, 7, 11, 17, 24)):
+            with self.subTest(seed=seed, depth=depth):
+                reach = reachable(level, *level.up_at)
+                self.assertIn(level.idx(*level.down_at), reach)
+                self.assertGreater(len(reach), 200,
+                                   "most of the floor has been sealed off")
+
+    def test_walking_into_a_closed_door_opens_it(self):
+        from stormhold.game.world import World
+        world = World(seed=1)
+        p = world.add_player("Opener", spell="Spark")
+        world.move_player_to(p, 1)
+        level = world.levels[1]
+        spot = next((i, j) for j in range(level.h) for i in range(level.w)
+                    if level.get(i, j) == T.DOOR)
+        beside = next((spot[0] + dx, spot[1] + dy)
+                      for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1))
+                      if level.passable(spot[0] + dx, spot[1] + dy))
+        level.move_actor(p, *beside)
+        world.events.clear()
+        world.do_player_action(level, p, {"a": "move",
+                                          "dx": spot[0] - p.x,
+                                          "dy": spot[1] - p.y})
+        self.assertEqual(level.get(*spot), T.DOOR_OPEN)
+        said = [e["text"] for e in world.events if e["t"] == "msg"]
+        self.assertIn("You open the door.", said)
+
+    def test_a_closed_door_blocks_the_view(self):
+        """Which is what makes them worth having: a room is a sealed box
+        until you open it."""
+        from stormhold.common.constants import OPAQUE
+        self.assertIn(T.DOOR, OPAQUE)
+        self.assertNotIn(T.DOOR_OPEN, OPAQUE)
+
+
+class TestNobodyIsCalledIt(unittest.TestCase):
+    """Pronouns in the lines that describe your own death.
+
+    A bot's log read "The Goblin beats you down, and it does not get up",
+    and "You pick up an a pale gold potion".
+    """
+
+    def setUp(self):
+        import random
+        from stormhold.game.actors import Player, make_monster
+        self.rng = random.Random(3)
+        self.p = Player("Subject", {"strength": 12, "dexterity": 12,
+                                    "intelligence": 10, "constitution": 10})
+        self.m = make_monster("goblin", 0, 0, 2, self.rng)
+
+    def every_line(self, n=250):
+        from stormhold.game.combat import blow_message, miss_message
+        from stormhold.game.items import Item
+        lines = set()
+        for _ in range(n):
+            for key in (None, "dagger", "longbow", "mace", "axe", "shortsword"):
+                self.p.equipment["weapon"] = Item(key) if key else None
+                for dmg, killed in ((1, False), (8, False), (99, True)):
+                    lines.add(blow_message(self.rng, self.p, self.m, dmg, killed))
+                    lines.add(blow_message(self.rng, self.m, self.p, dmg, killed))
+                lines.add(miss_message(self.rng, self.m, self.p))
+                lines.add(miss_message(self.rng, self.p, self.m))
+        return lines
+
+    def test_a_line_about_you_never_calls_you_it(self):
+        for line in self.every_line():
+            if line.startswith("The Goblin") and " you" in line:
+                self.assertNotIn(" it ", line, line)
+
+    def test_the_verbs_agree_with_whoever_they_are_about(self):
+        for line in self.every_line():
+            for wrong in ("you does", "it do not", "dos ", "you dances",
+                          "it dance ", "you folds", "you stands"):
+                self.assertNotIn(wrong, line, line)
+
+    def test_nothing_is_left_unsubstituted(self):
+        for line in self.every_line():
+            self.assertNotIn("{", line, line)
+
+    def test_a_name_that_already_has_an_article_does_not_get_another(self):
+        from stormhold.game.items import with_article
+        for name in ("a pale gold potion", "an oily black scroll", "the Rune"):
+            self.assertEqual(with_article(name), name)
