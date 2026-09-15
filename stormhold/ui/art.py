@@ -204,19 +204,24 @@ def _noise(x, y, seed=0):
     return ((n ^ (n >> 16)) & 0xFFFF) / 65535.0
 
 
+# The floor covers most of the screen, so it is the one tile that has to be
+# quiet. It used to draw four big flagstones per tile, each with a black
+# gutter round it and a bright grey edge on two sides, which laid a hard grid
+# of dark boxes under everything and fought every creature standing on it.
+FLOOR_STONE = (BLACK, GRAY, 0.3)        # charcoal: dark, with grit in it
+
+
 def tile_floor(variant=0):
     ic = Icon()
-    ic.rect(0, 0, ICON, ICON, BLACK)
-    # Dark flagstones. Kept deliberately low in value: the walls are the light
-    # thing on screen, so a lit room reads at a glance.
+    ic.rect(0, 0, ICON, ICON, FLOOR_STONE)
+    # Joints only - no bevel, no highlight. Big slabs, softly marked.
     for by in range(0, ICON, 16):
-        for bx in range(0, ICON, 16):
-            off = 8 if (by // 16) % 2 else 0
-            x = (bx + off) % ICON
-            ic.rect(x + 1, by + 1, 14, 14, DARK_STONE)
-            ic.rect(x + 1, by + 1, 14, 1, GRAY)
-            ic.rect(x + 1, by + 1, 1, 14, GRAY)
-    for i in range(5):
+        off = 8 if (by // 16) % 2 else 0
+        ic.rect(0, by, ICON, 1, BLACK)
+        ic.rect((off) % ICON, by, 1, 16, BLACK)
+        ic.rect((off + 16) % ICON, by, 1, 16, BLACK)
+    # A little grit, so a big room is not a flat field.
+    for i in range(3):
         n1 = _noise(variant, i, 3)
         n2 = _noise(i, variant, 7)
         ic.set(int(n1 * ICON), int(n2 * ICON), GRAY)
@@ -232,7 +237,7 @@ def tile_wall(variant=0):
         off = 0 if row % 2 == 0 else 8
         for bx in range(-8, ICON, 16):
             x = bx + off
-            ic.rect(x + 1, by + 1, 14, bh - 2, MID_STONE)
+            ic.rect(x + 1, by + 1, 14, bh - 2, calm(MID_STONE))
             ic.rect(x + 1, by + 1, 14, 1, SILVER)     # lit top
             ic.rect(x + 1, by + 1, 1, bh - 2, SILVER)  # lit left
             ic.rect(x + 1, by + bh - 2, 14, 1, DARK_STONE)
@@ -243,30 +248,37 @@ def tile_wall(variant=0):
 
 
 def tile_shop_floor(variant=0):
+    """Floorboards. Wide, quiet ones - it is a floor, not a barcode.
+
+    Eight-pixel boards with a black seam between every one of them made four
+    hard stripes per tile, and the shopkeeper standing on it disappeared.
+    """
     ic = Icon()
     ic.rect(0, 0, ICON, ICON, DARK_BROWN)
-    for x in range(0, ICON, 8):
-        ic.rect(x + 1, 0, 6, ICON, BROWN)      # boards
-        ic.rect(x, 0, 1, ICON, BLACK)          # seam between them
-    for i in range(4):                          # a few nail heads
-        ic.set(3 + (i % 2) * 8, 4 + i * 7, OLIVE)
+    for x in range(0, ICON, 16):               # half as many boards
+        ic.rect(x + 1, 0, 14, ICON, calm(BROWN))
+        ic.rect(x, 0, 1, ICON, MAROON)               # a soft seam
+    for i in range(3):                          # a few nail heads
+        ic.set(4 + (i % 2) * 16, 6 + i * 9, OLIVE)
     return ic
 
 
 def tile_grass(variant=0):
+    """Turf with a few blades. The blades used to be drawn in a near-black
+    green, which at map size read as a scatter of holes in the ground."""
     ic = Icon()
-    ic.rect(0, 0, ICON, ICON, MOSS)
-    for i in range(18):
+    ic.rect(0, 0, ICON, ICON, calm(MOSS))
+    for i in range(12):
         x = int(_noise(variant, i, 11) * (ICON - 2))
         y = int(_noise(i, variant, 13) * (ICON - 3))
-        c = LIME if _noise(i, i, variant) > 0.75 else DARK_GREEN
-        ic.rect(x, y, 1, 3, c)
+        c = LIME if _noise(i, i, variant) > 0.8 else GREEN
+        ic.rect(x, y, 1, 2, c)
     return ic
 
 
 def tile_road(variant=0):
     ic = Icon()
-    ic.rect(0, 0, ICON, ICON, (OLIVE, GRAY, 0.5))
+    ic.rect(0, 0, ICON, ICON, calm((OLIVE, GRAY, 0.5), 0.8))
     for i in range(10):
         x = int(_noise(variant, i, 17) * (ICON - 3))
         y = int(_noise(i, variant, 19) * (ICON - 3))
@@ -275,36 +287,57 @@ def tile_road(variant=0):
 
 
 def tile_tree(variant=0):
+    """A canopy of clumps over a trunk, not a lollipop.
+
+    One circle with a smaller bright circle on it reads as a balloon on a
+    stick. A tree reads as a tree when its outline is lumpy.
+    """
     ic = Icon()
-    ic.rect(0, 0, ICON, ICON, MOSS)
-    ic.rect(14, 20, 5, 12, BROWN)
-    ic.rect(14, 20, 1, 12, WOOD_LIT)
-    ic.oval(16, 14, 11, 11, GREEN)
-    ic.oval(13, 11, 6, 6, LIME)          # sunlit crown
-    ic.oval(21, 19, 5, 5, DARK_GREEN)    # shaded underside
+    ic.rect(0, 0, ICON, ICON, calm(MOSS))
+    ic.rect(14, 21, 4, 11, OLIVE)                # trunk, flat: it is thin
+    ic.rect(14, 21, 1, 11, YELLOW)
+    ic.rect(17, 21, 1, 11, MAROON)
+    ic.rect(13, 31, 6, 1, GREEN)                 # roots in the grass
+    for cx, cy, r in ((16, 15, 9), (9, 17, 5), (23, 17, 5),
+                      (12, 9, 5), (21, 10, 5)):
+        ic.oval(cx, cy, r, r - 1, GREEN)         # clumps make the outline
+    for cx, cy, r in ((12, 10, 4), (18, 8, 3), (9, 15, 3)):
+        ic.oval(cx, cy, r, r - 1, LIME)          # lit from the upper left
+    for cx, cy, r in ((21, 19, 4), (16, 21, 4)):
+        ic.oval(cx, cy, r, r - 1, DARK_GREEN)    # and shaded beneath
     return ic
 
 
 def tile_water(variant=0):
+    """Dark water with a little light on it.
+
+    It was a flat sheet of the brightest blue in the palette, which made a
+    pond the loudest thing on the screen - brighter than the creatures, and
+    with a hard edge that read as a panel rather than as water.
+    """
     ic = Icon()
-    ic.rect(0, 0, ICON, ICON, DEEP_WATER)
-    for y in range(2, ICON, 8):
-        off = int(_noise(variant, y, 23) * 10)
-        ic.rect(off, y, ICON - off - 6, 2, SHALLOW)
-        ic.rect(off + 2, y, 5, 1, AQUA)
+    ic.rect(0, 0, ICON, ICON, calm(DEEP_WATER))
+    for y in range(3, ICON, 7):
+        off = int(_noise(variant, y, 23) * 12)
+        ic.rect(off, y, ICON - off - 10, 1, BLUE)          # ripples
+        ic.rect(off + 3, y, 4, 1, AQUA)                    # a glint on one
+    for i in range(4):
+        x = int(_noise(variant, i, 31) * ICON)
+        y = int(_noise(i, variant, 37) * ICON)
+        ic.set(x, y, NAVY)
     return ic
 
 
 def tile_rubble(variant=0):
     ic = Icon()
-    ic.rect(0, 0, ICON, ICON, DARK_STONE)
+    ic.rect(0, 0, ICON, ICON, FLOOR_STONE)   # sitting on the same floor
     chunks = [(2, 3, 9, 7), (14, 2, 11, 8), (25, 6, 6, 6),
               (1, 13, 8, 8), (11, 12, 10, 9), (22, 15, 9, 8),
               (4, 23, 10, 8), (16, 23, 7, 8), (25, 25, 6, 6)]
     for i, (x, y, w, h) in enumerate(chunks):
         jx = int(_noise(variant, i, 29) * 2)
         x = min(x + jx, ICON - w)
-        ic.rect(x, y, w, h, MID_STONE)
+        ic.rect(x, y, w, h, GRAY)
         ic.rect(x, y, w, 1, SILVER)         # lit top face
         ic.rect(x, y, 1, h, SILVER)
         ic.rect(x, y + h - 1, w, 1, BLACK)  # shadow under
@@ -576,8 +609,8 @@ def _weapon(ic, kind, x, y, trim=YELLOW):
         ic.rect(x - 3, y - 2, 8, 6, SILVER)
         ic.rect(x - 3, y - 2, 8, 1, WHITE)
     elif kind == "staff":
-        ic.rect(x, y - 6, 3, 22, MAROON)
-        ic.rect(x, y - 6, 1, 22, OLIVE)
+        ic.rect(x, y - 6, 3, 22, OLIVE)
+        ic.rect(x, y - 6, 1, 22, YELLOW)
         ic.oval(x + 1, y - 7, 4, 4, AQUA)
         ic.rect(x, y - 10, 2, 2, WHITE)
     elif kind == "bow":
@@ -778,12 +811,18 @@ def _blade(length=20, width=4, hilt=YELLOW, metal=SILVER, curved=False):
     return ic.outline().shade()
 
 
-def _haft_weapon(head_fn, haft=MAROON):
-    """A head on a shaft. The shaft is three pixels wide, so it is flat
-    colour: a dither pair that narrow comes out as a string of beads."""
+def _haft_weapon(head_fn, haft=OLIVE):
+    """A head on a shaft.
+
+    The shaft is three pixels wide, so it is flat colour: a dither pair that
+    narrow comes out as a string of beads. Olive body, yellow catching the
+    light on the left, maroon in shadow on the right - the same three tones
+    every other wooden thing in the set is built from.
+    """
     ic = Icon()
     ic.rect(15, 6, 3, 25, haft)
-    ic.rect(15, 6, 1, 25, OLIVE)
+    ic.rect(15, 6, 1, 25, YELLOW)
+    ic.rect(17, 6, 1, 25, MAROON)
     head_fn(ic)
     return ic.outline().shade()
 
@@ -842,44 +881,50 @@ def icon_halberd():
 
 
 def icon_bow():
-    """A stave, a string and a nocked arrow.
+    """A stave, a string, a nocked arrow.
 
-    Every line here is one or two pixels wide, so all of it is flat colour:
-    drawn with dither pairs the stave and the shaft came out as strings of
-    red and yellow beads.
+    Returned without the shading pass. Every line in it is a thin diagonal,
+    and shading works on horizontal edges - on a three-pixel diagonal almost
+    every pixel is an edge, so the pass speckles the whole limb.
     """
     ic = Icon()
-    for dx, colour in ((0, MAROON), (1, MAROON), (2, OLIVE)):
+    for dx, colour in ((0, MAROON), (1, OLIVE), (2, OLIVE)):
         ic.line(8 + dx, 3, 4 + dx, 16, colour)
         ic.line(4 + dx, 16, 8 + dx, 29, colour)
-    ic.rect(7, 2, 2, 2, OLIVE)                     # nocks
-    ic.rect(7, 28, 2, 2, OLIVE)
-    ic.line(9, 3, 9, 29, SILVER)                   # the string
-    ic.rect(10, 15, 16, 2, OLIVE)                  # nocked arrow
-    ic.rect(10, 15, 16, 1, YELLOW)
-    ic.tri([(25, 12), (31, 16), (25, 20)], SILVER)
+    ic.rect(7, 2, 3, 2, MAROON)                    # nocks
+    ic.rect(7, 28, 3, 2, MAROON)
+    ic.line(10, 3, 10, 29, SILVER)                 # the string
+    ic.rect(11, 15, 14, 2, OLIVE)                  # nocked arrow
+    ic.rect(11, 15, 14, 1, (OLIVE, YELLOW, 0.5))
+    ic.tri([(24, 12), (30, 16), (24, 20)], SILVER)
     ic.rect(11, 13, 3, 6, MAROON)                  # fletching
-    return ic.outline().shade()
+    return ic.outline()
 
 
 def icon_crossbow():
-    """A steel prod across a slim wooden stock, string drawn to the nut.
+    """A steel prod across a wooden stock.
 
-    Kept deliberately spare. Earlier tries gave it a broad stock and a flared
-    butt, and at this size the extra mass just read as a brown cross with a
-    lump on it.
+    The shape that works is a narrow stock under a wide prod. Giving the
+    stock real mass and a flared butt made it read as a mallet: at this size
+    the eye takes the widest bright thing as the head of whatever it is.
     """
     ic = Icon()
-    ic.rect(14, 4, 4, 25, MAROON)                # stock: flat, it is thin
-    ic.rect(14, 4, 1, 25, OLIVE)
-    ic.rect(13, 25, 6, 4, DARK_BROWN)            # butt
-    ic.rect(4, 12, 24, 3, GRAY)                  # the prod: steel, solid
-    ic.rect(4, 12, 24, 1, SILVER)
-    ic.rect(4, 15, 24, 1, DARK_STONE)
-    ic.line(5, 11, 16, 8, SILVER)                # string, drawn to the nut
-    ic.line(16, 8, 27, 11, SILVER)
-    ic.rect(14, 7, 4, 3, DARK_STONE)             # the nut
-    ic.rect(13, 18, 6, 2, DARK_STONE)            # trigger
+    # The same three flat tones every other shaft in the set uses, because
+    # they are the ones that read: olive body, yellow catching the light,
+    # maroon in shadow. A dither pair five pixels wide came out maroon.
+    ic.rect(14, 3, 5, 27, OLIVE)                 # stock, narrow
+    ic.rect(14, 3, 1, 27, YELLOW)
+    ic.rect(18, 3, 1, 27, MAROON)
+    ic.rect(3, 12, 26, 4, GRAY)                  # the prod
+    ic.rect(3, 12, 26, 1, SILVER)
+    ic.rect(3, 15, 26, 1, DARK_STONE)
+    ic.rect(2, 11, 3, 6, DARK_STONE)             # horn tips
+    ic.rect(27, 11, 3, 6, DARK_STONE)
+    ic.line(4, 10, 16, 7, SILVER)                # string, drawn to the nut
+    ic.line(16, 7, 28, 10, SILVER)
+    ic.rect(14, 6, 5, 3, GRAY)                   # the nut holding it
+    ic.rect(11, 19, 11, 2, DARK_STONE)           # trigger bar
+    ic.rect(15, 21, 3, 5, GRAY)                  # and the grip below it
     return ic.outline().shade()
 
 
@@ -1164,8 +1209,9 @@ def icon_wand():
 
 def icon_staff():
     ic = Icon()
-    ic.rect(14, 6, 4, 25, MAROON)        # flat: four pixels is still thin
-    ic.rect(14, 6, 1, 25, OLIVE)
+    ic.rect(14, 6, 4, 25, OLIVE)         # flat: four pixels is still thin
+    ic.rect(14, 6, 1, 25, YELLOW)
+    ic.rect(17, 6, 1, 25, MAROON)
     ic.oval(16, 6, 7, 6, AQUA)
     ic.oval(16, 6, 3, 3, WHITE)
     return ic.outline().shade()
@@ -1288,8 +1334,11 @@ CREATURE_BUILDERS = {
                                      weapon="sword", ribs=True, boots=GRAY),
     "shambler":     lambda: humanoid(skin=SICK_GREEN, cloth=DARK_BROWN, trim=OLIVE,
                                      eyes=LIME, weapon="claw", tattered=True, hunched=True),
-    "crypt_ghoul":  lambda: humanoid(skin=OLIVE, cloth=DARK_STONE,
-                                     trim=GRAY, eyes=LIME, weapon="claw", tattered=True),
+    # Sallow skin against a dark shroud. Olive on stone-grey was two mid
+    # tones side by side, which at map size is a smudge with eyes.
+    "crypt_ghoul":  lambda: humanoid(skin=(OLIVE, SILVER, 0.35), cloth=SHADOW_BLUE,
+                                     trim=OLIVE, eyes=LIME, weapon="claw",
+                                     tattered=True, hunched=True),
     "pale_wraith":  lambda: humanoid(skin=ICE, cloth=(NAVY, TEAL, 0.5), trim=AQUA,
                                      eyes=WHITE, hood=True, tattered=True, aura=ICE),
     # No ribs: it is a thing in armour, and rib lines over a stone-grey
@@ -1313,19 +1362,24 @@ CREATURE_BUILDERS = {
     "warden_of_ash": lambda: humanoid(skin=DARK_STONE, cloth=MAROON, trim=EMBER,
                                       eyes=YELLOW, weapon="mace", bulk=8,
                                       horns=True, aura=EMBER),
-    "vaelrik":      lambda: humanoid(skin=ICE, cloth=PLUM, trim=AQUA, eyes=WHITE,
-                                     weapon="sword", bulk=7, crown=True, aura=PLUM),
+    # Storm-dark skin so the gold crown reads against it. Ice-white skin put
+    # a pale block under a pale crown and the two ran together.
+    "vaelrik":      lambda: humanoid(skin=SHADOW_BLUE, cloth=PLUM, trim=AQUA,
+                                     eyes=AQUA, weapon="sword", bulk=7,
+                                     crown=True, aura=PLUM),
 
     # --- townsfolk -------------------------------------------------------
     "npc_smith":     lambda: humanoid(skin=TAN, cloth=DARK_BROWN, trim=RED,
                                       weapon="hammer", eyes=BLACK),
-    "npc_armourer":  lambda: humanoid(skin=TAN, cloth=GRAY, trim=SILVER,
-                                      eyes=BLACK, helm=SILVER),
+    "npc_armourer":  lambda: humanoid(skin=TAN, cloth=GRAY, trim=MAROON,
+                                      eyes=BLACK, helm=OLIVE),
     "npc_alchemist": lambda: humanoid(skin=PALE_SKIN, cloth=PURPLE, trim=LIME,
                                       eyes=BLACK, hood=True),
     "npc_sage":      lambda: humanoid(skin=PALE_SKIN, cloth=NAVY, trim=AQUA,
                                       eyes=BLACK, weapon="staff", hood=True),
-    "npc_priest":    lambda: humanoid(skin=TAN, cloth=SILVER, trim=NAVY,
+    # A navy habit with silver trim, not silver on silver: the priest used
+    # to be a pale figure with a pale head and nothing to separate them.
+    "npc_priest":    lambda: humanoid(skin=TAN, cloth=NAVY, trim=SILVER,
                                       eyes=BLACK, hood=True),
     "npc_banker":    lambda: humanoid(skin=TAN, cloth=OLIVE, trim=YELLOW, eyes=BLACK),
     "npc_trader":    lambda: humanoid(skin=TAN, cloth=GREEN, trim=BROWN, eyes=BLACK),

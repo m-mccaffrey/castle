@@ -67,8 +67,11 @@ def dither_pick(x, y, c1, c2, ratio=0.5):
 # has to speckle - so the dark tones below are written as "mostly the colour,
 # with black through it" rather than as half and half. Half black over maroon
 # is not a dark brown, it is a hole with red in it.
-BROWN        = (MAROON, OLIVE, 0.38)    # leather, wood, earth
-DARK_BROWN   = (MAROON, OLIVE, 0.22)   # dark warm leather, not dark red
+# Olive leads, maroon warms it. The other way round - which is how this
+# started - makes every wooden and leather thing in the game red, because
+# maroon is the stronger of the two and there is a lot of it about.
+BROWN        = (OLIVE, MAROON, 0.4)     # leather, wood, earth
+DARK_BROWN   = (OLIVE, MAROON, 0.7)    # dark warm leather, not dark red
 TAN          = (OLIVE, SILVER, 0.5)     # skin, parchment, sand
 PALE_SKIN    = (SILVER, WHITE, 0.5)
 DARK_STONE   = (GRAY, BLACK, 0.4)
