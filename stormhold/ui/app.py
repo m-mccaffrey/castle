@@ -942,6 +942,8 @@ class PlayScene(Scene):
         # it should agree with what the log just called it.
         depth = you.get("depth", 0)
         place = getattr(self.map, "name", None)
+        if place:
+            place = place[:1].upper() + place[1:]     # "the Cellars" heads a line
         if not place:
             place = "Aldershade" if depth == 0 else f"Dungeon Level {depth}"
         W.text(surf, place, (x, y), 12, bold=True)
@@ -1055,7 +1057,7 @@ class PackScene(OverlayScene):
     """
 
     size = (940, 690)
-    SLOT_W = 150
+    SLOT_W = 196
     SLOT_H = 46
     DOLL_H = 430
 
@@ -2219,6 +2221,10 @@ class StoreScene(PackScene):
         if self.confirm is not None:
             self.handle_confirm(event)
             return
+        if (event.type == pygame.MOUSEWHEEL
+                and self.store_rect.collidepoint(pygame.mouse.get_pos())):
+            self.store_scroll = max(0, self.store_scroll - event.y)
+            return
         super().handle(event)
 
     def handle_confirm(self, event):
@@ -2334,6 +2340,10 @@ class StoreScene(PackScene):
             self.store_cells.append((r, item))
         surf.set_clip(clip)
 
+        if max_scroll:
+            W.text(surf, f"{self.store_scroll + 1}/{max_scroll + 1}  (scroll wheel)",
+                   (self.store_rect.right - 110, self.store_rect.bottom - 16), 10,
+                   colour=(120, 120, 120))
         if not stock:
             W.text(surf, "Nothing for sale today.",
                    (self.store_rect.x + 10, self.store_rect.y + 10), 12,
