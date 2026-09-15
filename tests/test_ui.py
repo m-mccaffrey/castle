@@ -84,7 +84,7 @@ class TestWindowLayout(unittest.TestCase):
                 scene.draw(self.app.screen)
                 cx = self.app.screen.get_width() // 2
                 self.assertEqual(scene.buttons[0].rect,
-                                 pygame.Rect(cx - 210, 470, 180, 34))
+                                 pygame.Rect(cx - 210, 500, 180, 34))
 
     def test_every_scene_survives_a_draw_at_each_size(self):
         """A smoke test: the window must not explode at any sensible size."""
@@ -98,9 +98,13 @@ class TestWindowLayout(unittest.TestCase):
 class _PlayStub:
     def __init__(self, view):
         self.you = view
+        self.targeted = []
 
     def add_message(self, *a, **k):
         pass
+
+    def begin_target(self, name, spell):
+        self.targeted.append(name)
 
 
 class TestStoreIsTheInventory(unittest.TestCase):
@@ -420,3 +424,52 @@ class TestThePlayScreensOwnControls(unittest.TestCase):
         self.play.handle(pygame.event.Event(pygame.MOUSEBUTTONDOWN,
                                             pos=row.center, button=1))
         self.assertEqual(walked, [])
+
+
+class TestChoosingAStartingSpell(unittest.TestCase):
+    """The original's last step: "choose a starting spell" from a list of six."""
+
+    def setUp(self):
+        self.app = make_app()
+        self.app.screen = pygame.display.set_mode((1024, 700))
+        self.scene = CharGenScene(self.app)
+        self.app.replace(self.scene)
+        self.scene.draw(self.app.screen)
+
+    def test_six_are_offered(self):
+        from stormhold.game.spells import STARTING_SPELLS, SPELLS
+        self.assertEqual(len(STARTING_SPELLS), 6)
+        for name in STARTING_SPELLS:
+            self.assertIn(name, SPELLS, f"{name} is not a spell")
+        self.assertEqual([b.action[1] for b in self.scene.spell_buttons],
+                         list(STARTING_SPELLS))
+
+    def test_clicking_one_chooses_it_even_though_the_screen_redraws(self):
+        """A redraw between the press and the release must not disarm it.
+
+        It did: draw() set `pressed` to mark the chosen spell, which cleared
+        the arming from the real mouse press, so at 30 frames a second the
+        buttons could not be clicked at all.
+        """
+        button = [b for b in self.scene.spell_buttons if b.action[1] == "Spark"][0]
+        self.scene.handle(pygame.event.Event(pygame.MOUSEBUTTONDOWN,
+                                             pos=button.rect.center, button=1))
+        self.scene.draw(self.app.screen)          # the frame in between
+        self.scene.handle(pygame.event.Event(pygame.MOUSEBUTTONUP,
+                                             pos=button.rect.center, button=1))
+        self.assertEqual(self.scene.spell, "Spark")
+
+    def test_the_choice_reaches_the_character(self):
+        from stormhold.game.world import World
+        world = World(seed=9)
+        for name in ("Spark", "Shield", "Blink"):
+            with self.subTest(spell=name):
+                p = world.add_player(f"Caster{name}", spell=name)
+                self.assertEqual(sorted(p.spells), [name])
+
+    def test_a_nonsense_choice_still_leaves_you_able_to_cast(self):
+        from stormhold.game.world import World
+        from stormhold.game.spells import STARTING_SPELLS
+        world = World(seed=9)
+        p = world.add_player("Liar", spell="Wish For Everything")
+        self.assertEqual(sorted(p.spells), [STARTING_SPELLS[0]])

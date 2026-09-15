@@ -26,8 +26,8 @@ SHOTS = os.environ.get("SHOTS", "/tmp/claude-0/shots")
 
 
 class Session:
-    def __init__(self, seed=4242, name="Tester", size=(1280, 800)):
-        args = argparse.Namespace(serve=False, port=7801, host="0.0.0.0",
+    def __init__(self, seed=4242, name="Tester", size=(1280, 800), port=7801):
+        args = argparse.Namespace(serve=False, port=port, host="0.0.0.0",
                                   seed=seed, name=name, save="/tmp/claude-0/party.json",
                                   fullscreen=False)
         self.app = App(args)

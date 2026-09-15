@@ -235,7 +235,8 @@ class GameServer:
             save = self.saves.get(name.lower()) if data.get("resume") else None
             stats = valid_stats(data.get("stats") or {})
             colour = int(data.get("colour", 0)) % 6
-            player = self.world.add_player(name, stats, colour, save)
+            player = self.world.add_player(name, stats, colour, save,
+                                           data.get("spell"))
             session.player = player
 
             session.send(P.S_WELCOME, {

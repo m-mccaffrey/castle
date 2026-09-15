@@ -334,7 +334,9 @@ class Item:
         # original always says what grade a piece of gear is, which is why its
         # shop shelf reads "Normal Suit of Leather Armor" and "Enchanted Cape
         # of Protection" rather than leaving plain things unqualified.
-        if base.get("slot"):
+        gradeable = (base.get("slot") and base.get("kind") != "container"
+                     and (base.get("dmg") or base.get("ac")))
+        if gradeable:
             if self.known or shop:
                 if self.cursed and self.enchant <= 0:
                     prefix = f"cursed {self.enchant:+d} " if self.enchant else "cursed "

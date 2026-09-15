@@ -151,3 +151,18 @@ def elemental_factor(element, monster_tpl):
     if kin and OPPOSITE.get(kin) == element:
         return VULNERABLE_FACTOR
     return 1.0
+
+
+# The original's character creation ends with "choose a starting spell" and a
+# list of exactly six: Heal Minor Wounds, Detect Objects, Light, Magic Arrow,
+# Phase Door and Shield - one of each school a beginner might want. These are
+# ours, in the same order and the same roles. The level requirement is waived
+# for the one you start with, exactly as it must be in the original: Phase
+# Door is not a first-level spell there either.
+STARTING_SPELLS = ("Mend Wounds", "Treasure Sense", "Lantern",
+                   "Spark", "Blink", "Shield")
+
+
+def starting_spell(name):
+    """The chosen spell, or the first of the six if the choice was nonsense."""
+    return name if name in STARTING_SPELLS else STARTING_SPELLS[0]

@@ -16,7 +16,7 @@ from ..common.constants import (
     TILE_NAMES, T, SIGHT_DUNGEON, SIGHT_TOWN, chebyshev, xp_for_level,
 )
 from ..common.fov import compute_fov
-from ..game.spells import SPELLS
+from ..game.spells import SPELLS, STARTING_SPELLS
 from ..net import protocol as P
 from ..net.client import GameClient
 from . import widgets as W
@@ -189,6 +189,7 @@ class CharGenScene(Scene):
         self.stats = {k: START_STAT for k in STATS}
         self.points = START_POINTS
         self.colour = 0
+        self.spell = STARTING_SPELLS[0]
         self.error = ""
         self.layout(app.screen.get_size())
 
@@ -197,22 +198,30 @@ class CharGenScene(Scene):
         self.plus = {}
         self.minus = {}
         for i, stat in enumerate(STATS):
-            y = 210 + i * 42
+            y = 190 + i * 38
             self.minus[stat] = W.Button((cx - 30, y, 28, 26), "-", ("dec", stat))
             self.plus[stat] = W.Button((cx + 88, y, 28, 26), "+", ("inc", stat))
+        # The original's last step is choosing one starting spell from six.
+        self.spell_buttons = []
+        for i, name in enumerate(STARTING_SPELLS):
+            col, row = i % 3, i // 3
+            self.spell_buttons.append(
+                W.Button((cx - 210 + col * 148, 428 + row * 32, 140, 28),
+                         name, ("spell", name)))
         self.buttons = [
-            W.Button((cx - 210, 470, 180, 34), "Enter the keep", "go"),
-            W.Button((cx + 30, 470, 180, 34), "Back", "back"),
+            W.Button((cx - 210, 500, 180, 34), "Enter the keep", "go"),
+            W.Button((cx + 30, 500, 180, 34), "Back", "back"),
         ]
         self.resume_buttons = []
         for i, s in enumerate(self.saves[:6]):
             self.resume_buttons.append(
-                W.Button((cx - 210, 530 + i * 30, 420, 26),
+                W.Button((cx - 210, 552 + i * 30, 420, 26),
                          f"Carry on as {s['name']} (level {s['level']}, reached {s.get('deepest', 0)})",
                          ("resume", s["name"])))
 
     def handle(self, event):
-        for b in list(self.plus.values()) + list(self.minus.values()) + self.buttons + self.resume_buttons:
+        for b in (list(self.plus.values()) + list(self.minus.values())
+                  + self.spell_buttons + self.buttons + self.resume_buttons):
             action = b.handle(event)
             if not action:
                 continue
@@ -224,17 +233,22 @@ class CharGenScene(Scene):
                 elif op == "dec" and self.stats[value] > START_STAT:
                     self.stats[value] -= 1
                     self.points += 1
+                elif op == "spell":
+                    self.spell = value
                 elif op == "resume":
-                    self.app.join_as(value, self.stats, self.colour, resume=True)
+                    self.app.join_as(value, self.stats, self.colour, resume=True,
+                                     spell=self.spell)
             elif action == "go":
                 self.app.join_as(self.app.settings.get("name", "Adventurer"),
-                                 self.stats, self.colour, resume=False)
+                                 self.stats, self.colour, resume=False,
+                                 spell=self.spell)
             elif action == "back":
                 self.app.disconnect("")
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_RETURN:
                 self.app.join_as(self.app.settings.get("name", "Adventurer"),
-                                 self.stats, self.colour, resume=False)
+                                 self.stats, self.colour, resume=False,
+                                 spell=self.spell)
             elif event.key == pygame.K_LEFT:
                 self.colour = (self.colour - 1) % 6
             elif event.key == pygame.K_RIGHT:
@@ -244,7 +258,7 @@ class CharGenScene(Scene):
         surf.fill((18, 24, 40))
         w = surf.get_width()
         cx = w // 2
-        box = pygame.Rect(cx - 260, 60, 520, 620)
+        box = pygame.Rect(cx - 260, 46, 520, min(surf.get_height() - 60, 700))
         client = W.window(surf, box, "Create a character")
 
         W.text(surf, "Stormhold has no character classes.", (client.x + 8, 100), 14, bold=True)
@@ -255,11 +269,11 @@ class CharGenScene(Scene):
                 client.width - 16, 13)):
             W.text(surf, line, (client.x + 8, 122 + i * 17), 13)
 
-        W.text(surf, f"Points left: {self.points}", (cx - 210, 182), 15, bold=True,
+        W.text(surf, f"Points left: {self.points}", (cx - 210, 166), 15, bold=True,
                colour=(0, 96, 0) if self.points else (120, 0, 0))
 
         for i, stat in enumerate(STATS):
-            y = 210 + i * 42
+            y = 190 + i * 38
             W.text(surf, STAT_ABBR[stat] + "  " + stat.title(), (cx - 210, y + 5), 14, bold=True)
             W.panel(surf, (cx + 2, y, 82, 26), raised=False, fill=WHITE)
             value = str(self.stats[stat])
@@ -271,29 +285,34 @@ class CharGenScene(Scene):
             self.plus[stat].draw(surf)
             W.text(surf, self.hint(stat), (cx + 124, y + 6), 12, colour=(70, 70, 70))
 
-        W.text(surf, "Colour on the map (left/right arrows)", (cx - 210, 392), 13, bold=True)
+        W.text(surf, "Colour on the map (left/right arrows)", (cx - 210, 344), 13, bold=True)
         for i in range(6):
             img = self.app.sheet.player(i, "sword", False, False, False)[0]
-            spot = pygame.Rect(cx - 210 + i * 44, 412, 40, 40)
+            spot = pygame.Rect(cx - 210 + i * 44, 362, 40, 40)
             W.panel(surf, spot, raised=i != self.colour)
             surf.blit(img, (spot.x + 4, spot.y + 4))
+
+        W.text(surf, "The one spell you already know", (cx - 210, 410), 13, bold=True)
+        for b in self.spell_buttons:
+            b.selected = (b.action[1] == self.spell)
+            b.draw(surf)
 
         for b in self.buttons:
             b.draw(surf)
         if self.resume_buttons:
             W.text(surf, "Or carry on with a character already saved here:",
-                   (cx - 210, 512), 13, bold=True)
+                   (cx - 210, 540), 13, bold=True)
             for b in self.resume_buttons:
                 b.draw(surf)
         if self.error:
-            W.text(surf, self.error, (cx - 210, 690), 13, colour=(150, 0, 0), bold=True)
+            W.text(surf, self.error, (cx - 210, 726), 13, colour=(150, 0, 0), bold=True)
 
     @staticmethod
     def hint(stat):
         return {
             "strength": "carry more, hit harder",
-            "dexterity": "hit more often, harder to hit",
-            "intelligence": "more mana, better spells",
+            "dexterity": "hit and dodge better",
+            "intelligence": "more mana, more spells",
             "constitution": "more health, heal faster",
         }[stat]
 
@@ -505,7 +524,7 @@ class PlayScene(Scene):
             if what == "verb":
                 self.menu_command(value)
             else:
-                from ..game.spells import SPELLS
+                from ..game.spells import SPELLS, STARTING_SPELLS
                 if value in SPELLS:
                     self.begin_target(value, SPELLS[value])
             return
@@ -981,6 +1000,7 @@ class PackScene(OverlayScene):
     size = (940, 690)
     SLOT_W = 150
     SLOT_H = 46
+    DOLL_H = 430
 
     def __init__(self, app):
         super().__init__(app)
@@ -1139,7 +1159,9 @@ class PackScene(OverlayScene):
                       f"   Bulk: {bk} ({bk_max})")
         client, _ = self.frame(surf)
 
-        doll_h = 430
+        # A store splits the lower half in two, so the doll gives some height
+        # back - otherwise neither grid is tall enough to show a whole cell.
+        doll_h = self.DOLL_H
         doll = pygame.Rect(client.x, client.y, client.width, doll_h)
         self.draw_doll(surf, doll)
 
@@ -1356,6 +1378,38 @@ class PackScene(OverlayScene):
         if self.selected is not None and worn is not None and worn["id"] == self.selected["id"]:
             pygame.draw.rect(surf, W.TITLE_A, rect, 2)
 
+    CELL = 96
+    CELL_H = 84
+
+    @staticmethod
+    def caption(label, width, size=10, lines=2):
+        """Break an item's name across a cell, rather than cutting it short.
+
+        A grid of "2 Potions of...", "Scroll of Ca...", "Tome of La..." tells
+        you nothing about what you are about to buy, so the name gets two
+        lines and only gives up if it still will not fit.
+        """
+        f = W.font(size)
+        words, out, cur = label.split(), [], ""
+        for word in words:
+            trial = f"{cur} {word}".strip()
+            if cur and f.size(trial)[0] > width:
+                out.append(cur)
+                cur = word
+                if len(out) == lines:
+                    break
+            else:
+                cur = trial
+        if len(out) < lines and cur:
+            out.append(cur)
+        out = out[:lines]
+        if out and f.size(out[-1])[0] > width:
+            tail = out[-1]
+            while tail and f.size(tail + "...")[0] > width:
+                tail = tail[:-1]
+            out[-1] = tail + "..."
+        return out
+
     def draw_pack(self, surf, area):
         inv = self.inv
         name = inv.get("pack_name", "Pack")
@@ -1369,9 +1423,9 @@ class PackScene(OverlayScene):
         self.grid_rect = pygame.Rect(area.x, bar.bottom, area.width, area.height - bar.height)
         W.panel(surf, self.grid_rect, raised=False, fill=(236, 236, 232))
 
-        cell = 74
+        cell, cell_h = self.CELL, self.CELL_H
         cols = max(1, (self.grid_rect.width - 8) // cell)
-        rows = max(1, (self.grid_rect.height - 8) // cell)
+        rows = max(1, (self.grid_rect.height - 8) // cell_h)
         items = self.items()
         max_scroll = max(0, (len(items) + cols - 1) // cols - rows)
         self.scroll = min(self.scroll, max_scroll)
@@ -1385,7 +1439,7 @@ class PackScene(OverlayScene):
             if row < 0 or row >= rows + 1:
                 continue
             r = pygame.Rect(self.grid_rect.x + 4 + col * cell,
-                            self.grid_rect.y + 4 + row * cell, cell - 4, cell - 4)
+                            self.grid_rect.y + 4 + row * cell_h, cell - 4, cell_h - 4)
             selected = self.selected is not None and item["id"] == self.selected["id"]
             if selected:
                 pygame.draw.rect(surf, (210, 220, 245), r)
@@ -1393,15 +1447,13 @@ class PackScene(OverlayScene):
             img = self.app.sheet.item(item["icon"])
             if img:
                 surf.blit(img, (r.centerx - TILE // 2, r.y + 2))
-            label = item["name"]
-            f = W.font(10)
-            if f.size(label)[0] > r.width - 2:
-                while f.size(label + "...")[0] > r.width - 2 and len(label) > 3:
-                    label = label[:-1]
-                label += "..."
             colour = (150, 0, 0) if item.get("cursed") else BLACK
-            img2 = f.render(label, True, colour)
-            surf.blit(img2, (r.centerx - img2.get_width() // 2, r.bottom - 24))
+            lines = self.caption(item["name"], r.width - 4)
+            ly = r.bottom - 6 - 11 * len(lines)
+            for line in lines:
+                img2 = W.font(10).render(line, True, colour)
+                surf.blit(img2, (r.centerx - img2.get_width() // 2, ly))
+                ly += 11
             qty = item.get("qty", 1)
             if qty > 1:
                 W.text(surf, f"x{qty}", (r.right - 20, r.y + 2), 10, bold=True)
@@ -1477,18 +1529,29 @@ class SpellScene(OverlayScene):
     def __init__(self, app, play):
         super().__init__(app)
         self.play = play
+        # Open on a class you actually have spells in, rather than on "Pick a
+        # class on the left." - one click of ceremony before every cast.
         self.klass = None
+        for name, usable in self.classes_for(app):
+            if usable:
+                self.klass = name
+                break
         self.selected = None
         self.list = W.ListBox((0, 0, 10, 10), row_height=20)
         self.class_rects = []
+
+    @staticmethod
+    def classes_for(app):
+        from ..game.spells import SCHOOLS
+        known = [n for n in app.play.you.get("spells", []) if n in SPELLS]
+        have = {SPELLS[n]["school"] for n in known}
+        return [(c, c in have) for c in SCHOOLS]
 
     def known(self):
         return [n for n in self.app.play.you.get("spells", []) if n in SPELLS]
 
     def classes(self):
-        from ..game.spells import SCHOOLS
-        have = {SPELLS[n]["school"] for n in self.known()}
-        return [(c, c in have) for c in SCHOOLS]
+        return self.classes_for(self.app)
 
     def rows(self):
         if self.klass is None:
@@ -2056,7 +2119,8 @@ class StoreScene(PackScene):
     the same dragging, with one more container to drag to and from.
     """
 
-    size = (980, 700)
+    size = (980, 760)
+    DOLL_H = 360
 
     def __init__(self, app, data):
         super().__init__(app)
@@ -2181,9 +2245,9 @@ class StoreScene(PackScene):
                                       area.height - bar.height)
         W.panel(surf, self.store_rect, raised=False, fill=(236, 236, 232))
 
-        cell = 74
+        cell, cell_h = self.CELL, self.CELL_H
         cols = max(1, (self.store_rect.width - 8) // cell)
-        rows = max(1, (self.store_rect.height - 8) // cell)
+        rows = max(1, (self.store_rect.height - 8) // cell_h)
         stock = self.stock()
         max_scroll = max(0, (len(stock) + cols - 1) // cols - rows)
         self.store_scroll = min(self.store_scroll, max_scroll)
@@ -2197,18 +2261,16 @@ class StoreScene(PackScene):
             if row < 0 or row >= rows + 1:
                 continue
             r = pygame.Rect(self.store_rect.x + 4 + col * cell,
-                            self.store_rect.y + 4 + row * cell, cell - 4, cell - 4)
+                            self.store_rect.y + 4 + row * cell_h, cell - 4, cell_h - 4)
             img = self.app.sheet.item(item["icon"])
             if img:
                 surf.blit(img, (r.centerx - TILE // 2, r.y + 2))
-            label = item["name"]
-            f = W.font(10)
-            if f.size(label)[0] > r.width - 2:
-                while f.size(label + "...")[0] > r.width - 2 and len(label) > 3:
-                    label = label[:-1]
-                label += "..."
-            img2 = f.render(label, True, BLACK)
-            surf.blit(img2, (r.centerx - img2.get_width() // 2, r.bottom - 26))
+            lines = self.caption(item["name"], r.width - 4)
+            ly = r.bottom - 18 - 11 * len(lines)
+            for line in lines:
+                img2 = W.font(10).render(line, True, BLACK)
+                surf.blit(img2, (r.centerx - img2.get_width() // 2, ly))
+                ly += 11
             price = f"{item.get('price', 0)}"
             W.text(surf, price, (r.centerx - W.font(10, bold=True).size(price)[0] // 2,
                                  r.bottom - 14), 10, bold=True, colour=(0, 90, 0))
@@ -2349,11 +2411,12 @@ class App:
         self.hosting_note = hosting_note
         self.pending_saves = []
 
-    def join_as(self, name, stats, colour, resume):
+    def join_as(self, name, stats, colour, resume, spell=None):
         self.settings["name"] = name
         self.save_settings()
         self.client.send(P.C_HELLO, {"name": name, "stats": stats, "colour": colour,
-                                     "resume": resume, "version": PROTOCOL_VERSION})
+                                     "resume": resume, "spell": spell,
+                                     "version": PROTOCOL_VERSION})
 
     def act(self, action):
         self.client.send(P.C_ACTION, action)

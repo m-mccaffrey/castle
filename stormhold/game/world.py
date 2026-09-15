@@ -29,7 +29,7 @@ from .actors import Player, NPC, make_monster, stat_bonus
 from .items import (Item, Appearances, generate_item, generate_gold,
                     coin_metal, article, BASES)
 from .monsters import spawn_table
-from .spells import SPELLS, can_learn, elemental_factor
+from .spells import SPELLS, can_learn, elemental_factor, starting_spell
 from .traps import TRAPS, search_here, disarm_at, a_or_an
 from . import combat, ai
 
@@ -162,13 +162,14 @@ class World:
                 p.pending_tiles.extend((x, y, tile))
 
     # ====================================================== players =========
-    def add_player(self, name, stats=None, colour=0, save=None):
+    def add_player(self, name, stats=None, colour=0, save=None, spell=None):
         town = self.get_level(TOWN_DEPTH)
         p = Player(name, stats, colour)
         if save:
             p.load_save(save)
         else:
             self.give_starting_kit(p)
+            p.spells.add(starting_spell(spell))
         p.depth = TOWN_DEPTH
         p.x, p.y = town.find_free(*town.spawn_point)
         p.next_at = town.clock

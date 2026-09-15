@@ -1,0 +1,148 @@
+"""A bot that plays Stormhold, so the game gets played more than I can play it.
+
+It makes a character, kits out in town, and dives: fighting what it meets,
+picking up what it finds, resting when hurt, taking the stairs when the floor
+is done. It reports what happened and every distinct message it saw, which is
+where the parity problems show up - a message that never fires, a message that
+fires wrongly, a fight that cannot be won or cannot be lost.
+
+    python3 tools/crawl.py [--seed N] [--depth N] [--turns N] [--port N]
+"""
+
+import argparse
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import pygame                                              # noqa: E402
+
+from tools.playtest import Session                          # noqa: E402
+
+
+def make_character(s, spread=(("strength", 6), ("dexterity", 4),
+                              ("intelligence", 3), ("constitution", 3))):
+    s.click([b for b in s.app.scene.buttons if b.action == "host"][0].rect.center)
+    s.settle(2)
+    sc = s.app.scene
+    for stat, n in spread:
+        for _ in range(n):
+            s.click(sc.plus[stat].rect.center)
+    s.click([b for b in sc.buttons if b.action == "go"][0].rect.center)
+    s.settle(2.5)
+
+
+def kit_out(s, wants=(("armourer", "Leather Armour"), ("weaponsmith", "Short Sword"))):
+    town = s.level()
+    for shop, want in wants:
+        npc = [n for n in town.npcs if n["shop"] == shop][0]
+        s.walk_to(npc["x"], npc["y"])
+        s.settle(0.8)
+        store = s.app.scene
+        if hasattr(store, "store_cells"):
+            store.draw(s.app.screen)
+            hit = [(r, i) for r, i in store.store_cells if want in i["name"]]
+            if hit:
+                s.drag(hit[0][0].center, store.grid_rect.center)
+                s.settle(0.4)
+                if store.confirm:
+                    s.click(store.confirm["yes"].center)
+                    s.settle(0.6)
+        s.key(pygame.K_ESCAPE)
+        s.settle(0.4)
+
+    s.key(pygame.K_i)
+    s.settle(0.5)
+    pack = s.app.scene
+    for _ in range(6):
+        pack.draw(s.app.screen)
+        todo = [(r, i) for r, i in pack.cell_rects if i.get("slot")]
+        if not todo:
+            break
+        rect, item = todo[0]
+        s.drag(rect.center, pack.slot_rects[item["slot"]].center)
+        s.settle(0.6)
+    s.key(pygame.K_ESCAPE)
+    s.settle(0.4)
+
+
+def monsters_near(s, reach=9):
+    p = s.me()
+    return [m for m in s.level().actors.values()
+            if getattr(m, "kind", None) == "monster" and not m.dead
+            and max(abs(m.x - p.x), abs(m.y - p.y)) <= reach]
+
+
+def crawl(s, to_depth=5, turns=3000, log=print):
+    seen, order = set(), []
+
+    def note():
+        for m in s.log(30):
+            if m not in seen:
+                seen.add(m)
+                order.append(m)
+
+    def step_toward(tx, ty):
+        p = s.me()
+        s.app.play.send_action({"a": "move",
+                                "dx": (tx > p.x) - (tx < p.x),
+                                "dy": (ty > p.y) - (ty < p.y)})
+        s.step(3)
+
+    took = 0
+    while took < turns and s.me().depth < to_depth and not s.me().dead:
+        took += 1
+        p, lv = s.me(), s.level()
+        near = monsters_near(s)
+        if p.hp < p.max_hp * 0.35 and not near:
+            s.app.play.send_action({"a": "rest"})
+            s.step(6); note(); continue
+        if near:
+            m = min(near, key=lambda m: max(abs(m.x - p.x), abs(m.y - p.y)))
+            step_toward(m.x, m.y); note(); continue
+        if lv.ground.get((p.x, p.y)):
+            s.app.play.send_action({"a": "pickup"})
+            s.step(4); note(); continue
+        piles = [xy for xy, pile in lv.ground.items() if pile]
+        if piles:
+            t = min(piles, key=lambda q: max(abs(q[0] - p.x), abs(q[1] - p.y)))
+            if s.path_to(*t):
+                step_toward(*t); note(); continue
+        if lv.down_at:
+            if (p.x, p.y) == tuple(lv.down_at):
+                s.key(pygame.K_PERIOD, mod=pygame.KMOD_SHIFT)
+                s.settle(1.2); note(); continue
+            step_toward(*lv.down_at); note(); continue
+        break
+    note()
+    return took, order
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--seed", type=int, default=4242)
+    ap.add_argument("--depth", type=int, default=5)
+    ap.add_argument("--turns", type=int, default=3000)
+    ap.add_argument("--port", type=int, default=7801)
+    a = ap.parse_args()
+
+    s = Session(seed=a.seed, port=a.port)
+    make_character(s)
+    kit_out(s)
+    s.walk_to(*s.level().down_at)
+    s.key(pygame.K_PERIOD, mod=pygame.KMOD_SHIFT)
+    s.settle(1.5)
+
+    took, messages = crawl(s, a.depth, a.turns)
+    p = s.me()
+    print(f"=== seed {a.seed}: {took} turns, depth {p.depth}, level {p.level}, "
+          f"xp {p.xp}, hp {p.hp}/{p.max_hp}, kills {p.kills}, deaths {p.deaths}")
+    s.shot(f"crawl-{a.seed}")
+    print("=== every distinct message:")
+    for m in messages:
+        print("   ", m)
+    s.close()
+
+
+if __name__ == "__main__":
+    main()

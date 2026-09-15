@@ -104,13 +104,19 @@ class Button:
         self.action = action
         self.enabled = enabled
         self.hotkey = hotkey
-        self.pressed = False
+        self.pressed = False        # held down right now
+        self.selected = False       # the chosen one of a set, drawn sunken
 
     def draw(self, surf):
-        panel(surf, self.rect, raised=not self.pressed)
+        # `pressed` belongs to the mouse and is cleared on release. A caller
+        # that wants a button to look chosen sets `selected` instead: writing
+        # to `pressed` from draw() disarms the button between the press and
+        # the release, so the click never fires.
+        down = self.pressed or self.selected
+        panel(surf, self.rect, raised=not down)
         colour = INK if self.enabled else DISABLED
         img = font(13, bold=True).render(self.label, True, colour)
-        off = 1 if self.pressed else 0
+        off = 1 if down else 0
         surf.blit(img, (self.rect.centerx - img.get_width() // 2 + off,
                         self.rect.centery - img.get_height() // 2 + off))
 
