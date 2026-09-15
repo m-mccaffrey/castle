@@ -229,3 +229,62 @@ class TestAMisbehavingActionDoesNotEndYourGame(TwoPlayers):
             if (guest.x, guest.y) != where:
                 moved += 1
         self.assertGreater(moved, 0, "the game was stuck after the error")
+
+
+class TestTheDedicatedServer(unittest.TestCase):
+    """`python -m stormhold --serve` - a keep with nobody sitting at it.
+
+    It is the way a family would leave a game running on one machine, and
+    nothing had ever started one.
+    """
+
+    def setUp(self):
+        from stormhold.net.server import GameServer
+        self.port = next_port()
+        self.server = GameServer("127.0.0.1", self.port, seed=9,
+                                 save_path=None).start()
+
+    def tearDown(self):
+        self.server.stop()
+
+    def test_somebody_can_join_a_server_that_is_not_playing(self):
+        guest = Guest(port=self.port, name="Remote")
+        try:
+            self.assertEqual(guest.join(), "PlayScene")
+            self.assertEqual([p["n"] for p in guest.app.play.party], ["Remote"])
+            self.assertTrue(any("Aldershade" in m for m in guest.log(6)))
+        finally:
+            guest.close()
+
+    def test_and_play_in_it(self):
+        guest = Guest(port=self.port, name="Remote")
+        try:
+            guest.join()
+            me = next(iter(self.server.world.players.values()))
+            moved = 0
+            for _ in range(8):
+                where = (me.x, me.y)
+                guest.app.play.send_action({"a": "move", "dx": 0, "dy": 1})
+                for _ in range(8):
+                    guest.step()
+                if (me.x, me.y) != where:
+                    moved += 1
+            self.assertGreater(moved, 0, "nothing moved on the server")
+        finally:
+            guest.close()
+
+    def test_two_can_join_the_same_dedicated_server(self):
+        one = Guest(port=self.port, name="Ana")
+        two = Guest(port=self.port, name="Bo")
+        try:
+            one.join()
+            two.join()
+            for _ in range(30):
+                one.step()
+                two.step()
+            self.assertEqual(sorted(p.name for p in
+                                    self.server.world.players.values()),
+                             ["Ana", "Bo"])
+        finally:
+            two.close()
+            one.close()
