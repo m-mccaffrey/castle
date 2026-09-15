@@ -27,8 +27,10 @@ SHOTS = os.environ.get("SHOTS", "/tmp/claude-0/shots")
 
 class Session:
     def __init__(self, seed=4242, name="Tester", size=(1280, 800), port=7801):
+        save = os.path.join(SHOTS, "party.json")
+        os.makedirs(os.path.dirname(save), exist_ok=True)
         args = argparse.Namespace(serve=False, port=port, host="0.0.0.0",
-                                  seed=seed, name=name, save="/tmp/claude-0/party.json",
+                                  seed=seed, name=name, save=save,
                                   fullscreen=False)
         self.app = App(args)
         self.app.screen = pygame.display.set_mode(size)
@@ -42,12 +44,23 @@ class Session:
             self.app.pump_network()
             self.app.scene.update(1 / 30.0)
             self.app.scene.draw(self.app.screen)
-            time.sleep(0.01)
+            time.sleep(0.002)
 
-    def settle(self, seconds=1.5):
+    def settle(self, seconds=1.5, quiet=12):
+        """Pump until the server stops talking, or until the time runs out.
+
+        Sleeping for a fixed period was costing minutes across a suite; almost
+        every wait here is really "wait for the server to finish answering",
+        which is over as soon as the inbox has been empty for a few frames.
+        """
         end = time.time() + seconds
+        still = 0
         while time.time() < end:
+            had = self.app.client.inbox.qsize()
             self.step()
+            still = 0 if had else still + 1
+            if still >= quiet:
+                return
 
     def send(self, event):
         self.app.scene.handle(event)
@@ -156,3 +169,36 @@ class Session:
             self.step(2)
         self.settle(0.4)
         return (self.me().x, self.me().y) == (tx, ty)
+
+
+class Guest(Session):
+    """A second player joining a session that is already hosting.
+
+    Multiplayer is the whole reason this remake exists, and until now it had
+    never been driven: every test drove one client that happened to be its
+    own host.
+    """
+
+    def __init__(self, port, name="Guest", seed=None, size=(1280, 800)):
+        super().__init__(seed=seed, name=name, size=size, port=port)
+        self.app.settings["host"] = "127.0.0.1"
+        self.app.settings["port"] = port
+
+    def join(self, stats=None, spell="Spark", colour=1):
+        from stormhold.ui.app import MenuScene, CharGenScene
+        self.app.replace(MenuScene(self.app))
+        self.app.start_join()
+        self.settle(2.0)
+        scene = self.app.scene
+        if isinstance(scene, CharGenScene):
+            self.click([b for b in scene.buttons if b.action == "go"][0].rect.center)
+            self.settle(2.5)
+        return self.scene_name()
+
+    @property
+    def world(self):
+        raise AttributeError("a guest has no world of its own; ask the host")
+
+    def close(self):
+        self.app.running = False
+        self.app.client.close()
