@@ -1626,3 +1626,73 @@ class TestQualityPrefixes(unittest.TestCase):
         self.assertTrue(self.named("dagger", 2, known=False).startswith("Enchanted"))
         self.assertTrue(self.named("dagger", -2, known=False).startswith("Enchanted"))
         self.assertTrue(self.named("dagger", 0, known=False).startswith("Normal"))
+
+
+class TestTwoHandedWeapons(unittest.TestCase):
+    """"Two-handed weapons conflict with shields, and the game says so rather
+    than silently refusing." We had no two-handed weapons at all.
+    """
+
+    def player(self, pack=True):
+        from stormhold.game.actors import Player
+        from stormhold.game.items import Item
+        p = Player("Wielder", {"strength": 16, "dexterity": 12,
+                               "intelligence": 10, "constitution": 12})
+        if pack:
+            p.equipment["pack"] = Item("pack")
+        return p
+
+    def thing(self, key, cursed=False):
+        from stormhold.game.items import Item
+        item = Item(key, cursed=cursed)
+        item.known = True
+        return item
+
+    def test_some_weapons_are_two_handed(self):
+        from stormhold.game.items import BASES
+        two = [k for k, b in BASES.items() if b.get("two_handed")]
+        self.assertTrue(two, "nothing needs both hands")
+
+    def test_taking_one_up_puts_the_shield_away(self):
+        p = self.player()
+        shield = self.thing("shield")
+        p.equipment["shield"] = shield
+        halberd = self.thing("halberd")
+        p.add_item(halberd)
+        ok, said = p.equip(halberd)
+        self.assertTrue(ok, said)
+        self.assertIsNone(p.equipment["shield"])
+        self.assertIn(shield, p.inventory)
+        self.assertIn("both hands", said)
+
+    def test_you_cannot_raise_a_shield_while_holding_one(self):
+        p = self.player()
+        halberd = self.thing("halberd")
+        p.equipment["weapon"] = halberd
+        shield = self.thing("shield")
+        p.add_item(shield)
+        ok, said = p.equip(shield)
+        self.assertFalse(ok)
+        self.assertIn("Can't use both", said)
+        self.assertIsNone(p.equipment["shield"])
+
+    def test_with_nowhere_to_put_the_shield_it_is_refused_and_says_why(self):
+        p = self.player(pack=False)
+        shield = self.thing("towershield")
+        p.equipment["shield"] = shield
+        halberd = self.thing("halberd")
+        ok, said = p.equip(halberd)
+        self.assertFalse(ok)
+        self.assertIn("Can't use both", said)
+        self.assertIs(p.equipment["shield"], shield, "it lost the shield anyway")
+        self.assertIsNone(p.equipment.get("weapon"), "it took the weapon anyway")
+
+    def test_a_cursed_shield_cannot_be_let_go_of(self):
+        p = self.player()
+        shield = self.thing("shield", cursed=True)
+        p.equipment["shield"] = shield
+        halberd = self.thing("halberd")
+        p.add_item(halberd)
+        ok, said = p.equip(halberd)
+        self.assertFalse(ok)
+        self.assertIn("cannot let go", said)

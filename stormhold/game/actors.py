@@ -466,6 +466,18 @@ class Player(Actor):
                 slot = prefer_slot
             else:
                 slot = "ring_left" if self.equipment["ring_left"] is None else "ring_right"
+        # "Two-handed weapons conflict with shields, and the game says so
+        # rather than silently refusing."
+        shield = self.equipment.get("shield")
+        two_handed = slot == "weapon" and item.base.get("two_handed") and shield
+        if two_handed and shield.cursed:
+            shield.known = True
+            return False, (f"You cannot let go of the {shield.name()} to take "
+                           f"the {item.name()} in both hands.")
+        weapon = self.equipment.get("weapon")
+        if slot == "shield" and weapon and weapon.base.get("two_handed"):
+            return False, f"Can't use both {weapon.name()} and a {item.name()}."
+
         current = self.equipment.get(slot)
         if current and current.cursed:
             current.known = True
@@ -475,11 +487,31 @@ class Player(Actor):
         if item in self.inventory:
             self.inventory.remove(item)
         self.equipment[slot] = item
+
+        two_handed_note = None
+        if two_handed:
+            # Ask for room only now: the weapon has left the pack, which is
+            # usually exactly the room the shield needs.
+            ok, _why = self.room_for(shield)
+            if not ok:
+                self.equipment[slot] = current
+                if current is not None and current in self.inventory:
+                    self.inventory.remove(current)
+                self.inventory.append(item)
+                self.recalc()
+                return False, (f"Can't use both {item.name()} and a "
+                               f"{shield.name()}.")
+            self.equipment["shield"] = None
+            self.inventory.append(shield)
+            two_handed_note = (f"You put away the {shield.name()} to wield "
+                               f"{item.name()} with both hands.")
         self.recalc()
         if item.cursed:
             item.known = True
         # The world announces a curse, with the name the party knows it by;
         # saying it here too printed the discovery twice.
+        if two_handed_note:
+            return True, f"{two_handed_note}"
         return True, f"You are now using {item.name()}."
 
     def unequip(self, slot):

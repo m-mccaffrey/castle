@@ -41,17 +41,17 @@ BASES = {
     "shortsword":  dict(name="Short Sword", slot="weapon", icon="shortsword", bulk=5000, wt=1000, value=50, dmg=(1, 6), depth=0),
     "sabre":       dict(name="Sabre", slot="weapon", icon="sabre", bulk=5000, wt=1000, value=95, dmg=(1, 8), depth=3, speed=90),
     "longsword":   dict(name="Long Sword", slot="weapon", icon="longsword", bulk=8000, wt=1500, value=150, dmg=(2, 4), depth=4),
-    "broadsword":  dict(name="Broad Sword", slot="weapon", icon="broadsword", bulk=9000, wt=1600, value=320, dmg=(2, 6), depth=8, str_req=13),
+    "broadsword":  dict(name="Broad Sword", slot="weapon", icon="broadsword", bulk=9000, wt=1600, value=320, dmg=(2, 6), depth=8, str_req=13, two_handed=True),
     # ---- hafted ---------------------------------------------------------
     "mace":        dict(name="Mace", slot="weapon", icon="mace", bulk=4375, wt=2500, value=70, dmg=(1, 7), depth=1),
     "warhammer":   dict(name="War Hammer", slot="weapon", icon="hammer", bulk=7500, wt=1400, value=190, dmg=(2, 5), depth=6, str_req=12),
     "axe":         dict(name="Battle Axe", slot="weapon", icon="axe", bulk=6000, wt=3000, value=230, dmg=(1, 10), depth=7, str_req=12),
-    "halberd":     dict(name="Halberd", slot="weapon", icon="halberd", bulk=36000, wt=4950, value=420, dmg=(2, 8), depth=12, str_req=15),
+    "halberd":     dict(name="Halberd", slot="weapon", icon="halberd", bulk=36000, wt=4950, value=420, dmg=(2, 8), depth=12, str_req=15, two_handed=True),
     "spear":       dict(name="Spear", slot="weapon", icon="spear", bulk=5000, wt=1500, value=85, dmg=(1, 8), depth=2),
     # ---- missile --------------------------------------------------------
     "shortbow":    dict(name="Short Bow", slot="weapon", icon="bow", bulk=18000, wt=1125, value=90, dmg=(1, 6), depth=1, missile="arrow", rng=7),
-    "longbow":     dict(name="Long Bow", slot="weapon", icon="bow", bulk=27000, wt=1800, value=260, dmg=(1, 9), depth=6, missile="arrow", rng=9, str_req=12),
-    "crossbow":    dict(name="Crossbow", slot="weapon", icon="crossbow", bulk=23400, wt=3150, value=380, dmg=(2, 6), depth=9, missile="bolt", rng=8, speed=140),
+    "longbow":     dict(name="Long Bow", slot="weapon", icon="bow", bulk=27000, wt=1800, value=260, dmg=(1, 9), depth=6, missile="arrow", rng=9, str_req=12, two_handed=True),
+    "crossbow":    dict(name="Crossbow", slot="weapon", icon="crossbow", bulk=23400, wt=3150, value=380, dmg=(2, 6), depth=9, missile="bolt", rng=8, speed=140, two_handed=True),
     "arrow":       dict(name="Arrow", icon="arrows", bulk=900, wt=45, value=2, depth=0, stack=True, ammo="arrow"),
     "bolt":        dict(name="Quarrel", icon="arrows", bulk=900, wt=90, value=3, depth=6, stack=True, ammo="bolt"),
     # ---- staves and wands ------------------------------------------------

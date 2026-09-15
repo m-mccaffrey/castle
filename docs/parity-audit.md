@@ -83,7 +83,7 @@ deliberate divergence.
 | Junk store buys anything, 25 CP for cursed or worthless | done |
 | Cursed items cannot be removed until uncursed | done |
 | Cursed items may summon monsters or lower attributes | partial |
-| Two-handed weapons conflict with shields | partial |
+| Two-handed weapons conflict with shields | done - there were no two-handed weapons at all. Halberds, broad swords and bows need both hands: taking one up puts the shield in your pack and says so, and a shield is refused while you hold one |
 | Charged items recharge on a timer | done |
 | Only worn slots and belt slots can be activated | done |
 | Belts are containers sized in slots; a 10-slot belt is rare | done |
