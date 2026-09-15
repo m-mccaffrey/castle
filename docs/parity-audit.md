@@ -175,6 +175,7 @@ is simply a death sentence.
 | Named bosses take no article | done |
 | Doors on every floor, opened by walking into them | done - the keep had none at all: the pass that places them ran before the pass that builds the walls it looks for, so Open, Close, the blocked-door message and the door-opening code in the monster AI were all dead |
 | A closed door blocks sight, so a room is a sealed box | done, and now actually reachable |
+| Shops refuse junk and say why | done - a trade takes what it deals in and answers "We don't buy those..." for the rest, and nobody buys a thing beaten past use. A sale that could not happen used to fail in silence. |
 | Two people in one keep | tested - joining, chat, seeing each other, split floors, and an idle player not freezing the rest |
 | Anything consumable could be used at all | **fixed** - nothing in the game ever put anything on a belt, and "objects in your pack cannot be activated" was enforced, so every potion, scroll and wand in the game answered "That is buried in your pack". Dragging onto the belt or quiver stows; dragging back out returns it; and using something up now actually uses it up wherever it was carried |
 | The trap door and the animation trap | done - the last two of the original's fourteen. A trap door does no damage and drops you a floor; an animation trap raises the dead around you |

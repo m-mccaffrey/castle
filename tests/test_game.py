@@ -813,7 +813,11 @@ class TestReachAndUpkeep(unittest.TestCase):
         from stormhold.game.items import Item
         world = World(seed=12)
         rich = Item("platemail")
-        self.assertEqual(world.junk_price(rich), world.JUNK_FLAT)
+        # She pays a tenth, floored at the flat rate - always a bad deal,
+        # but no longer the same 25 for a quarrel and a suit of plate.
+        self.assertLessEqual(world.junk_price(rich),
+                             world.shop_price(rich, selling=True) // 5)
+        self.assertGreaterEqual(world.junk_price(rich), world.JUNK_FLAT)
         cursed = Item("leather")
         cursed.cursed = True
         self.assertEqual(world.junk_price(cursed), world.JUNK_FLAT)
@@ -2079,3 +2083,87 @@ class TestSitesAndServices(unittest.TestCase):
         for kind in ("body", "mana", "mind", "hp", "maxhp", "anything else"):
             with self.subTest(kind=kind):
                 world.drain_player(p, kind)
+
+
+class TestWhatAShopWillTake(unittest.TestCase):
+    """"Shops refuse junk: 'We don't buy those...', 'We don't buy worthless
+    items!'" Ours took anything from anybody, and a sale that failed failed
+    in silence - which looked exactly like the game ignoring you.
+    """
+
+    def setUp(self):
+        from stormhold.game.world import World
+        self.world = World(seed=3)
+        self.p = self.world.add_player("Trader", spell="Spark")
+        self.p.copper = 50000
+        self.level = self.world.levels[0]
+
+    def offer(self, shop, key, **kw):
+        from stormhold.game.items import Item
+        item = Item(key, **kw)
+        item.known = True
+        self.p.add_item(item, force=True)
+        self.world.events.clear()
+        self.world.do_player_action(self.level, self.p,
+                                    {"a": "sell", "shop": shop,
+                                     "id": item.id})
+        return [e["text"] for e in self.world.events if e["t"] == "msg"]
+
+    def test_a_trade_buys_what_it_deals_in(self):
+        self.assertIn("You sell", " ".join(self.offer("weaponsmith", "sabre")))
+        self.assertIn("You sell", " ".join(self.offer("armourer", "leather")))
+        self.assertIn("You sell", " ".join(self.offer("magic", "potion_heal")))
+
+    def test_and_refuses_what_it_does_not(self):
+        for shop, key in (("weaponsmith", "potion_heal"),
+                          ("weaponsmith", "leather"),
+                          ("armourer", "sabre"),
+                          ("magic", "sabre")):
+            with self.subTest(shop=shop, item=key):
+                self.assertIn("We don't buy those",
+                              " ".join(self.offer(shop, key)))
+
+    def test_nobody_buys_something_worth_nothing(self):
+        from stormhold.game.world import World
+        from stormhold.game.items import Item
+        # A thing beaten far past usefulness: "Broken, Ripped, Rusty".
+        worthless = Item("dagger", enchant=-3)
+        worthless.known = True
+        self.p.add_item(worthless, force=True)
+        self.world.events.clear()
+        self.world.do_player_action(self.level, self.p,
+                                    {"a": "sell", "shop": "weaponsmith",
+                                     "id": worthless.id})
+        said = [e["text"] for e in self.world.events if e["t"] == "msg"]
+        self.assertIn("worthless", " ".join(said))
+
+    def test_the_junk_dealer_takes_anything(self):
+        for key in ("bolt", "sabre", "potion_heal", "gem"):
+            with self.subTest(item=key):
+                self.assertIn("Nan takes", " ".join(self.offer("junk", key)))
+
+    def test_but_always_badly_and_never_insultingly(self):
+        """A flat rate meant the same 25 for a quarrel and a suit of plate."""
+        from stormhold.game.items import Item
+        cheap, dear = Item("bolt"), Item("platemail")
+        self.assertLess(self.world.junk_price(dear),
+                        self.world.shop_price(dear, selling=True) // 2,
+                        "Nan is paying too well")
+        self.assertGreater(self.world.junk_price(dear),
+                           self.world.junk_price(cheap),
+                           "she offers the same for plate as for a quarrel")
+
+    def test_a_sale_that_cannot_happen_says_so(self):
+        self.world.events.clear()
+        self.world.do_player_action(self.level, self.p,
+                                    {"a": "sell", "shop": "junk", "id": 999999})
+        said = [e["text"] for e in self.world.events if e["t"] == "msg"]
+        self.assertTrue(said, "it failed in silence")
+
+    def test_so_does_a_purchase(self):
+        self.world.events.clear()
+        self.world.do_player_action(self.level, self.p,
+                                    {"a": "buy", "shop": "weaponsmith",
+                                     "id": 999999})
+        said = [e["text"] for e in self.world.events if e["t"] == "msg"]
+        self.assertTrue(said, "it failed in silence")

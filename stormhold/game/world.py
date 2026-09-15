@@ -2140,10 +2140,57 @@ class World:
     JUNK_FLAT = 25
 
     def junk_price(self, item):
+        """Nan buys anything, and always badly.
+
+        A flat 25 for everything meant she offered the same for a rusty
+        quarrel and a suit of plate: a tenth of the value, floored at the
+        flat rate, is still a terrible deal and no longer an insulting one.
+        """
         value = item.value()
         if item.cursed or value <= 0:
             return self.JUNK_FLAT
-        return value if value < self.JUNK_FLAT else self.JUNK_FLAT
+        return max(self.JUNK_FLAT, value // 10)
+
+    # What each trade will take off your hands. "Shops refuse junk:
+    # 'We don't buy those...', 'We don't buy worthless items!'"
+    SHOP_TAKES = {
+        "weaponsmith": ("weapon", "ammo"),
+        "armourer": ("armour",),
+        "general": ("container", "armour"),
+        "magic": ("potion", "scroll", "book", "ring", "amulet", "wand"),
+        "sage": ("potion", "scroll", "book", "ring", "amulet", "wand"),
+        "temple": ("potion", "scroll"),
+    }
+
+    @staticmethod
+    def trade_of(item):
+        """Which trade an object belongs to."""
+        base = item.base
+        if base.get("ammo"):
+            return "ammo"
+        if base.get("slot") == "weapon":
+            return "wand" if base.get("charges") else "weapon"
+        if base.get("kind") == "container":
+            return "container"
+        if base.get("slot"):
+            return "armour"
+        return base.get("kind") or "oddment"
+
+    def shop_refusal(self, shop, item):
+        """Why this trade will not take it, or None if they will."""
+        # value() floors at one, and that floor is exactly where a ruined
+        # thing lands: a Rusty -3 Dagger is worth less than nothing before
+        # the floor catches it.
+        if item.value() <= 1 or item.kind == "coins":
+            return "We don't buy worthless items!"
+        if shop == "junk":
+            return None                       # Nan takes anything
+        takes = self.SHOP_TAKES.get(shop)
+        if takes is None:
+            return None
+        if self.trade_of(item) not in takes:
+            return "We don't buy those..."
+        return None
 
     def shop_price(self, item, selling=False):
         value = item.value()
@@ -2155,6 +2202,7 @@ class World:
         stock = self.stock_for(shop)
         item = next((i for i in stock if i.id == int(action.get("id", 0))), None)
         if item is None:
+            self.msg("That is not on the shelf.", "warn", to=p)
             return FREE_COST
         price = self.shop_price(item)
         if p.copper < price:
@@ -2192,8 +2240,15 @@ class World:
     def _act_sell(self, level, p, action):
         item = p.find_item(int(action.get("id", 0)))
         if item is None or item not in p.inventory:
+            # It used to fail in silence, so dragging something a shop will
+            # not take looked exactly like the game ignoring you.
+            self.msg("You are not carrying that.", "warn", to=p)
             return FREE_COST
         shop = action.get("shop")
+        refusal = self.shop_refusal(shop, item)
+        if refusal:
+            self.msg(refusal, "warn", to=p)
+            return FREE_COST
         price = (self.junk_price(item) if shop == "junk"
                  else self.shop_price(item, selling=True))
         p.remove_item(item, item.qty)
