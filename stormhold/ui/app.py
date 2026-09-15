@@ -790,6 +790,9 @@ class PlayScene(Scene):
         pygame.draw.rect(surf, BLACK, view)
         if not self.map or not self.you:
             return
+        if getattr(self, "show_overview", False):
+            self.draw_overview(surf, view)
+            return
         me = self.me()
         cols = view.width // TILE
         rows = view.height // TILE
@@ -972,6 +975,77 @@ class PlayScene(Scene):
                     W.text(surf, "town" if mate["d"] == 0 else f"lv{mate['d']}",
                            (rect.right - 38, y), 10, colour=GRAY)
                 y += 15
+
+    # Fast Map: the whole floor at a glance.
+    #
+    # The original's is a drawing mode rather than a window - "objects as a
+    # dagger, monsters as a frowning face, stairs as arrows, everything else
+    # as an asterisk" - meant to redraw quickly on a 1993 machine. Ours is the
+    # useful half of that idea: the whole floor you have walked, scaled to fit,
+    # with the same shorthand for what is on it. Map! toggles it, and it did
+    # nothing at all until now.
+    OVERVIEW_COLOURS = {
+        T.FLOOR: (96, 96, 92), T.DOOR: (150, 110, 40),
+        T.DOOR_OPEN: (120, 92, 40), T.WALL: (58, 58, 62),
+        T.WATER: (30, 60, 150), T.RUBBLE: (80, 74, 64),
+        T.ROAD: (120, 120, 116), T.GRASS: (60, 90, 40),
+        T.TREE: (30, 60, 30), T.SHOP_FLOOR: (110, 100, 80),
+        T.FOUNTAIN: (60, 140, 190), T.THRONE: (150, 120, 40),
+        T.ALTAR: (170, 170, 190),
+    }
+
+    def draw_overview(self, surf, view):
+        m = self.map
+        scale = max(2, min((view.width - 20) // m.w, (view.height - 20) // m.h))
+        plan = pygame.Rect(0, 0, m.w * scale, m.h * scale)
+        plan.center = view.center
+
+        pygame.draw.rect(surf, (12, 12, 16), view)
+        for y in range(m.h):
+            for x in range(m.w):
+                i = y * m.w + x
+                if not m.known[i]:
+                    continue
+                colour = self.OVERVIEW_COLOURS.get(m.tiles[i])
+                if colour is None:
+                    colour = (200, 200, 120)          # stairs and oddities
+                pygame.draw.rect(surf, colour,
+                                 (plan.x + x * scale, plan.y + y * scale,
+                                  scale, scale))
+
+        def mark(x, y, colour, size=1):
+            r = max(scale, 3 * size)
+            pygame.draw.rect(surf, colour,
+                             (plan.x + x * scale - (r - scale) // 2,
+                              plan.y + y * scale - (r - scale) // 2, r, r))
+
+        for x, y, tile in ((x, y, m.tiles[y * m.w + x])
+                           for y in range(m.h) for x in range(m.w)
+                           if m.known[y * m.w + x]):
+            if tile in (T.STAIRS_DOWN, T.STAIRS_UP):
+                mark(x, y, (255, 230, 120), 2)
+        for item in self.items:
+            mark(item["x"], item["y"], (230, 200, 90))
+        for actor in self.actors:
+            if actor.get("k") == "monster":
+                mark(actor["x"], actor["y"], (220, 80, 70))
+        me = self.me()
+        if me:
+            mark(me["x"], me["y"], (120, 220, 255), 2)
+
+        W.text(surf, f"{getattr(m, 'name', 'This floor')}  -  Map! again to go back",
+               (view.x + 10, view.y + 6), 13, bold=True, colour=(220, 220, 210))
+        # A key with the words alone says nothing; each one gets its colour.
+        x = view.x + 10
+        for colour, label in (((120, 220, 255), "you"),
+                              ((255, 230, 120), "stairs"),
+                              ((230, 200, 90), "things"),
+                              ((220, 80, 70), "creatures"),
+                              ((150, 110, 40), "doors")):
+            pygame.draw.rect(surf, colour, (x, view.bottom - 19, 9, 9))
+            img = W.font(12).render(label, True, (170, 170, 165))
+            surf.blit(img, (x + 13, view.bottom - 21))
+            x += 13 + img.get_width() + 14
 
     def draw_log(self, surf):
         rect = self.log_rect(surf)

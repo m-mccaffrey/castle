@@ -574,3 +574,62 @@ class TestTheMessageLogScrollsBack(unittest.TestCase):
         self.assertGreater(self.play.log_scroll, 0)
         self.play.add_message("Something happens.", "info")
         self.assertEqual(self.play.log_scroll, 0)
+
+
+class TestTheFastMap(unittest.TestCase):
+    """Map! toggled a flag that nothing read, so the menu item did nothing."""
+
+    def setUp(self):
+        self.app = make_app()
+        self.app.screen = pygame.display.set_mode((1280, 800))
+        self.world = World(seed=3)
+        self.player = self.world.add_player("Cartographer")
+        self.world.move_player_to(self.player, 1)
+        self.world.update_fov(self.player, force=True)
+        self.play = PlayScene(self.app)
+        self.app.play = self.play
+        self.app.replace(self.play)
+        self.play.on_message(
+            __import__("stormhold.net.protocol", fromlist=["x"]).S_LEVEL,
+            {"w": self.world.levels[1].w, "h": self.world.levels[1].h,
+             "depth": 1, "name": self.world.levels[1].name, "town": False})
+        view = self.world.snapshot_for(self.player)
+        self.play.you = view["you"]
+        self.play.actors = view["actors"]
+        self.play.items = view["items"]
+        self.play.party = view["party"]
+        self.world.resend_level(self.player)
+        self.play.map.apply(self.player.pending_tiles)
+
+    def test_the_menu_item_turns_it_on_and_off(self):
+        self.assertFalse(getattr(self.play, "show_overview", False))
+        self.play.menu_command("Map!")
+        self.assertTrue(self.play.show_overview)
+        self.play.menu_command("Map!")
+        self.assertFalse(self.play.show_overview)
+
+    def test_it_draws_something_different_from_the_ordinary_map(self):
+        surface = pygame.Surface((1280, 800))
+        self.play.draw(surface)
+        ordinary = pygame.image.tobytes(surface, "RGB")
+        self.play.menu_command("Map!")
+        self.play.draw(surface)
+        overview = pygame.image.tobytes(surface, "RGB")
+        self.assertNotEqual(ordinary, overview, "Map! changed nothing on screen")
+
+    def test_it_shows_only_what_you_have_seen(self):
+        """A floor plan you have not walked is not a floor plan you have."""
+        self.play.menu_command("Map!")
+        surface = pygame.Surface((1280, 800))
+        self.play.draw(surface)
+        seen = sum(1 for b in self.play.map.known if b)
+        self.assertGreater(seen, 0)
+        self.assertLess(seen, self.play.map.w * self.play.map.h,
+                        "the whole floor is already known, so this proves nothing")
+
+    def test_it_survives_every_window_size(self):
+        self.play.menu_command("Map!")
+        for size in SIZES:
+            with self.subTest(size=size):
+                self.app.screen = pygame.display.set_mode(size)
+                self.play.draw(self.app.screen)
