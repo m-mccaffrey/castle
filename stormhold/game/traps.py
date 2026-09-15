@@ -123,14 +123,21 @@ def disarm_at(world, level, player, spot, rng):
     # disarming traps", and dexterity "improves your AV, your chance to hit,
     # and your chance to disarm traps".
     skill = player.level + player.stat("dexterity") + player.stat("intelligence") // 2
-    roll = rng.randint(1, 20) + skill
+    die = rng.randint(1, 20)
     name = TRAPS[trap["kind"]]["name"]
-    if roll >= 18:
+
+    # The thresholds used to be fixed, and skill is worth thirty points to an
+    # ordinary character, so every disarm succeeded and two of the three
+    # outcomes below could not happen to anybody. A deeper trap is a harder
+    # trap, and a fumble is a fumble whatever your hands are worth. These
+    # numbers are ours; the three outcomes are the original's.
+    if die <= 2:
+        return True, f"You set the {name} off!"        # caller springs it
+    target = 16 + max(0, level.depth)
+    if die + skill >= target:
         trap["armed"] = False
         del level.traps[spot]
         return True, f"You disarm the {name}."
-    if roll <= 6:
-        return True, f"You set the {name} off!"        # caller springs it
     return True, f"You cannot get the better of the {name}. Not yet."
 
 

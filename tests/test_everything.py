@@ -321,3 +321,105 @@ class TestActionsAreSanitisedAtTheDoor(unittest.TestCase):
             with self.subTest(verb=verb):
                 world, p, level = archmage(depth=4, seed=24)
                 world.do_player_action(level, p, dict(rubbish, a=verb))
+
+
+class TestSearchingAndDisarming(unittest.TestCase):
+    """Finding a trap and taking the teeth out of it.
+
+    The disarm path was never run by a test: a roll that fails, a roll that
+    springs the trap in your face, and a trap you have not found yet all
+    share one function, and none of them had been reached.
+    """
+
+    def setUp(self):
+        self.world, self.p, self.level = archmage(depth=6, seed=31)
+        self.p.level = 3                     # so the rolls can go either way
+        self.spot = (self.p.x + 1, self.p.y)
+        self.level.traps[self.spot] = {"kind": "pit", "found": False,
+                                       "armed": True}
+
+    def disarm(self):
+        self.world.events.clear()
+        self.world.do_player_action(self.level, self.p,
+                                    {"a": "disarm", "x": self.spot[0],
+                                     "y": self.spot[1]})
+        return said(self.world)
+
+    def test_you_cannot_disarm_what_you_have_not_found(self):
+        self.assertIn("no trap here", " ".join(self.disarm()).lower())
+
+    def test_searching_finds_what_is_beside_you(self):
+        for _ in range(40):
+            self.world.do_player_action(self.level, self.p, {"a": "search"})
+            if self.level.traps[self.spot]["found"]:
+                break
+        self.assertTrue(self.level.traps[self.spot]["found"],
+                        "forty searches beside a pit found nothing")
+
+    def test_every_way_a_disarm_can_end_is_reachable(self):
+        """All three used to be two.
+
+        The thresholds were fixed while skill is worth about thirty points to
+        an ordinary character, so every attempt succeeded: "You set the pit
+        off!" and "Not yet" could not happen to anybody in the game.
+        """
+        import random
+        from stormhold.game.traps import disarm_at
+        # Somebody ordinary, deep enough for it to be a real question.
+        world, p, level = archmage(depth=14, seed=31)
+        p.level = 5
+        p.stats = {k: 10 for k in p.stats}
+        p.recalc()
+        spot = (p.x + 1, p.y)
+        endings = set()
+        for seed in range(400):
+            level.traps[spot] = {"kind": "pit", "found": True, "armed": True}
+            _ok, why = disarm_at(world, level, p, spot, random.Random(seed))
+            endings.add(why)
+        joined = " ".join(endings)
+        self.assertIn("You disarm", joined)
+        self.assertIn("set the", joined)
+        self.assertIn("cannot get the better", joined)
+
+    def test_a_deeper_trap_is_a_harder_trap(self):
+        import random
+        from stormhold.game.traps import disarm_at
+
+        def success_rate(depth):
+            world, p, level = archmage(depth=depth, seed=31)
+            p.level = 6
+            p.stats = {k: 12 for k in p.stats}
+            p.recalc()
+            spot = (p.x + 1, p.y)
+            wins = 0
+            for seed in range(300):
+                level.traps[spot] = {"kind": "pit", "found": True,
+                                     "armed": True}
+                _ok, why = disarm_at(world, level, p, spot,
+                                     random.Random(seed))
+                wins += "You disarm" in why
+            return wins / 300
+
+        self.assertGreater(success_rate(2), success_rate(18),
+                           "depth makes no difference to disarming")
+
+    def test_a_trap_already_dealt_with_says_so(self):
+        from stormhold.game.traps import disarm_at
+        import random
+        self.level.traps[self.spot] = {"kind": "pit", "found": True,
+                                       "armed": False}
+        ok, why = disarm_at(self.world, self.level, self.p, self.spot,
+                            random.Random(1))
+        self.assertFalse(ok)
+        self.assertIn("already", why)
+
+    def test_a_hidden_door_can_be_found_by_searching(self):
+        spot = (self.p.x, self.p.y + 1)
+        self.level.secrets[spot] = {"found": False}
+        for _ in range(80):
+            self.world.do_player_action(self.level, self.p, {"a": "search"})
+            if self.level.secrets[spot]["found"]:
+                break
+        self.assertTrue(self.level.secrets[spot]["found"],
+                        "eighty searches beside a hidden door found nothing")
+        self.assertEqual(self.level.get(*spot), T.DOOR)
