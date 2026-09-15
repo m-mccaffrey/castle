@@ -399,8 +399,13 @@ class Player(Actor):
         self.inventory.append(item)
         return True
 
-    def sort_pack(self):
-        """Group the pack the way a tidy person would: by what things are."""
+    def sort_pack(self, appearances=None):
+        """Group the pack the way a tidy person would: by what things are.
+
+        Within a type the things you know come first and the ones you have
+        not identified fall to the end, which is what the original's Sort
+        Pack does and what makes the command worth pressing.
+        """
         order = {"weapon": 0, "armour": 1, "container": 2, "potion": 3,
                  "scroll": 4, "book": 5,
                  "ring": 8, "amulet": 9, "treasure": 10, "coins": 11}
@@ -412,7 +417,12 @@ class Player(Actor):
                 kind = "armour"
             elif item.slot == "weapon":
                 kind = "weapon"
-            return (order.get(kind, 12), item.name(None).lower())
+            unknown = not item.known
+            if appearances is not None and item.base.get("kind") in (
+                    "potion", "scroll", "ring", "amulet"):
+                unknown = not appearances.is_known(item.key)
+            return (order.get(kind, 12), unknown,
+                    item.name(appearances).lower())
 
         self.inventory.sort(key=key)
 

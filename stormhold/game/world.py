@@ -1646,7 +1646,7 @@ class World:
 
     def _act_sort(self, level, p, action):
         """Tidy the pack. Costs nothing: it is your own pack."""
-        p.sort_pack()
+        p.sort_pack(self.appearances)
         self.msg("You tidy your pack.", "info", to=p)
         self.events.append({"t": "inv", "to": p.id})
         return FREE_COST

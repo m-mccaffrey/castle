@@ -144,7 +144,7 @@ is simply a death sentence.
 | Run stops at objects, doors, and room-corridor boundaries | partial |
 | Scroll Rooms Onto Screen option | open |
 | Review Story | open |
-| Sort Pack sorts by type and within type, unknowns last | partial |
+| Sort Pack sorts by type and within type, unknowns last | done |
 | Name Object | done |
 
 ## Things we had that the original does not

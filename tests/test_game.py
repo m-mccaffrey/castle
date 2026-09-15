@@ -1143,3 +1143,33 @@ class TestBlowMessages(unittest.TestCase):
         self.assertTrue(theirs.startswith("The Kobold "), theirs)
         for text in (yours, theirs):
             self.assertNotIn("{", text, "an unsubstituted token escaped")
+
+
+class TestSortPack(unittest.TestCase):
+    """"Sort Pack sorts by type, and within type, unknowns last."""
+
+    def setUp(self):
+        from stormhold.game.world import World
+        from stormhold.game.items import Item
+        self.world = World(seed=12)
+        self.p = self.world.add_player("Tidy")
+        self.p.inventory = []
+        for key, known in (("scroll_map", False), ("potion_mana", False),
+                           ("axe", False), ("potion_heal", True),
+                           ("leather", True), ("shortsword", True)):
+            item = Item(key)
+            item.known = known
+            self.p.add_item(item)
+        self.world.appearances.identify("potion_heal")
+        self.p.sort_pack(self.world.appearances)
+        self.kinds = [i.base.get("kind") or i.slot for i in self.p.inventory]
+
+    def test_weapons_come_before_armour_before_potions_before_scrolls(self):
+        self.assertEqual(self.kinds[:2], ["weapon", "weapon"])
+        self.assertEqual(self.kinds[2], "torso")
+        self.assertEqual(self.kinds[-1], "scroll")
+
+    def test_within_a_type_the_unidentified_fall_to_the_end(self):
+        potions = [i for i in self.p.inventory if i.base.get("kind") == "potion"]
+        self.assertTrue(self.world.appearances.is_known(potions[0].key))
+        self.assertFalse(self.world.appearances.is_known(potions[-1].key))
