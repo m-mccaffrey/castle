@@ -1195,3 +1195,76 @@ class TestArticles(unittest.TestCase):
         from stormhold.game.items import Item, with_article
         text = with_article(Item("arrow", qty=12).name(None))
         self.assertTrue(text.startswith("12 "), text)
+
+
+class TestTheKeepCanBeFinished(unittest.TestCase):
+    """Every floor generates, both bosses are placed, and the last one wins it.
+
+    Nothing tested that the game had an ending - only that its parts worked.
+    """
+
+    def setUp(self):
+        from stormhold.game.world import World
+        from stormhold.game.items import Item
+        self.world = World(seed=31)
+        self.p = self.world.add_player("Champion", spell="Spark")
+        self.p.stats = {k: 18 for k in self.p.stats}
+        self.p.level = 25
+        self.p.recalc()
+        self.p.max_hp = self.p.hp = 6000
+        for key, slot in (("platemail", "torso"), ("halberd", "weapon")):
+            item = Item(key, enchant=5)
+            item.known = True
+            self.p.equipment[slot] = item
+
+    def test_every_floor_generates_with_a_way_down(self):
+        for depth in range(1, 26):
+            with self.subTest(depth=depth):
+                level = self.world.get_level(depth)
+                self.assertTrue(level.w and level.h)
+                self.assertTrue(level.spawns, "a floor with nothing living on it")
+                if depth < 25:
+                    self.assertIsNotNone(level.down_at, "no way down")
+
+    def test_both_bosses_are_placed(self):
+        self.assertEqual(self.world.get_level(12).boss_key, "warden_of_ash")
+        self.assertEqual(self.world.get_level(25).boss_key, "vaelrik")
+
+    def test_killing_the_last_one_wins_the_game(self):
+        from stormhold.game import combat
+        level = self.world.get_level(25)
+        self.world.move_player_to(self.p, 25)
+        self.world.populate(level)
+        boss = level.boss
+        self.assertIsNotNone(boss)
+        self.world.events.clear()
+        for _ in range(5000):
+            if boss.dead:
+                break
+            combat.melee(self.world, self.p, boss)
+        self.assertTrue(boss.dead, "the final boss could not be killed")
+        self.assertTrue(getattr(self.p, "won", False))
+        said = [e.get("text") for e in self.world.events if e.get("t") == "msg"]
+        self.assertIn("The storm over Aldershade breaks. The keep is yours.", said)
+
+    def test_a_boss_is_named_not_described(self):
+        from stormhold.game import combat
+        level = self.world.get_level(25)
+        self.world.move_player_to(self.p, 25)
+        self.world.populate(level)
+        text = combat.blow_message(self.world.rng, self.p, level.boss, 5, False)
+        self.assertNotIn("the Vaelrik", text)
+        self.assertIn("Vaelrik", text)
+
+    def test_the_blow_is_narrated_before_the_death_it_causes(self):
+        from stormhold.game import combat
+        level = self.world.get_level(25)
+        self.world.move_player_to(self.p, 25)
+        self.world.populate(level)
+        boss = level.boss
+        boss.hp = 1
+        self.world.events.clear()
+        combat.melee(self.world, self.p, boss)
+        said = [e.get("text") for e in self.world.events if e.get("t") == "msg"]
+        falls = said.index("Vaelrik, the Storm-Bound falls!")
+        self.assertGreater(falls, 0, "the killing blow was never described")

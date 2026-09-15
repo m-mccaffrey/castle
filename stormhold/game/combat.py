@@ -72,20 +72,19 @@ def melee(world, attacker, defender, cost_free=False):
             rider = ("burning", 4)
 
     world.fx("hit", defender.x, defender.y, defender.depth)
-    # The swing narrates its own kill, so kill() must not add "The Kobold
-    # dies." underneath it.
-    apply_damage(world, defender, dmg, attacker, crit=crit,
-                 killed_by_a_blow=True)
-
-    # One sentence, from the attacker's side: "You stab the Kobold in the
-    # arm!" or "The Kobold smashes you in the head!". The damage number is
-    # not in it - it floats over the target instead, as the original's does
-    # not appear at all.
-    text = blow_message(rng, attacker, defender, dmg, defender.dead)
+    # Say what the swing did before the dying happens, so a boss's "falls!"
+    # and the lines that follow it come after the blow that caused them.
+    fatal = dmg >= defender.hp
+    text = blow_message(rng, attacker, defender, dmg, fatal)
     if attacker.kind == "player":
         world.msg(text, "combat", to=attacker)
     elif defender.kind == "player":
         world.msg(text, "hurt", to=defender)
+    # The swing has narrated its own kill, so kill() must not add "The Kobold
+    # dies." underneath it.
+    apply_damage(world, defender, dmg, attacker, crit=crit,
+                 killed_by_a_blow=True)
+
 
     if rider and not defender.dead:
         name, power = rider
@@ -263,12 +262,24 @@ def weapon_class(actor):
     return WEAPON_CLASS.get(weapon.key, "crush")
 
 
+def _name_of(actor):
+    """Bosses are named, not described: Vaelrik, not the Vaelrik."""
+    if getattr(actor, "boss", False):
+        return actor.name
+    return f"the {actor.name}"
+
+
+def _leading(name):
+    """Capitalise the first letter and leave the rest of the name alone."""
+    return name[:1].upper() + name[1:]
+
+
 def blow_message(rng, attacker, defender, dmg, killed, blocked=False):
     """One sentence for one blow, from the attacker's point of view."""
     you = attacker.kind == "player"
-    A = "You" if you else f"The {attacker.name}"
-    D = "you" if defender.kind == "player" else f"the {defender.name}"
-    Dp = "your" if defender.kind == "player" else f"the {defender.name}'s"
+    A = "You" if you else _leading(_name_of(attacker))
+    D = "you" if defender.kind == "player" else _name_of(defender)
+    Dp = "your" if defender.kind == "player" else f"{_name_of(defender)}'s"
     style = weapon_class(attacker)
 
     if blocked:
@@ -285,8 +296,8 @@ def blow_message(rng, attacker, defender, dmg, killed, blocked=False):
 
 def miss_message(rng, attacker, defender):
     you = attacker.kind == "player"
-    A = "You" if you else f"The {attacker.name}"
-    D = "you" if defender.kind == "player" else f"the {defender.name}"
-    Dp = "your" if defender.kind == "player" else f"the {defender.name}'s"
+    A = "You" if you else _leading(_name_of(attacker))
+    D = "you" if defender.kind == "player" else _name_of(defender)
+    Dp = "your" if defender.kind == "player" else f"{_name_of(defender)}'s"
     return _conjugate(rng.choice(MISSES), you,
                       defender.kind == "player").format(A=A, D=D, Dp=Dp, where="")
