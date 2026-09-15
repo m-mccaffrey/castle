@@ -121,7 +121,10 @@ STAT_MAX = 25
 START_STAT = 8              # every stat starts here...
 START_POINTS = 16           # ...and you have this many to spread around
 
-MAX_LEVEL = 30
+# Levels keep coming below floor 25, because the creatures down there do
+# too. The experience table is built from a curve, so it extends on its own;
+# the cost of level 50 is about nine times the cost of level 30.
+MAX_LEVEL = 50
 
 # Experience needed to reach each level.
 def _xp_table():
@@ -305,7 +308,19 @@ BODY_BULK_CAPACITY = 1_000_000
 
 # --------------------------------------------------------------- world -----
 TOWN_DEPTH = 0
+# The last hand-made floor: Vaelrik's, and the end of the story. The keep
+# does not stop there any more - the stairs behind the throne keep going, and
+# everything below is generated from the same tables, scaled by depth. That
+# is what makes the game extensible: a levelled-up character stays useful,
+# and anything added to the monster or item tables turns up down there
+# without a new campaign, because a save holds the seed and the party and the
+# floors are rebuilt from it every time.
 MAX_DEPTH = 25
+
+# How far the stairs actually go. Not infinity, because something has to be
+# a number, but far enough that nobody reaches it: at the rate the creatures
+# grow, the keep wins long before floor two hundred.
+DEEP_LIMIT = 200
 SIGHT_DUNGEON = 8
 SIGHT_TOWN = 18
 BOSS_DEPTHS = (12, 25)

@@ -71,6 +71,20 @@ MONSTERS = {
 BOSSES = ("warden_of_ash", "vaelrik")
 
 
+def deepest_band():
+    """The creatures that live on the last floor anything is written for.
+
+    Below that the keep keeps going, so it keeps sending these - older and
+    bigger every floor, which is what `scaled` is for. Working it out from
+    the table rather than naming the creatures means a new deep monster
+    added later joins the band without anybody remembering to come back
+    here.
+    """
+    floor = max(m["max_d"] for m in MONSTERS.values() if m["freq"] > 0)
+    return [(key, m["freq"]) for key, m in MONSTERS.items()
+            if m["freq"] > 0 and m["max_d"] >= floor]
+
+
 def spawn_table(depth):
     """Which creatures can turn up on this floor, and how often."""
     out = []
@@ -80,7 +94,10 @@ def spawn_table(depth):
         mid = (m["min_d"] + m["max_d"]) / 2.0
         falloff = 1.0 / (1.0 + abs(depth - mid) * 0.18)
         out.append((key, m["freq"] * falloff))
-    return out or [("cave_rat", 1.0)]
+    # Past the written floors the deep sends what it has. Falling through to
+    # a cave rat - which is what used to happen the moment you went below the
+    # deepest `max_d` - would have made floor 26 the easiest in the keep.
+    return out or deepest_band()
 
 
 def scaled(template, depth, tough=1.0, worth=1.0):

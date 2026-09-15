@@ -17,7 +17,7 @@ import time
 from ..common.constants import (
     SHOP_BUY_MARKUP, SHOP_SELL_RATE, condition_for, COINS, mana_cost,
     TICKS_PER_SECOND,
-    T, DIRS, TOWN_DEPTH, MAX_DEPTH, GRACE_TICKS, MOVE_COST, ATTACK_COST,
+    T, DIRS, TOWN_DEPTH, MAX_DEPTH, DEEP_LIMIT, GRACE_TICKS, MOVE_COST, ATTACK_COST,
     CAST_COST, PICKUP_COST, DROP_COST, EQUIP_COST, QUAFF_COST, READ_COST,
     STAIRS_COST, REST_COST, FREE_COST, SIGHT_DUNGEON, SIGHT_TOWN, REGEN_TICKS,
     DEFAULT_DIFFICULTY, difficulty_factors,
@@ -1637,7 +1637,7 @@ class World:
         tile = level.get(p.x, p.y)
         if tile == T.STAIRS_DOWN:
             target = max(1, self.party_deepest) if level.is_town else p.depth + 1
-            if target > MAX_DEPTH:
+            if target > DEEP_LIMIT:
                 self.msg("There is nothing deeper than this.", "info", to=p)
                 return FREE_COST
             self.msg(f"{p.name} goes down.", "info", depth=level.depth)
@@ -1793,6 +1793,7 @@ class World:
                 self.msg(f"The {target.name} dies.", "kill", depth=target.depth)
             if target.boss:
                 self.msg(f"{target.name} falls!", "good", depth=target.depth)
+                self.uncover_the_deep(level)
                 if target.key == "vaelrik":
                     self.msg("The storm over Aldershade breaks. The keep is yours.",
                              "good", depth=target.depth)
@@ -1968,6 +1969,30 @@ class World:
     # points "in such a manner that the victim will not recover without the aid
     # of special enchantment".
     BODY_STATS = ("strength", "constitution", "dexterity")
+
+    def uncover_the_deep(self, level):
+        """The stairs behind the throne, once the last boss is down.
+
+        The story ends on floor 25 for anybody who wants it to. For anybody
+        who does not, this is the way on: everything below is built from the
+        same tables, scaled by depth, so a character who has been levelled to
+        the ceiling has somewhere left to go - and anything added to those
+        tables later turns up down there without starting again.
+        """
+        spot = getattr(level, "deep_stairs_at", None)
+        if spot is None or level.down_at is not None:
+            return
+        x, y = spot
+        if not level.in_bounds(x, y) or is_solid(level.get(x, y)):
+            spot = level.find_floor(x, y)
+            if spot is None:
+                return
+            x, y = spot
+        level.down_at = (x, y)
+        self.set_tile(level, x, y, T.STAIRS_DOWN)
+        self.msg("Behind the throne, a stair goes down into the dark. "
+                 "Nobody has ever written down what is under here.",
+                 "good", depth=level.depth)
 
     def drain_player(self, player, kind, source=None):
         """Something took a piece of you that will not simply grow back."""

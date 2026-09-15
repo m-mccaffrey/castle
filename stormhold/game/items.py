@@ -514,7 +514,11 @@ def roll_enchantment(depth, rng):
     if roll < 0.06 + depth * 0.004:
         return -rng.randint(1, 3), True             # cursed
     if roll < 0.30 + depth * 0.012:
-        return rng.randint(1, 1 + min(4, depth // 5)), False
+        # +5 is the best the written floors produce. Below them the smiths
+        # of the deep keep going, a point per ten floors, so that a character
+        # who lives down there has something left to find.
+        best = 1 + min(4, depth // 5) + max(0, (depth - 25) // 10)
+        return rng.randint(1, best), False
     return 0, False
 
 

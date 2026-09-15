@@ -876,6 +876,49 @@ class TestDifficultyCurve(unittest.TestCase):
                         "simply out-swing it")
 
 
+class TestTheDeep(unittest.TestCase):
+    """Below the last written floor the keep keeps going."""
+
+    def test_the_way_down_opens_when_the_last_boss_falls(self):
+        from stormhold.game.world import World
+        w = World(seed=4, difficulty="Intermediate")
+        p = w.add_player("H", spell="Spark")
+        w.move_player_to(p, MAX_DEPTH)
+        level = w.levels[MAX_DEPTH]
+        self.assertIsNone(level.down_at, "the way on should not be there yet")
+        w.kill(level.boss)
+        self.assertIsNotNone(level.down_at)
+        p.x, p.y = level.down_at
+        w.do_player_action(level, p, {"a": "stairs", "dir": "down"})
+        self.assertEqual(p.depth, MAX_DEPTH + 1)
+
+    def test_the_deep_is_not_full_of_cave_rats(self):
+        """The old spawn table fell through to one when nothing matched."""
+        from stormhold.game.world import World
+        w = World(seed=4, difficulty="Intermediate")
+        p = w.add_player("H", spell="Spark")
+        for depth in (MAX_DEPTH + 1, 40, 80):
+            w.move_player_to(p, depth)
+            mobs = [m for m in w.levels[depth].actors.values()
+                    if m.kind == "monster"]
+            self.assertTrue(mobs)
+            self.assertNotIn("cave_rat", {m.key for m in mobs},
+                             f"floor {depth} should not be sending cave rats")
+
+    def test_the_deep_keeps_getting_harder(self):
+        from stormhold.game.world import World
+
+        def toughest(depth):
+            w = World(seed=4, difficulty="Intermediate")
+            p = w.add_player("H", spell="Spark")
+            w.move_player_to(p, depth)
+            return max(m.max_hp for m in w.levels[depth].actors.values()
+                       if m.kind == "monster")
+
+        self.assertLess(toughest(MAX_DEPTH + 1), toughest(50))
+        self.assertLess(toughest(50), toughest(100))
+
+
 class TestReachAndUpkeep(unittest.TestCase):
     def test_only_worn_things_and_the_belt_can_be_activated(self):
         from stormhold.game.items import Item

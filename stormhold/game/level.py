@@ -3,7 +3,7 @@ keep beneath it. Rooms and corridors, in the old style."""
 
 import random
 
-from ..common.constants import T, is_solid, TOWN_DEPTH
+from ..common.constants import T, is_solid, TOWN_DEPTH, MAX_DEPTH
 
 
 class Level:
@@ -16,6 +16,7 @@ class Level:
         self.rooms = []
         self.up_at = (1, 1)
         self.down_at = None
+        self.deep_stairs_at = None      # uncovered when the last boss falls
         self.spawns = []
         self.loot_spots = []
         self.actors = {}            # id -> actor
@@ -339,11 +340,16 @@ def generate_dungeon(depth, seed):
     level.set(first["cx"], first["cy"], T.STAIRS_UP)
 
     far = max(level.rooms[1:], key=lambda r: (r["cx"] - first["cx"]) ** 2 + (r["cy"] - first["cy"]) ** 2)
-    if depth < 25:
+    if depth == MAX_DEPTH:
+        # Vaelrik's floor. The altar stays where it always was, and the way
+        # down is not there yet: the stairs behind the throne are uncovered
+        # when he falls, so the story still ends here for anybody who wants
+        # it to. `deep_stairs_at` is where they will be.
+        level.set(far["cx"], far["cy"], T.ALTAR)
+        level.deep_stairs_at = (far["cx"], far["cy"] - 1)
+    else:
         level.down_at = (far["cx"], far["cy"])
         level.set(far["cx"], far["cy"], T.STAIRS_DOWN)
-    else:
-        level.set(far["cx"], far["cy"], T.ALTAR)
     far["special"] = far.get("special") or "end"
 
     # A fountain or a throne here and there: both "can have beneficial or
