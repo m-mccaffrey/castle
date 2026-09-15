@@ -1235,6 +1235,14 @@ class TestTheKeepCanBeFinished(unittest.TestCase):
         self.assertEqual(self.world.get_level(25).boss_key, "vaelrik")
 
     def test_killing_the_last_one_wins_the_game(self):
+        """This proves the machinery of winning, not that it can be won.
+
+        The character here is given hit points no real one has, because what
+        is under test is that the boss dies, the flag is set and the ending
+        is announced. Whether an ordinary party can get there is a question
+        of balance, and it is measured in docs/balance.md - where the answer
+        today is "three or four of you, and not alone".
+        """
         from stormhold.game import combat
         level = self.world.get_level(25)
         self.world.move_player_to(self.p, 25)
