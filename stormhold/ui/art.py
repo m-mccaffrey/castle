@@ -6,6 +6,17 @@ House rules, all borrowed from the icon art of the period:
   * one light source, always upper-left: highlights up-left, shadow down-right
   * chunky and readable first, detailed second
 
+Two rules learned by rendering the whole set at 9x and looking at it, both
+about where dithering stops working:
+
+  * A dither pair needs area. One or two pixels wide it samples the Bayer
+    matrix at scattered points and comes out as a row of beads, not as a
+    colour - so thin work (a bowstave, an arrow shaft, a one-pixel highlight)
+    takes a flat palette colour.
+  * A pair at ratio 0.5 is a full checkerboard, the noisiest screen there is.
+    It is for a few pixels of transition. Anything with area wants one colour
+    leading and the other speckled through it - see `palette.calm`.
+
 Nothing here is loaded from disk. Icons are built once at start-up into pygame
 surfaces and cached.
 """
@@ -17,8 +28,9 @@ from .palette import (
     YELLOW, BLUE, FUCHSIA, AQUA, WHITE,
     BROWN, DARK_BROWN, TAN, PALE_SKIN, DARK_STONE, MID_STONE, PALE_STONE,
     DARK_GREEN, MOSS, DEEP_WATER, SHALLOW, RUST, EMBER, BONE, SHADOW_BLUE,
-    BRUISE, ICE, GOLD_DITHER, COPPER, PLUM, SICK_GREEN,
-    resolve, is_pair, darker, lighter,
+    BRUISE, ICE, GOLD_DITHER, COPPER, PLUM, SICK_GREEN, BOOT_LEATHER,
+    WOOD_LIT,
+    resolve, is_pair, darker, lighter, calm,
 )
 
 ICON = 32          # icon grid: the Windows 3.1 standard
@@ -134,9 +146,14 @@ class Icon:
                 c = snapshot[y][x]
                 if c is None or c == BLACK:
                     continue
-                if light and not solid(x, y - 1):
+                # Only shade something with body under it. A stroke two or
+                # three pixels thick - a bowstave, a haft, a chain link - has
+                # nothing above it *and* nothing below it at almost every
+                # pixel, so shading both edges lit and darkened alternate
+                # pixels down its whole length and turned it into beads.
+                if light and not solid(x, y - 1) and solid(x, y + 2):
                     self.px[y][x] = lighter(c)
-                elif dark and not solid(x, y + 1):
+                elif dark and not solid(x, y + 1) and solid(x, y - 2):
                     self.px[y][x] = darker(c)
         return self
 
@@ -261,7 +278,7 @@ def tile_tree(variant=0):
     ic = Icon()
     ic.rect(0, 0, ICON, ICON, MOSS)
     ic.rect(14, 20, 5, 12, BROWN)
-    ic.rect(14, 20, 1, 12, (MAROON, YELLOW, 0.25))
+    ic.rect(14, 20, 1, 12, WOOD_LIT)
     ic.oval(16, 14, 11, 11, GREEN)
     ic.oval(13, 11, 6, 6, LIME)          # sunlit crown
     ic.oval(21, 19, 5, 5, DARK_GREEN)    # shaded underside
@@ -300,8 +317,8 @@ def tile_door(closed=True):
     ic.rect(0, 0, ICON, ICON, DARK_STONE)
     if closed:
         ic.rect(3, 1, 26, 30, BROWN)
-        ic.rect(3, 1, 26, 1, (MAROON, YELLOW, 0.35))
-        ic.rect(3, 1, 1, 30, (MAROON, YELLOW, 0.35))
+        ic.rect(3, 1, 26, 1, WOOD_LIT)
+        ic.rect(3, 1, 1, 30, WOOD_LIT)
         ic.rect(3, 30, 26, 1, BLACK)
         ic.rect(28, 1, 1, 30, BLACK)
         for y in range(4, 30, 7):                    # plank seams
@@ -317,7 +334,7 @@ def tile_door(closed=True):
         ic.rect(28, 0, 1, ICON, SILVER)
         ic.rect(4, 0, 24, ICON, BLACK)               # the opening
         ic.rect(4, 0, 7, ICON, BROWN)                # swung-back door panel
-        ic.rect(4, 0, 1, ICON, (MAROON, YELLOW, 0.35))
+        ic.rect(4, 0, 1, ICON, WOOD_LIT)
         ic.rect(10, 0, 1, ICON, BLACK)
         for y in range(3, 30, 7):
             ic.rect(5, y, 5, 1, DARK_BROWN)
@@ -376,103 +393,162 @@ def tile_void():
 
 def humanoid(skin=TAN, cloth=NAVY, trim=YELLOW, eyes=WHITE, weapon=None,
              shield=False, helm=None, hood=False, horns=False, crown=False,
-             bulk=0, tattered=False, ribs=False, boots=DARK_BROWN, aura=None,
+             bulk=0, tattered=False, ribs=False, boots=BOOT_LEATHER, aura=None,
              hunched=False):
     """One upright two-legged figure, from a kobold to a king.
 
-    Laid out in horizontal bands with a black rule between each, because on a
-    32-pixel icon the only thing that separates a head from a chest is a line.
+    Built as a silhouette rather than a stack of bands. The old version laid
+    head, chest and legs out as full-width rectangles separated by black
+    rules, which is readable but makes every creature in the game the same
+    shape: a square head on a wide box. What tells a kobold from an ogre at
+    32 pixels is the outline, so the outline is what this draws - a narrow
+    head over sloped shoulders, a torso that tapers to the waist, arms set
+    off the shoulder line, and a gap between the legs.
+
+    Proportions are the ones that read at this size, not the ones that are
+    anatomically right: the head is about a fifth of the figure and a bit
+    over half the shoulder width.
     """
     ic = Icon()
     heavy = bulk >= 4
 
-    head_w = 10 + (2 if heavy else 0)
-    torso_w = 14 + bulk
-    head_x = 16 - head_w // 2
-    torso_x = 16 - torso_w // 2
+    # ---- the frame -------------------------------------------------------
+    # Everything lives inside x 2..29 so the black outline always has a pixel
+    # to sit in, whatever the bulk.
+    # Bulk buys height as much as width. Spending it all on width - which is
+    # what the old version did - made the Warden and Vaelrik into rectangles
+    # that filled the icon edge to edge and lost their outline entirely.
+    shoulder_w = max(8, min(16, 11 + bulk))
+    waist_w = max(6, shoulder_w - (5 if heavy else 3))
+    hip_w = max(6, shoulder_w - (4 if heavy else 2))
+    head_w = 9 if heavy else (7 if bulk < 0 else 8)
 
-    head_y = 3 if hunched else 2
-    head_h = 9 if heavy else 8
-    neck_y = head_y + head_h                 # black rule
+    top = (2 if heavy else 4) + (2 if hunched else 0)
+    head_h = 8 if heavy else 7
+    neck_y = top + head_h
     torso_y = neck_y + 1
-    torso_h = 13 if heavy else 11
-    waist_y = torso_y + torso_h
-    leg_y = waist_y + 1
-    leg_h = max(3, 30 - leg_y)
+    torso_h = 13 if heavy else 10
+    waist_y = torso_y + torso_h - 2
+    hip_y = torso_y + torso_h
+    leg_h = 28 - hip_y
+    head_x = 16 - head_w // 2
 
-    arm_w = 4
-    arm_l = torso_x - arm_w
-    arm_r = torso_x + torso_w
-    hand_y = torso_y + torso_h - 4
+    def band(y):
+        """How wide the body is at this row: shoulders down to waist."""
+        if y >= hip_y:
+            return hip_w
+        span = max(1, (waist_y - torso_y))
+        t = min(1.0, max(0.0, (y - torso_y) / span))
+        return int(round(shoulder_w - (shoulder_w - waist_w) * t))
 
     if aura:
-        ic.oval(16, 17, 15, 15, aura)
+        # A rim, not a plate. A filled disc behind the figure swallowed it.
+        for i in range(0, 360, 12):
+            import math
+            a = math.radians(i)
+            ic.set(16 + int(round(13 * math.cos(a))),
+                   16 + int(round(14 * math.sin(a))), aura)
+        for i in range(0, 360, 30):
+            import math
+            a = math.radians(i + 15)
+            ic.set(16 + int(round(15 * math.cos(a))),
+                   16 + int(round(15 * math.sin(a))), aura)
 
     # ---- legs ------------------------------------------------------------
     if tattered:
-        ic.rect(torso_x + 1, leg_y, torso_w - 2, leg_h, cloth)
-        for i in range(torso_x + 1, torso_x + torso_w - 1, 3):
-            ic.rect(i, leg_y + leg_h, 2, 2, cloth)       # ragged hem
+        for j in range(leg_h + 2):
+            w = hip_w - (j // 3)
+            ic.rect(16 - w // 2, hip_y + j, w, 1, calm(cloth))
+        for i in range(16 - hip_w // 2, 16 + hip_w // 2, 3):
+            ic.set(i, hip_y + leg_h + 2, cloth)          # ragged hem
     else:
-        gap = 2
-        lw = (torso_w - gap - 4) // 2
-        ic.rect(torso_x + 2, leg_y, lw, leg_h, cloth)
-        ic.rect(torso_x + torso_w - 2 - lw, leg_y, lw, leg_h, cloth)
-        ic.rect(torso_x + 1, leg_y + leg_h, lw + 2, 2, boots)
-        ic.rect(torso_x + torso_w - 3 - lw, leg_y + leg_h, lw + 2, 2, boots)
-        ic.rect(torso_x + 2 + lw, leg_y, gap, leg_h, BLACK)   # gap between legs
+        lw = max(2, (hip_w - 2) // 2)
+        left = 16 - hip_w // 2
+        right = 16 + hip_w // 2 - lw
+        # Trousers match the tunic. Darkening them a step turned every dark
+        # cloth in the game into black legs, because one step down from grey
+        # or navy is black; the gap between the legs and the boots below do
+        # the separating instead.
+        ic.rect(left, hip_y, lw, leg_h, calm(cloth))
+        ic.rect(right, hip_y, lw, leg_h, calm(cloth))
+        ic.rect(left - 1, hip_y + leg_h, lw + 2, 2, boots)
+        ic.rect(right - 1, hip_y + leg_h, lw + 2, 2, boots)
 
     # ---- torso -----------------------------------------------------------
-    ic.rect(torso_x, torso_y, torso_w, torso_h, cloth)
+    body = calm(cloth)
+    for y in range(torso_y, hip_y):
+        w = band(y)
+        ic.rect(16 - w // 2, y, w, 1, body)
     if ribs:
-        for y in range(torso_y + 2, torso_y + torso_h - 1, 3):
-            ic.rect(torso_x + 2, y, torso_w - 4, 1, skin)
-    ic.rect(torso_x, waist_y - 2, torso_w, 2, trim)          # belt
-    ic.rect(torso_x, waist_y, torso_w, 1, BLACK)             # waist rule
+        for y in range(torso_y + 2, waist_y - 1, 3):
+            w = band(y) - 4
+            ic.rect(16 - w // 2, y, w, 1, skin)
+    bw = band(waist_y)
+    ic.rect(16 - bw // 2, waist_y, bw, 2, trim)          # belt
 
-    # ---- arms, drawn outside the torso and ruled off from it -------------
-    ic.rect(arm_l, torso_y + 1, arm_w, torso_h - 3, cloth)
-    ic.rect(arm_r, torso_y + 1, arm_w, torso_h - 3, cloth)
-    ic.rect(arm_l + arm_w - 1, torso_y + 1, 1, torso_h - 3, BLACK)
-    ic.rect(arm_r, torso_y + 1, 1, torso_h - 3, BLACK)
-    ic.rect(arm_l, hand_y, arm_w, 3, skin)                   # hands
-    ic.rect(arm_r, hand_y, arm_w, 3, skin)
+    # ---- arms ------------------------------------------------------------
+    # Set just outside the shoulder and shaded a step down, so they read as
+    # arms rather than as more chest.
+    arm_top = torso_y + 1
+    arm_h = torso_h - 2
+    for side in (-1, 1):
+        x = 16 + side * (shoulder_w // 2 + 1) - (2 if side > 0 else 1)
+        ic.rect(x, arm_top, 3, arm_h - 2, calm(cloth))
+        ic.rect(x, arm_top + arm_h - 2, 3, 2, calm(skin))   # hand
+        # One pixel of shadow where the arm meets the chest. Shading the
+        # whole sleeve instead turned grey and navy cloth black, because a
+        # step down from either of those is black.
+        seam = x + (2 if side < 0 else 0)
+        ic.rect(seam, arm_top, 1, arm_h - 2, darker(cloth))
 
     # ---- head ------------------------------------------------------------
-    ic.rect(torso_x, neck_y, torso_w, 1, BLACK)              # neck rule
-    ic.rect(head_x, head_y, head_w, head_h, skin)
-    eye_y = head_y + (4 if hood else 3)
+    ic.rect(15, neck_y, 2, 1, darker(skin))              # a neck, not a rule
+    ic.rect(head_x, top, head_w, head_h, calm(skin))
+    ic.rect(head_x + 1, top - 1, head_w - 2, 1, skin)    # rounded crown
+    ic.rect(head_x, top + head_h, head_w, 1, None)
+    ic.rect(head_x + 1, top + head_h - 1, head_w - 2, 1, skin)   # rounded jaw
+
+    eye_y = top + (4 if hood else 3)
+    # Two pixels in from each side, and never nearer than two pixels to each
+    # other: at a head width of eight the old spacing put them side by side,
+    # so every face in the game wore one black bar instead of two eyes.
+    eye_in = 1
     if hood:
-        ic.rect(head_x - 1, head_y - 2, head_w + 2, head_h - 2, cloth)
-        ic.rect(head_x, head_y + 3, head_w, head_h - 4, BLACK)   # shadowed face
-        ic.rect(head_x + 2, eye_y, 2, 2, eyes)
-        ic.rect(head_x + head_w - 4, eye_y, 2, 2, eyes)
+        ic.rect(head_x - 1, top - 2, head_w + 2, head_h, cloth)
+        ic.tri([(head_x - 1, top + head_h - 2), (16, top - 4),
+                (head_x + head_w + 1, top + head_h - 2)], cloth)
+        ic.rect(head_x, top + 2, head_w, head_h - 3, BLACK)      # shadowed face
+        ic.rect(head_x + eye_in, eye_y, 2, 1, eyes)
+        ic.rect(head_x + head_w - eye_in - 2, eye_y, 2, 1, eyes)
     else:
-        ic.rect(head_x + 2, eye_y, 2, 2, eyes)
-        ic.rect(head_x + head_w - 4, eye_y, 2, 2, eyes)
-        ic.rect(head_x + 3, eye_y + 3, head_w - 6, 1, BLACK)     # mouth
+        ic.rect(head_x + eye_in, eye_y, 2, 2, eyes)
+        ic.rect(head_x + head_w - eye_in - 2, eye_y, 2, 2, eyes)
+        ic.rect(head_x + eye_in + 1, eye_y + 3, head_w - 2 * eye_in - 2, 1,
+                darker(skin))                                     # mouth
     if helm:
-        ic.rect(head_x - 1, head_y - 2, head_w + 2, 4, helm)
-        ic.rect(head_x + head_w // 2 - 1, head_y - 2, 2, head_h - 1, helm)  # nasal
-        ic.rect(head_x - 1, head_y + 2, head_w + 2, 1, BLACK)
+        # A brow band and a nasal bar. The old version was four rows deep and
+        # started two above the head, so on most figures it covered the eyes
+        # and left a blank white bar where the face should be.
+        ic.rect(head_x - 1, top - 2, head_w + 2, 3, helm)
+        ic.rect(head_x + head_w // 2, top - 2, 1, eye_y - top + 3, helm)
+        ic.rect(head_x - 1, top + 1, head_w + 2, 1, darker(helm))
     if horns:
-        ic.tri([(head_x, head_y + 1), (head_x - 4, head_y - 6), (head_x + 3, head_y - 1)], BONE)
-        ic.tri([(head_x + head_w, head_y + 1), (head_x + head_w + 4, head_y - 6),
-                (head_x + head_w - 3, head_y - 1)], BONE)
+        ic.tri([(head_x, top + 1), (head_x - 4, top - 5), (head_x + 2, top - 1)], BONE)
+        ic.tri([(head_x + head_w, top + 1), (head_x + head_w + 4, top - 5),
+                (head_x + head_w - 2, top - 1)], BONE)
     if crown:
-        ic.rect(head_x, head_y - 4, head_w, 3, YELLOW)
-        for i in range(0, head_w - 1, 4):
-            ic.tri([(head_x + i, head_y - 4), (head_x + i + 2, head_y - 8),
-                    (head_x + i + 4, head_y - 4)], YELLOW)
+        ic.rect(head_x - 1, top - 4, head_w + 2, 3, YELLOW)
+        for i in range(0, head_w + 1, 3):
+            ic.tri([(head_x - 1 + i, top - 4), (head_x + i, top - 7),
+                    (head_x + 1 + i, top - 4)], YELLOW)
 
     # ---- held gear -------------------------------------------------------
     if shield:
-        sx = arm_l - 5
-        ic.rect(sx, torso_y, 6, torso_h - 1, SILVER)
-        ic.rect(sx, torso_y, 6, 1, WHITE)
-        ic.rect(sx + 1, torso_y + 4, 4, 4, trim)
-        ic.rect(sx + 5, torso_y, 1, torso_h - 1, BLACK)
-    _weapon(ic, weapon, arm_r + arm_w, torso_y, trim)
+        sx = 16 - shoulder_w // 2 - 5
+        ic.oval(sx + 3, torso_y + 5, 4, 6, SILVER)
+        ic.oval(sx + 3, torso_y + 4, 4, 5, WHITE)
+        ic.oval(sx + 3, torso_y + 5, 2, 2, trim)
+    _weapon(ic, weapon, 16 + shoulder_w // 2 + 3, torso_y, trim)
 
     return ic.outline().shade()
 
@@ -500,7 +576,8 @@ def _weapon(ic, kind, x, y, trim=YELLOW):
         ic.rect(x - 3, y - 2, 8, 6, SILVER)
         ic.rect(x - 3, y - 2, 8, 1, WHITE)
     elif kind == "staff":
-        ic.rect(x, y - 6, 3, 22, BROWN)
+        ic.rect(x, y - 6, 3, 22, MAROON)
+        ic.rect(x, y - 6, 1, 22, OLIVE)
         ic.oval(x + 1, y - 7, 4, 4, AQUA)
         ic.rect(x, y - 10, 2, 2, WHITE)
     elif kind == "bow":
@@ -592,34 +669,73 @@ def _ooze():
 
 
 def _golem():
+    """A slab of rock with arms. Flat stone with cracks, not a grey screen.
+
+    It used to be a fifty per cent grey checkerboard from head to foot, which
+    at map size is a smudge - the one thing a golem should never be.
+    """
     ic = Icon()
-    ic.rect(8, 6, 16, 17, MID_STONE)
-    ic.rect(4, 9, 4, 11, MID_STONE)      # arms
-    ic.rect(24, 9, 4, 11, MID_STONE)
-    ic.rect(9, 23, 6, 8, MID_STONE)      # legs
-    ic.rect(17, 23, 6, 8, MID_STONE)
-    ic.rect(8, 6, 16, 1, WHITE)
-    ic.rect(8, 6, 1, 17, WHITE)
-    ic.rect(11, 11, 3, 3, AQUA)          # rune eyes
-    ic.rect(18, 11, 3, 3, AQUA)
-    ic.rect(10, 17, 12, 2, DARK_STONE)
+    body = GRAY
+    ic.rect(7, 5, 18, 18, body)          # a single heavy slab
+    ic.rect(4, 8, 4, 12, body)           # arms
+    ic.rect(24, 8, 4, 12, body)
+    ic.rect(8, 23, 7, 8, body)           # legs
+    ic.rect(17, 23, 7, 8, body)
+    # Lit from the upper left, as everything here is.
+    ic.rect(7, 5, 18, 1, SILVER)
+    ic.rect(7, 5, 1, 18, SILVER)
+    ic.rect(4, 8, 1, 12, SILVER)
+    ic.rect(24, 22, 4, 1, DARK_STONE)
+    ic.rect(24, 5, 1, 18, DARK_STONE)
+    # Cracks: a few deliberate dark strokes read as stone, a screen does not.
+    ic.line(12, 6, 13, 10, DARK_STONE)
+    ic.line(20, 7, 21, 11, DARK_STONE)
+    ic.line(9, 26, 11, 29, DARK_STONE)
+    # Two sunk rune eyes and a heavy brow. Set close together and low they
+    # read as a nose; they need width apart and a brow line over both.
+    ic.rect(9, 14, 5, 3, AQUA)
+    ic.rect(18, 14, 5, 3, AQUA)
+    ic.rect(8, 12, 16, 2, DARK_STONE)    # brow, across the whole face
+    ic.rect(9, 13, 5, 1, BLACK)
+    ic.rect(18, 13, 5, 1, BLACK)
+    ic.rect(11, 20, 10, 2, DARK_STONE)   # the seam of a mouth
     return ic.outline().shade()
 
 
 def _sentry():
+    """Clockwork: brass gear in a steel case. Not, as before, a bonfire.
+
+    Every surface was copper - maroon screened with yellow - so the whole
+    thing read as flame, which is the wrong creature entirely.
+    """
     ic = Icon()
-    ic.rect(11, 4, 10, 8, COPPER)        # head
-    ic.rect(13, 6, 2, 3, RED)
-    ic.rect(17, 6, 2, 3, RED)
-    ic.rect(9, 12, 14, 12, COPPER)       # body
-    ic.oval(16, 18, 4, 4, YELLOW)        # gear
-    for a in range(0, 8):
-        import math
-        ic.rect(16 + int(5 * math.cos(a)), 18 + int(5 * math.sin(a)), 2, 2, OLIVE)
-    ic.rect(5, 14, 4, 8, GRAY)
-    ic.rect(23, 14, 4, 8, GRAY)
-    ic.rect(11, 24, 4, 7, GRAY)
-    ic.rect(17, 24, 4, 7, GRAY)
+    steel = GRAY
+    ic.rect(11, 3, 10, 9, steel)          # head case
+    ic.rect(11, 3, 10, 1, SILVER)
+    ic.rect(11, 3, 1, 9, SILVER)
+    ic.rect(12, 6, 3, 2, RED)             # lens slits
+    ic.rect(17, 6, 3, 2, RED)
+    ic.rect(12, 9, 8, 1, DARK_STONE)      # grille
+    ic.rect(9, 13, 14, 12, steel)         # body case
+    ic.rect(9, 13, 14, 1, SILVER)
+    ic.rect(9, 13, 1, 12, SILVER)
+    ic.rect(22, 13, 1, 12, DARK_STONE)
+    ic.rect(9, 24, 14, 1, DARK_STONE)
+    # The gear: a brass disc with square teeth, which is what makes it read
+    # as a machine rather than as a glow.
+    ic.oval(16, 19, 4, 4, OLIVE)
+    ic.oval(16, 19, 2, 2, YELLOW)
+    for dx, dy in ((0, -6), (0, 5), (-6, 0), (5, 0),
+                   (-4, -4), (4, -4), (-4, 4), (4, 4)):
+        ic.rect(16 + dx, 19 + dy, 2, 2, OLIVE)
+    ic.rect(6, 14, 3, 9, steel)           # arms
+    ic.rect(23, 14, 3, 9, steel)
+    ic.rect(5, 22, 5, 3, GRAY)            # fists
+    ic.rect(22, 22, 5, 3, GRAY)
+    ic.rect(11, 25, 4, 6, GRAY)           # legs
+    ic.rect(17, 25, 4, 6, GRAY)
+    ic.rect(10, 30, 6, 2, DARK_STONE)     # feet
+    ic.rect(16, 30, 6, 2, DARK_STONE)
     return ic.outline().shade()
 
 
@@ -643,8 +759,18 @@ def _blade(length=20, width=4, hilt=YELLOW, metal=SILVER, curved=False):
     ic.rect(16 - width // 2, top, 1, length - 6, WHITE)
     ic.tri([(16 - width // 2, top), (16 + width // 2, top), (16, top - 4)], metal)
     if curved:
-        for i in range(length - 8):
-            ic.set(16 + width // 2 + i // 6, top + i, metal)
+        # What says "sabre" at thirty-two pixels is not a sweeping arc - an
+        # arc that size is three pixels of lean and reads as a mistake, or,
+        # drawn boldly, as a broken sword. It is the clipped back-angled
+        # point and the knuckle bow over the grip. Both survive the scale.
+        for i in range(5):                       # clip the back of the point
+            ic.rect(16 + width // 2 - i, top + i, i + 1, 1, None)
+        for i in range(4):                       # and re-lay the edge on it
+            ic.set(16 + width // 2 - i - 1, top + i + 1, metal)
+        ic.line(11, 30 - 7, 9, 30 - 3, hilt)     # knuckle bow, down to
+        ic.line(9, 30 - 3, 13, 30 - 1, hilt)     # the pommel
+        ic.set(10, 30 - 6, lighter(hilt) if not is_pair(hilt) else hilt)
+
     ic.rect(10, 30 - 8, 12, 3, hilt)               # cross-guard
     ic.rect(10, 30 - 8, 12, 1, lighter(hilt) if not is_pair(hilt) else hilt)
     ic.rect(15, 30 - 5, 3, 5, BROWN)               # grip
@@ -652,10 +778,12 @@ def _blade(length=20, width=4, hilt=YELLOW, metal=SILVER, curved=False):
     return ic.outline().shade()
 
 
-def _haft_weapon(head_fn, haft=BROWN):
+def _haft_weapon(head_fn, haft=MAROON):
+    """A head on a shaft. The shaft is three pixels wide, so it is flat
+    colour: a dither pair that narrow comes out as a string of beads."""
     ic = Icon()
     ic.rect(15, 6, 3, 25, haft)
-    ic.rect(15, 6, 1, 25, (MAROON, YELLOW, 0.35))
+    ic.rect(15, 6, 1, 25, OLIVE)
     head_fn(ic)
     return ic.outline().shade()
 
@@ -685,11 +813,15 @@ def icon_mace():
 
 
 def icon_hammer():
+    """A war hammer: a short blocky head with a flat face and a peen."""
     def head(ic):
-        ic.rect(5, 4, 22, 11, SILVER)
-        ic.rect(5, 4, 22, 1, WHITE)
-        ic.rect(5, 14, 22, 1, GRAY)
-        ic.rect(5, 4, 1, 11, WHITE)
+        ic.rect(7, 5, 18, 10, SILVER)        # the head, shorter than it was
+        ic.rect(7, 5, 18, 1, WHITE)
+        ic.rect(7, 5, 1, 10, WHITE)
+        ic.rect(7, 14, 18, 1, GRAY)
+        ic.rect(5, 6, 2, 8, GRAY)            # the striking face stands proud
+        ic.rect(25, 7, 3, 6, GRAY)           # the peen on the far side
+        ic.rect(13, 5, 6, 10, (SILVER, WHITE, 0.3))   # a lit band across it
     return _haft_weapon(head)
 
 
@@ -710,30 +842,55 @@ def icon_halberd():
 
 
 def icon_bow():
+    """A stave, a string and a nocked arrow.
+
+    Every line here is one or two pixels wide, so all of it is flat colour:
+    drawn with dither pairs the stave and the shaft came out as strings of
+    red and yellow beads.
+    """
     ic = Icon()
-    ic.line(9, 3, 5, 16, BROWN); ic.line(5, 16, 9, 29, BROWN)
-    ic.line(10, 3, 6, 16, (MAROON, YELLOW, 0.35)); ic.line(6, 16, 10, 29, (MAROON, YELLOW, 0.35))
-    ic.line(9, 3, 9, 29, SILVER)
-    ic.rect(10, 15, 16, 2, BROWN)                  # nocked arrow
-    ic.tri([(26, 12), (32, 16), (26, 20)], GRAY)
+    for dx, colour in ((0, MAROON), (1, MAROON), (2, OLIVE)):
+        ic.line(8 + dx, 3, 4 + dx, 16, colour)
+        ic.line(4 + dx, 16, 8 + dx, 29, colour)
+    ic.rect(7, 2, 2, 2, OLIVE)                     # nocks
+    ic.rect(7, 28, 2, 2, OLIVE)
+    ic.line(9, 3, 9, 29, SILVER)                   # the string
+    ic.rect(10, 15, 16, 2, OLIVE)                  # nocked arrow
+    ic.rect(10, 15, 16, 1, YELLOW)
+    ic.tri([(25, 12), (31, 16), (25, 20)], SILVER)
+    ic.rect(11, 13, 3, 6, MAROON)                  # fletching
     return ic.outline().shade()
 
 
 def icon_crossbow():
+    """A steel prod across a slim wooden stock, string drawn to the nut.
+
+    Kept deliberately spare. Earlier tries gave it a broad stock and a flared
+    butt, and at this size the extra mass just read as a brown cross with a
+    lump on it.
+    """
     ic = Icon()
-    ic.rect(4, 13, 24, 4, BROWN)
-    ic.rect(12, 6, 4, 20, BROWN)
-    ic.line(12, 7, 20, 4, SILVER); ic.line(12, 25, 20, 28, SILVER)
-    ic.rect(20, 4, 2, 24, GRAY)
+    ic.rect(14, 4, 4, 25, MAROON)                # stock: flat, it is thin
+    ic.rect(14, 4, 1, 25, OLIVE)
+    ic.rect(13, 25, 6, 4, DARK_BROWN)            # butt
+    ic.rect(4, 12, 24, 3, GRAY)                  # the prod: steel, solid
+    ic.rect(4, 12, 24, 1, SILVER)
+    ic.rect(4, 15, 24, 1, DARK_STONE)
+    ic.line(5, 11, 16, 8, SILVER)                # string, drawn to the nut
+    ic.line(16, 8, 27, 11, SILVER)
+    ic.rect(14, 7, 4, 3, DARK_STONE)             # the nut
+    ic.rect(13, 18, 6, 2, DARK_STONE)            # trigger
     return ic.outline().shade()
 
 
 def icon_arrows():
     ic = Icon()
     for x in (8, 15, 22):
-        ic.rect(x, 8, 2, 20, BROWN)
+        ic.rect(x, 8, 2, 20, OLIVE)                # flat: two pixels is thin
+        ic.rect(x, 8, 1, 20, YELLOW)
         ic.tri([(x + 1, 2), (x - 2, 9), (x + 4, 9)], SILVER)
-        ic.rect(x - 2, 24, 6, 2, RED)
+        ic.rect(x - 2, 23, 6, 2, MAROON)           # fletching
+        ic.rect(x - 2, 25, 6, 1, RED)
     return ic.outline().shade()
 
 
@@ -768,7 +925,24 @@ def icon_studded():   return _armour(body=BROWN, skirt=DARK_BROWN, studs=True)
 def icon_ringmail():  return _armour(body=GRAY, rings=True)
 def icon_chainmail(): return _armour(body=(GRAY, SILVER, 0.5), rings=True)
 def icon_scalemail(): return _armour(body=SILVER, scales=True)
-def icon_platemail(): return _armour(body=SILVER, skirt=GRAY)
+def icon_platemail():
+    """The one suit with no texture, so it needs shape instead.
+
+    Every other mail in the set is told apart by its studs, scales or rings.
+    Plate has none, which left it a silver blob indistinguishable from the
+    others at map size - so it gets a breastplate ridge, a neckline and
+    banded tassets.
+    """
+    ic = _armour(body=SILVER, skirt=GRAY)
+    ic.rect(15, 9, 2, 14, WHITE)                 # the central ridge, lit
+    ic.rect(17, 9, 1, 14, GRAY)                  # and its shadow side
+    ic.tri([(10, 8), (22, 8), (16, 14)], GRAY)   # neckline
+    ic.tri([(11, 8), (21, 8), (16, 12)], SILVER)
+    for y in (24, 27):                           # banded tassets
+        ic.rect(7, y, 18, 1, DARK_STONE)
+    ic.rect(2, 10, 4, 1, WHITE)                  # lit tops of the pauldrons
+    ic.rect(26, 10, 4, 1, WHITE)
+    return ic.outline().shade()
 
 
 def icon_robe():
@@ -788,9 +962,19 @@ def _shield(shape="kite", face=SILVER, boss=YELLOW):
         ic.oval(16, 16, 12, 12, face)
         ic.oval(16, 16, 4, 4, boss)
     elif shape == "tower":
-        ic.rect(7, 2, 18, 26, face)
-        ic.rect(7, 2, 18, 1, WHITE)
-        ic.rect(14, 12, 4, 8, boss)
+        # A door of a shield: rounded at the top, tapered at the foot, banded
+        # and riveted. It used to be a plain rectangle with a dash on it.
+        ic.oval(16, 7, 9, 6, face)
+        ic.rect(7, 7, 19, 18, face)
+        ic.tri([(7, 25), (26, 25), (16, 30)], face)
+        ic.rect(7, 7, 1, 18, WHITE)
+        ic.oval(16, 6, 9, 5, lighter(face))
+        ic.rect(7, 12, 19, 2, darker(face))      # bands
+        ic.rect(7, 20, 19, 2, darker(face))
+        for x in (9, 15, 22):                    # rivets
+            ic.rect(x, 12, 2, 2, boss)
+            ic.rect(x, 20, 2, 2, boss)
+        ic.rect(13, 15, 6, 4, boss)              # the boss
     else:
         ic.rect(6, 3, 20, 14, face)
         ic.tri([(6, 17), (26, 17), (16, 30)], face)
@@ -806,13 +990,21 @@ def icon_tower():   return _shield("tower", GRAY, YELLOW)
 
 
 def icon_helm():
+    """A great helm: dome, horizontal vision slit, cheek guards.
+
+    The old one had a six-pixel black bar running vertically down the middle
+    of a white shape, which read as a pair of trousers rather than as a helm.
+    A visor slit is horizontal, and the shape below it has to narrow.
+    """
     ic = Icon()
-    ic.oval(16, 15, 11, 11, SILVER)
-    ic.rect(5, 15, 22, 11, SILVER)
-    ic.rect(5, 24, 22, 3, GRAY)
-    ic.rect(13, 12, 6, 15, BLACK)        # visor slit
-    ic.rect(15, 8, 3, 19, SILVER)        # nasal
-    ic.oval(12, 10, 3, 3, WHITE)
+    ic.oval(16, 13, 10, 9, SILVER)       # dome
+    ic.rect(6, 13, 21, 9, SILVER)        # skull
+    ic.rect(7, 22, 19, 4, GRAY)          # cheek guards, a step darker
+    ic.tri([(7, 26), (25, 26), (16, 29)], GRAY)
+    ic.rect(7, 17, 19, 3, BLACK)         # the slit, horizontal
+    ic.rect(15, 17, 2, 3, SILVER)        # nasal bar crossing it
+    ic.rect(6, 21, 21, 1, GRAY)          # brow line
+    ic.oval(12, 9, 3, 2, WHITE)          # the light, upper left
     return ic.outline().shade()
 
 
@@ -825,13 +1017,17 @@ def icon_cap():
 
 
 def icon_gauntlets():
+    """A pair of armoured gloves: cuff, back plate, four finger plates."""
     ic = Icon()
-    for x in (4, 18):
-        ic.rect(x, 10, 10, 13, SILVER)
-        ic.rect(x, 10, 10, 1, WHITE)
-        ic.rect(x + 1, 6, 3, 5, SILVER)
-        ic.rect(x + 5, 5, 3, 6, SILVER)
-        ic.rect(x, 20, 10, 3, GRAY)
+    for x in (3, 18):
+        ic.rect(x, 16, 11, 6, GRAY)          # cuff, flared
+        ic.rect(x + 1, 10, 9, 7, SILVER)     # back of the hand
+        ic.rect(x + 1, 10, 9, 1, WHITE)
+        for f in range(4):                   # fingers
+            ic.rect(x + 1 + f * 2, 6, 2, 5, SILVER)
+            ic.rect(x + 1 + f * 2, 6, 1, 5, GRAY)
+        ic.rect(x + 9, 12, 2, 4, SILVER)     # thumb
+        ic.rect(x, 21, 11, 1, DARK_STONE)
     return ic.outline().shade()
 
 
@@ -843,7 +1039,7 @@ def icon_bracers():
         ic.rect(x, 8, 10, 2, BROWN)
         ic.rect(x, 23, 10, 2, BROWN)
         for y in (12, 16, 20):
-            ic.rect(x + 1, y, 8, 1, (MAROON, YELLOW, 0.3))
+            ic.rect(x + 1, y, 8, 1, WOOD_LIT)
         ic.rect(x + 4, 10, 2, 13, SILVER)          # the lacing
     return ic.outline().shade()
 
@@ -853,7 +1049,7 @@ def icon_boots():
     for x in (4, 18):
         ic.rect(x + 1, 6, 8, 16, BROWN)
         ic.rect(x, 22, 11, 5, DARK_BROWN)
-        ic.rect(x + 1, 6, 8, 1, (MAROON, YELLOW, 0.35))
+        ic.rect(x + 1, 6, 8, 1, WOOD_LIT)
         ic.rect(x, 26, 11, 2, BLACK)
     return ic.outline().shade()
 
@@ -863,7 +1059,7 @@ def icon_leggings():
     ic.rect(8, 3, 16, 6, BROWN)
     ic.rect(8, 9, 6, 20, BROWN)
     ic.rect(18, 9, 6, 20, BROWN)
-    ic.rect(8, 3, 16, 1, (MAROON, YELLOW, 0.35))
+    ic.rect(8, 3, 16, 1, WOOD_LIT)
     return ic.outline().shade()
 
 
@@ -880,7 +1076,7 @@ def icon_cloak():
 def icon_belt():
     ic = Icon()
     ic.rect(2, 13, 28, 6, BROWN)
-    ic.rect(2, 13, 28, 1, (MAROON, YELLOW, 0.35))
+    ic.rect(2, 13, 28, 1, WOOD_LIT)
     ic.rect(12, 10, 9, 12, YELLOW)       # buckle
     ic.rect(15, 13, 3, 6, BROWN)
     return ic.outline().shade()
@@ -933,7 +1129,7 @@ def icon_scroll():
     ic.rect(6, 4, 20, 24, (SILVER, WHITE, 0.5))
     ic.rect(4, 2, 24, 4, BROWN)
     ic.rect(4, 26, 24, 4, BROWN)
-    ic.rect(4, 2, 24, 1, (MAROON, YELLOW, 0.35))
+    ic.rect(4, 2, 24, 1, WOOD_LIT)
     for y in range(9, 25, 4):
         ic.rect(9, y, 14, 1, GRAY)
     return ic.outline().shade()
@@ -959,7 +1155,7 @@ def icon_book_black(): return _book(GRAY, FUCHSIA)
 def icon_wand():
     ic = Icon()
     ic.rect(8, 22, 18, 3, BROWN)
-    ic.line(8, 24, 26, 21, (MAROON, YELLOW, 0.35))
+    ic.line(8, 24, 26, 21, WOOD_LIT)
     ic.oval(25, 8, 5, 5, FUCHSIA)
     ic.rect(23, 5, 2, 2, WHITE)
     ic.rect(20, 16, 4, 4, YELLOW)
@@ -968,8 +1164,8 @@ def icon_wand():
 
 def icon_staff():
     ic = Icon()
-    ic.rect(14, 6, 4, 25, BROWN)
-    ic.rect(14, 6, 1, 25, (MAROON, YELLOW, 0.35))
+    ic.rect(14, 6, 4, 25, MAROON)        # flat: four pixels is still thin
+    ic.rect(14, 6, 1, 25, OLIVE)
     ic.oval(16, 6, 7, 6, AQUA)
     ic.oval(16, 6, 3, 3, WHITE)
     return ic.outline().shade()
@@ -978,7 +1174,7 @@ def icon_staff():
 def icon_pack():
     ic = Icon()
     ic.rect(6, 8, 20, 21, BROWN)
-    ic.rect(6, 8, 20, 1, (MAROON, YELLOW, 0.35))
+    ic.rect(6, 8, 20, 1, WOOD_LIT)
     ic.rect(4, 4, 24, 6, DARK_BROWN)     # flap
     ic.rect(14, 9, 4, 5, YELLOW)         # buckle
     ic.rect(6, 26, 20, 3, DARK_BROWN)
@@ -997,7 +1193,7 @@ def icon_quiver():
     ic = Icon()
     ic.rect(10, 8, 12, 21, DARK_BROWN)               # the tube
     ic.rect(10, 8, 12, 2, BROWN)
-    ic.rect(9, 14, 14, 3, (MAROON, YELLOW, 0.35))    # strap
+    ic.rect(9, 14, 14, 3, WOOD_LIT)    # strap
     for x in (12, 16, 20):                           # wands standing in it
         ic.rect(x, 3, 2, 7, SILVER)
         ic.rect(x, 3, 2, 2, AQUA)
@@ -1007,7 +1203,7 @@ def icon_quiver():
 def icon_chest():
     ic = Icon()
     ic.rect(3, 12, 26, 16, BROWN)
-    ic.rect(3, 12, 26, 1, (MAROON, YELLOW, 0.35))
+    ic.rect(3, 12, 26, 1, WOOD_LIT)
     ic.oval(16, 12, 13, 7, DARK_BROWN)   # domed lid
     ic.rect(3, 16, 26, 3, YELLOW)        # bands
     ic.rect(13, 16, 6, 8, YELLOW)
@@ -1016,11 +1212,20 @@ def icon_chest():
 
 
 def icon_gold():
+    """A heap of coins. Discs with dark rims, not one continuous puddle.
+
+    The old one drew five wide ovals that all overlapped, so it came out as a
+    single yellow amoeba with no coins in it at all.
+    """
     ic = Icon()
-    for cx, cy in ((10, 24), (21, 25), (16, 19), (11, 14), (20, 15)):
-        ic.oval(cx, cy, 6, 4, YELLOW)
-        ic.oval(cx, cy - 1, 6, 4, (YELLOW, WHITE, 0.35))
-    ic.rect(8, 12, 2, 2, WHITE)
+    for cx, cy in ((7, 27), (14, 28), (21, 27), (26, 26),
+                   (10, 22), (18, 22), (24, 21), (14, 17)):
+        ic.oval(cx, cy, 5, 3, OLIVE)         # rim first
+        ic.oval(cx, cy - 1, 4, 2, YELLOW)    # face, lit from above
+        ic.set(cx - 2, cy - 2, WHITE)
+    ic.oval(21, 15, 4, 3, OLIVE)             # one standing proud on top
+    ic.oval(21, 14, 3, 2, YELLOW)
+    ic.set(20, 13, WHITE)
     return ic.outline().shade()
 
 
@@ -1087,8 +1292,10 @@ CREATURE_BUILDERS = {
                                      trim=GRAY, eyes=LIME, weapon="claw", tattered=True),
     "pale_wraith":  lambda: humanoid(skin=ICE, cloth=(NAVY, TEAL, 0.5), trim=AQUA,
                                      eyes=WHITE, hood=True, tattered=True, aura=ICE),
-    "iron_revenant": lambda: humanoid(skin=GRAY, cloth=DARK_STONE, trim=SILVER,
-                                      eyes=AQUA, weapon="axe", helm=SILVER, bulk=3, ribs=True),
+    # No ribs: it is a thing in armour, and rib lines over a stone-grey
+    # tunic just read as noise.
+    "iron_revenant": lambda: humanoid(skin=SILVER, cloth=DARK_STONE, trim=AQUA,
+                                      eyes=AQUA, weapon="axe", helm=GRAY, bulk=3),
 
     # --- beasts ---------------------------------------------------------
     "dire_wolf":    lambda: beast(fur=GRAY, eyes=YELLOW, tail="bushy"),
@@ -1101,9 +1308,11 @@ CREATURE_BUILDERS = {
     "storm_wisp":   _wisp,
 
     # --- the two that end a run ------------------------------------------
-    "warden_of_ash": lambda: humanoid(skin=EMBER, cloth=MAROON, trim=YELLOW,
+    # Charcoal hide, fire in the cracks of its harness. It used to be maroon
+    # skin on a maroon body: one red block with horns.
+    "warden_of_ash": lambda: humanoid(skin=DARK_STONE, cloth=MAROON, trim=EMBER,
                                       eyes=YELLOW, weapon="mace", bulk=8,
-                                      horns=True, helm=RUST, aura=EMBER),
+                                      horns=True, aura=EMBER),
     "vaelrik":      lambda: humanoid(skin=ICE, cloth=PLUM, trim=AQUA, eyes=WHITE,
                                      weapon="sword", bulk=7, crown=True, aura=PLUM),
 
