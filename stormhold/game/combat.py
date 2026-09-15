@@ -91,7 +91,6 @@ def melee(world, attacker, defender, cost_free=False):
     apply_damage(world, defender, dmg, attacker, crit=crit,
                  killed_by_a_blow=True)
 
-
     if rider and not defender.dead:
         name, power = rider
         if name == "drain":
@@ -230,6 +229,18 @@ STRIKES = {
                "{A} hit{s} {D} {where}!",
                "{A} put{s} a shaft deep into {D}!",
                "{A} nail{s} {D} clean through!"),
+    "fire":   ("{A} scorch{es} {D}.",
+               "{A} sear{s} {D} {where}!",
+               "{A} set{s} {D} alight!",
+               "{A} engulf{s} {D} in fire!"),
+    "cold":   ("{A} chill{s} {D}.",
+               "{A} rime{s} {D} {where} with frost!",
+               "{A} freeze{s} {D} to the bone!",
+               "{A} encase{s} {D} in ice!"),
+    "lightning": ("{A} spark{s} against {D}.",
+               "{A} jolt{s} {D} {where}!",
+               "{A} arc{s} clean through {D}!",
+               "{A} blast{s} {D} off {their} feet!"),
     "blast":  ("{A} scorch{es} {D}.",
                "{A} sear{s} {D} {where}!",
                "{A} blast{s} {D} off {their} feet!",
@@ -253,6 +264,12 @@ KILLS = {
                "{A} put{s} the last shaft through {D}."),
     "blast":  ("{A} burn{s} {D} to a cinder.",
                "Nothing much is left of {D}."),
+    "fire":   ("{A} burn{s} {D} to a cinder.",
+               "{D} goes up like dry kindling."),
+    "cold":   ("{D} freezes solid and cracks apart.",
+               "{A} still{s} {D} where it stands."),
+    "lightning": ("{A} blast{s} {D} apart.",
+               "{D} comes apart in a crack of light."),
     "fist":   ("{A} beat{s} {D} down, and {Dsub} {Ddo} not get up.",
                "{A} finish{es} {D} off bare-handed."),
 }
@@ -300,8 +317,13 @@ def _leading(name):
     return name[:1].upper() + name[1:]
 
 
-def blow_message(rng, attacker, defender, dmg, killed, blocked=False):
-    """One sentence for one blow, from the attacker's point of view."""
+def blow_message(rng, attacker, defender, dmg, killed, blocked=False,
+                 style=None):
+    """One sentence for one blow, from the attacker's point of view.
+
+    `style` overrides the weapon in hand, for the blows that are not swings:
+    an arrow, a bolt of fire, a spell.
+    """
     you = attacker.kind == "player"
     A = "You" if you else _leading(_name_of(attacker))
     D = "you" if defender.kind == "player" else _name_of(defender)
@@ -310,7 +332,7 @@ def blow_message(rng, attacker, defender, dmg, killed, blocked=False):
     # different verb from "it": "you do not get up", "it does not get up".
     Dsub = "you" if defender.kind == "player" else "it"
     Ddo = "do" if defender.kind == "player" else "does"
-    style = weapon_class(attacker)
+    style = style or weapon_class(attacker)
 
     if blocked:
         text = BLOCK
@@ -322,6 +344,19 @@ def blow_message(rng, attacker, defender, dmg, killed, blocked=False):
         text = STRIKES[style][rung]
     return _conjugate(text, you, defender.kind == "player").format(
         A=A, D=D, Dp=Dp, Dsub=Dsub, Ddo=Ddo, where=rng.choice(PLACES))
+
+
+MISSES_RANGED = ("{A} shot goes wide of {D}.",
+                 "{A} shot whistles past {D}.",
+                 "{A} shot buries itself in the stone beside {D}.")
+
+
+def ranged_miss_message(rng, attacker, defender):
+    """A shot that misses is not a swing that misses."""
+    you = attacker.kind == "player"
+    A = "Your" if you else f"{_leading(_name_of(attacker))}'s"
+    D = "you" if defender.kind == "player" else _name_of(defender)
+    return rng.choice(MISSES_RANGED).format(A=A, D=D)
 
 
 def miss_message(rng, attacker, defender):

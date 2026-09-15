@@ -943,10 +943,16 @@ class World:
             dmg += stat_bonus(p.stat("dexterity")) // 2
             hit, crit = combat.attack_roll(self.rng, p.to_hit, hit_actor.armour_class)
             if hit:
-                combat.apply_damage(self, hit_actor, dmg * (2 if crit else 1), p, crit=crit)
-                self.msg(f"Your shot hits the {hit_actor.name} for {dmg}.", "combat", to=p)
+                dealt = dmg * (2 if crit else 1)
+                self.msg(combat.blow_message(self.rng, p, hit_actor, dealt,
+                                             dealt >= hit_actor.hp,
+                                             style="shoot"),
+                         "combat", to=p)
+                combat.apply_damage(self, hit_actor, dealt, p, crit=crit,
+                                    killed_by_a_blow=True)
             else:
-                self.msg(f"Your shot goes wide of the {hit_actor.name}.", "combat", to=p)
+                self.msg(combat.ranged_miss_message(self.rng, p, hit_actor),
+                         "combat", to=p)
         else:
             self.msg("Your shot clatters away into the dark.", "info", to=p)
         return p.action_cost(ATTACK_COST, attacking=True) or ATTACK_COST
@@ -1268,6 +1274,7 @@ class World:
 
             if not targets:
                 self.msg("Your magic finds nothing.", "info", to=p)
+            narrated = 0
             for m in targets:
                 dmg = roll()
                 if spell.get("undead_bonus") and m.tpl.get("undead"):
@@ -1279,14 +1286,24 @@ class World:
                 dmg = max(1, int(dmg * elemental_factor(spell.get("element"),
                                                         m.tpl)))
                 self.fx("hit", m.x, m.y, level.depth)
-                combat.apply_damage(self, m, dmg, p)
+                # A spell used to say only "You cast Spark." and leave you to
+                # guess what it did. Three lines is enough for a Fireball;
+                # past that it is a wall of text.
+                if narrated < 3:
+                    self.msg(combat.blow_message(
+                        self.rng, p, m, dmg, dmg >= m.hp,
+                        style=spell.get("element", "blast")), "combat", to=p)
+                    narrated += 1
+                combat.apply_damage(self, m, dmg, p, killed_by_a_blow=narrated <= 3)
                 if not m.dead:
                     if spell.get("burn"):
                         m.add_effect("burning", now + 400, 4)
                     if spell.get("slow"):
                         self.apply_slow(m, now)
-            if targets:
-                self.msg(f"You cast {name}.", "good", to=p)
+            if len(targets) > narrated:
+                rest = len(targets) - narrated
+                self.msg(f"...and {rest} other{'' if rest == 1 else 's'} "
+                         f"caught in it.", "combat", to=p)
 
         # --- healing ------------------------------------------------------
         if spell.get("heal_flat") or spell.get("heal_full"):
@@ -1305,14 +1322,29 @@ class World:
                 target = level.actor_at(tx, ty)
                 if target is None or target.kind != "player":
                     target = p
-                combat.heal(self, target, heal_amount(target))
+                got = combat.heal(self, target, heal_amount(target))
                 self.fx("heal", target.x, target.y, level.depth)
-                self.msg(f"You cast {name}.", "good", to=p)
+                # Say what it did, as the potions do. "You cast Mend Wounds."
+                # tells you nothing about whether it was worth the mana.
+                who = "you" if target is p else target.name
+                if got:
+                    self.msg(f"Warmth closes the wounds on {who} "
+                             f"({got} healed).", "good", to=p)
+                else:
+                    self.msg(f"There is nothing on {who} left to mend.",
+                             "info", to=p)
 
         # --- everything else ----------------------------------------------
         if spell.get("cure"):
-            for bad in ("poisoned", "burning", "afraid", "slowed"):
-                p.effects.pop(bad, None)
+            lifted = [bad for bad in ("poisoned", "burning", "afraid", "slowed",
+                                      "poison_later")
+                      if p.effects.pop(bad, None) is not None]
+            # It used to cure in silence, which looked exactly like a spell
+            # that had failed.
+            if lifted:
+                self.msg("The sickness goes out of you.", "good", to=p)
+            else:
+                self.msg("Nothing ails you.", "info", to=p)
         if spell.get("light"):
             # "Cast in a hallway, it will light the 3x3 square region around
             # the target square. In a room, however, the entire room is lit."
@@ -1621,16 +1653,22 @@ class World:
                 break
         self.sound("shoot", m.x, m.y, level.depth)
         hit, crit = combat.attack_roll(self.rng, m.to_hit, target.armour_class)
+        style = "shoot" if m.tpl.get("ammo") else "blast"
         if not hit:
-            self.msg(f"The {m.name}'s shot misses you.", "combat", to=target)
+            self.msg(combat.ranged_miss_message(self.rng, m, target),
+                     "combat", to=target)
             return
         dmg = m.damage_roll(self.rng)
         # A player's resistances halve elemental damage, and stack: "casting
         # two Resist Cold spells cuts the damage from White Dragon breath to
         # 1/4 its normal value."
         dmg = self.resisted(target, kind, dmg)
-        combat.apply_damage(self, target, dmg * (2 if crit else 1), m, crit=crit)
-        self.msg(f"The {m.name} hits you for {dmg}.", "hurt", to=target)
+        dealt = dmg * (2 if crit else 1)
+        self.msg(combat.blow_message(self.rng, m, target, dealt,
+                                     dealt >= target.hp, style=style),
+                 "hurt", to=target)
+        combat.apply_damage(self, target, dealt, m, crit=crit,
+                            killed_by_a_blow=True)
         if m.tpl.get("burn") and not target.dead:
             target.add_effect("burning", level.clock + 400, 4)
 

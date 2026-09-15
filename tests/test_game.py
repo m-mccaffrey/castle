@@ -1879,3 +1879,116 @@ class TestTheTwoMissingDivinations(unittest.TestCase):
         memory = self.world.memory_for(self.p, self.level)
         floor = sum(1 for t in self.level.tiles if t != T.VOID)
         self.assertLess(sum(1 for b in memory if b), floor)
+
+
+class TestEveryBlowIsNarrated(unittest.TestCase):
+    """Melee read well and nothing else did.
+
+    Arrows, bolts and spells all had their own older messages that printed a
+    damage number, so the log switched register the moment you picked up a
+    bow or learned a spell.
+    """
+
+    def setUp(self):
+        from stormhold.game.world import World
+        from stormhold.game.spells import SPELLS
+        self.world = World(seed=64)
+        self.p = self.world.add_player("Shooter", spell="Spark")
+        self.p.stats = {k: 18 for k in self.p.stats}
+        self.p.level = 20
+        self.p.recalc()
+        self.p.spells = set(SPELLS)
+        self.p.mana = 999
+        self.world.move_player_to(self.p, 5)
+        self.level = self.world.levels[5]
+
+    def a_target(self, away=1, hp=300):
+        spot = self.level.find_free(self.p.x + away, self.p.y, max_r=2,
+                                    ignore_id=self.p.id)
+        m = self.world.spawn("kobold", spot[0], spot[1], 5)
+        m.max_hp = m.hp = hp
+        self.level.place(m)
+        return m
+
+    def said(self):
+        return [e["text"] for e in self.world.events if e["t"] == "msg"]
+
+    def test_your_own_shot_does_not_print_a_number(self):
+        from stormhold.game.items import Item
+        target = self.a_target()
+        bow = Item("longbow")
+        bow.known = True
+        self.p.equipment["weapon"] = bow
+        self.p.add_item(Item("arrow", qty=40))
+        for _ in range(12):
+            self.world.events.clear()
+            self.world.do_player_action(self.level, self.p,
+                                        {"a": "shoot", "x": target.x,
+                                         "y": target.y})
+            for line in self.said():
+                self.assertNotRegex(line, r"for \d+\.", line)
+
+    def test_a_creatures_shot_does_not_either(self):
+        from stormhold.game import ai
+        self.p.max_hp = self.p.hp = 100000
+        spot = None
+        for d in range(2, 7):
+            candidate = (self.p.x + d, self.p.y)
+            if (self.level.walkable(*candidate, self.p.id)
+                    and all(self.level.passable(self.p.x + i, self.p.y)
+                            for i in range(1, d + 1))):
+                spot = candidate
+        if spot is None:
+            self.skipTest("no clear line on this floor")
+        archer = self.world.spawn("goblin_archer", spot[0], spot[1], 5)
+        self.level.place(archer)
+        archer.target_id = self.p.id
+        archer.last_seen = (self.p.x, self.p.y)
+        for _ in range(20):
+            self.world.events.clear()
+            ai.take_turn(self.world, self.level, archer)
+            for line in self.said():
+                self.assertNotRegex(line, r"for \d+\.", line)
+            self.p.hp = 100000
+
+    def test_a_spell_says_what_it_did(self):
+        target = self.a_target()
+        self.world.events.clear()
+        self.world.do_player_action(self.level, self.p,
+                                    {"a": "cast", "spell": "Fire Bolt",
+                                     "x": target.x, "y": target.y,
+                                     "confirm_overdraw": True})
+        said = self.said()
+        self.assertTrue(said)
+        self.assertNotIn("You cast Fire Bolt.", said,
+                         "it still only names the spell")
+        self.assertIn("Kobold", " ".join(said))
+
+    def test_the_words_follow_the_element(self):
+        wording = {}
+        for spell in ("Fire Bolt", "Frost Shard", "Spark"):
+            target = self.a_target(away=1)
+            self.world.events.clear()
+            self.world.do_player_action(self.level, self.p,
+                                        {"a": "cast", "spell": spell,
+                                         "x": target.x, "y": target.y,
+                                         "confirm_overdraw": True})
+            wording[spell] = " ".join(self.said())
+            target.hp = 0
+            target.dead = True
+            self.level.remove(target)
+        self.assertRegex(wording["Fire Bolt"], r"scorch|sear|alight|fire")
+        self.assertRegex(wording["Frost Shard"], r"chill|rime|freeze|ice")
+        self.assertRegex(wording["Spark"], r"spark|jolt|arc|blast")
+
+    def test_a_spell_that_catches_a_crowd_does_not_fill_the_log(self):
+        for away in (1, 2, -1, -2):
+            self.a_target(away=away, hp=500)
+        self.world.events.clear()
+        self.world.do_player_action(self.level, self.p,
+                                    {"a": "cast", "spell": "Ice Storm",
+                                     "confirm_overdraw": True})
+        said = self.said()
+        self.assertLessEqual(len(said), 4, said)
+        if len(said) == 4:
+            self.assertIn("other", said[-1])
