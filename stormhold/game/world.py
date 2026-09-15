@@ -191,7 +191,6 @@ class World:
             it = Item(key)
             it.known = True
             p.equipment[it.slot] = it
-        p.add_item(Item("torch", qty=2))
         self.appearances.identify("potion_heal")
         p.recalc()
         p.hp, p.mana = p.max_hp, p.max_mana
@@ -458,12 +457,16 @@ class World:
         return mem
 
     def light_radius(self, p, level):
+        """How far you see.
+
+        The original has no light sources at all - no torches, no lanterns,
+        no fuel to track. You simply see, and the Light spell reveals a room
+        or a stretch of corridor. So this is a flat radius, widened only by
+        magic.
+        """
         if level.is_town:
             return SIGHT_TOWN
         base = SIGHT_DUNGEON
-        for item in list(p.equipment.values()) + p.inventory:
-            if item and item.base.get("light"):
-                base = max(base, SIGHT_DUNGEON + item.base["light"])
         if p.has("truesight"):
             base += 6
         return base
@@ -1819,8 +1822,12 @@ class World:
                 it.known = True
                 items.append(it)
         elif shop == "general":
-            for key in ("torch", "lantern", "pack", "sack", "belt", "belt3"):
-                items.append(Item(key, qty=5 if key == "torch" else 1))
+            # What the original's general store had on the shelf: containers,
+            # belts sized in slots, and the soft gear the armourer doesn't
+            # bother with. No light sources - the original has none.
+            for key in ("pack", "sack", "purse", "belt", "belt3",
+                        "cloak", "boots"):
+                items.append(Item(key))
         elif shop == "magic":
             for key in ("potion_heal", "potion_mana", "scroll_map", "scroll_ident", "scroll_teleport"):
                 it = Item(key, qty=2)

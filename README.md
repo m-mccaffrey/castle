@@ -131,7 +131,7 @@ still lying there if somebody can reach it.
 | --- | --- |
 | Bolgar the Weaponsmith | Weapons, arrows and quarrels. |
 | Hesta the Armourer | Armour, shields, helms and boots. |
-| Pell's General Store | Rations, torches, lanterns, packs. |
+| Pell's General Store | Packs, sacks, purses, belts, cloaks, boots. |
 | The Gilded Retort | Potions, scrolls, and tomes to learn spells from. |
 | Ulric the Sage | Tells you what a thing really is. |
 | Temple of the Quiet Hour | Heals, cures, and breaks curses. |

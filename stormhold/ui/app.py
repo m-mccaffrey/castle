@@ -1039,6 +1039,13 @@ class PackScene(OverlayScene):
             return
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            # The buttons get first refusal. Without this the press never
+            # reaches them, they never arm, and the release does nothing -
+            # which left Close, Drop, Use and the rest dead in every store.
+            for b in self.buttons:
+                if b.rect.collidepoint(event.pos):
+                    b.handle(event)
+                    return
             item, (source, slot) = self.item_at(event.pos)
             if item is not None:
                 self.selected = item
@@ -1818,7 +1825,7 @@ class ServiceScene(OverlayScene):
     SHOP_BLURB = {
         "weaponsmith": "Bolgar keeps the edged goods. He buys anything, at his price.",
         "armourer": "Hesta fits plate to people who can carry it, and leather to people who cannot.",
-        "general": "Pell sells the dull, necessary things. Buy torches.",
+        "general": "Pell sells the dull, necessary things: packs, sacks, belts, cloaks.",
         "magic": "The Gilded Retort: potions, scrolls, and tomes to learn spells from.",
         "sage": "Ulric will tell you what a thing really is, for a fee.",
         "temple": "The Quiet Hour will mend you, cleanse you, and break a curse.",

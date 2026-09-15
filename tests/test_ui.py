@@ -274,3 +274,76 @@ class TestEveryScene(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestEveryButtonActuallyFires(unittest.TestCase):
+    """Press every button on every window and watch for the action.
+
+    The earlier harness only proved that clicking did not crash, which is a
+    much weaker claim than it sounds: the inventory and every store swallowed
+    the mouse press before the buttons saw it, so they never armed, and the
+    release did nothing. Close, Drop, Use, Sort Pack and Name Object were all
+    dead, and the only way out of a shop was Escape. Crashing is not the only
+    way a button can be broken.
+    """
+
+    def setUp(self):
+        self.app = make_app()
+        self.app.screen = pygame.display.set_mode((1280, 800))
+        self.world = World(seed=11)
+        self.player = self.world.add_player("Subject")
+        self.app.inventory = self.world.inventory_view(self.player)
+        self.app.play = _PlayStub(self.world.self_view(self.player))
+        self.app.play.spells = sorted(self.player.spells)
+        self.app.act = lambda action: None
+
+    def scenes(self):
+        return {
+            "PackScene": lambda: PackScene(self.app),
+            "SpellScene": lambda: SpellScene(self.app, self.app.play),
+            "SheetScene": lambda: SheetScene(self.app),
+            "AttributesScene": lambda: AttributesScene(self.app),
+            "MenuOverlay": lambda: MenuOverlay(self.app),
+            "StoreScene": lambda: StoreScene(self.app, self.world.shop_view(
+                self.player, "general", 1, "Pell's General Store")),
+            "ServiceScene": lambda: ServiceScene(self.app, self.world.shop_view(
+                self.player, "temple", 2, "Temple")),
+        }
+
+    def test_every_button_reaches_on_action(self):
+        for name, build in self.scenes().items():
+            probe = build()
+            self.app.scenes = [MenuScene(self.app)]
+            self.app.push(probe)
+            probe.draw(self.app.screen)
+            labels = [(b.label, b.rect.center) for b in probe.buttons if b.enabled]
+            self.assertTrue(labels, f"{name} draws no buttons at all")
+
+            for label, pos in labels:
+                with self.subTest(scene=name, button=label):
+                    scene = build()
+                    self.app.scenes = [MenuScene(self.app)]
+                    self.app.push(scene)
+                    scene.draw(self.app.screen)
+                    seen = []
+                    scene.on_action = seen.append
+                    for kind in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP):
+                        scene.handle(pygame.event.Event(kind, pos=pos, button=1))
+                    self.assertTrue(seen, f"{name}: '{label}' did nothing")
+
+    def test_close_really_closes_every_overlay(self):
+        """Escape is a shortcut, not the only door."""
+        for name, build in self.scenes().items():
+            with self.subTest(scene=name):
+                scene = build()
+                self.app.scenes = [MenuScene(self.app)]
+                self.app.push(scene)
+                scene.draw(self.app.screen)
+                closer = [b for b in scene.buttons
+                          if b.action == "close" and b.enabled]
+                self.assertTrue(closer, f"{name} offers no way out but Escape")
+                for kind in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP):
+                    scene.handle(pygame.event.Event(kind, pos=closer[0].rect.center,
+                                                    button=1))
+                self.assertNotIn(scene, self.app.scenes,
+                                 f"{name} stayed open after Close")
