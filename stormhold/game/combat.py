@@ -234,13 +234,18 @@ KILLS = {
 
 MISSES = ("{A} miss{es} {D}.",
           "{A} miss{es} {D} by a league!",
-          "{A} swing{s} at air as {D} dances back.")
+          "{A} swing{s} at air as {D} dance{Ds} back.")
 
 BLOCK = "{A} smash{es} into {Dp} shield, striking sparks."
 
 
-def _conjugate(text, you):
-    """Second person for your own blows, third person for everything else."""
+def _conjugate(text, you, defender_is_you=False):
+    """Second person for whoever is "you", third for everyone else.
+
+    The attacker and the defender are conjugated separately: "The Kobold
+    swings at air as you dance back" needs both in one sentence.
+    """
+    text = text.replace("{Ds}", "" if defender_is_you else "s")
     if you:
         return (text.replace("{s}", "").replace("{es}", "")
                     .replace("{their}", "their"))
@@ -274,8 +279,8 @@ def blow_message(rng, attacker, defender, dmg, killed, blocked=False):
         share = dmg / max(1, defender.max_hp)
         rung = 0 if share < 0.08 else 1 if share < 0.25 else 2 if share < 0.5 else 3
         text = STRIKES[style][rung]
-    return _conjugate(text, you).format(A=A, D=D, Dp=Dp,
-                                       where=rng.choice(PLACES))
+    return _conjugate(text, you, defender.kind == "player").format(
+        A=A, D=D, Dp=Dp, where=rng.choice(PLACES))
 
 
 def miss_message(rng, attacker, defender):
@@ -283,4 +288,5 @@ def miss_message(rng, attacker, defender):
     A = "You" if you else f"The {attacker.name}"
     D = "you" if defender.kind == "player" else f"the {defender.name}"
     Dp = "your" if defender.kind == "player" else f"the {defender.name}'s"
-    return _conjugate(rng.choice(MISSES), you).format(A=A, D=D, Dp=Dp, where="")
+    return _conjugate(rng.choice(MISSES), you,
+                      defender.kind == "player").format(A=A, D=D, Dp=Dp, where="")

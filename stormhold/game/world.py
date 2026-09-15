@@ -636,7 +636,11 @@ class World:
             return
         names = [i.name(self.appearances) for i in pile]
         if len(names) == 1:
-            self.msg(f"You see {names[0]} here.", "loot", to=p)
+            one = names[0]
+            # "You see Purse here." Coins and quantities already read as a
+            # count, so only a bare singular name wants an article.
+            lead = "" if one[:1].isdigit() else f"{article(one)} "
+            self.msg(f"You see {lead}{one} here.", "loot", to=p)
         else:
             self.msg(f"You see several things here: {', '.join(names)}.", "loot", to=p)
 
@@ -924,7 +928,9 @@ class World:
             self.msg("Your pack is full.", "warn", to=p)
             return FREE_COST
         level.take_ground_item(p.x, p.y, item)
-        self.msg(f"You pick up {item.name(self.appearances)}.", "loot", to=p)
+        picked = item.name(self.appearances)
+        lead = "" if picked[:1].isdigit() else f"{article(picked)} "
+        self.msg(f"You pick up {lead}{picked}.", "loot", to=p)
         self.sound("pickup", p.x, p.y, level.depth)
         return p.action_cost(PICKUP_COST) or PICKUP_COST
 

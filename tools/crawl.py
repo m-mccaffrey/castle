@@ -102,9 +102,17 @@ def crawl(s, to_depth=5, turns=3000, log=print):
         s.step(3)
 
     took = 0
+    on_this_floor = 0
+    floor = s.me().depth
     while took < turns and s.me().depth < to_depth and not s.me().dead:
         took += 1
         p, lv = s.me(), s.level()
+        if p.depth != floor:
+            floor, on_this_floor = p.depth, 0
+        on_this_floor += 1
+        # Killing things drops more things, so a bot that always walks to the
+        # nearest pile never leaves the first floor. After a while, go down.
+        greedy = on_this_floor < 120
         near = monsters_near(s)
         if p.hp < p.max_hp * 0.35 and not near:
             s.app.play.send_action({"a": "rest"})
@@ -121,7 +129,7 @@ def crawl(s, to_depth=5, turns=3000, log=print):
         if lv.ground.get((p.x, p.y)):
             s.app.play.send_action({"a": "pickup"})
             s.step(4); note(); continue
-        piles = [xy for xy, pile in lv.ground.items() if pile]
+        piles = [xy for xy, pile in lv.ground.items() if pile] if greedy else []
         if piles:
             t = min(piles, key=lambda q: max(abs(q[0] - p.x), abs(q[1] - p.y)))
             if s.path_to(*t):
