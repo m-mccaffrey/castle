@@ -455,6 +455,7 @@ class PlayScene(Scene):
         self.target_mode = None       # ("spell", name) while choosing a target
         self.chatting = False
         self.chat_text = ""
+        self.log_scroll = 0           # lines back from the newest
         self.dirty = True
 
     # ------------------------------------------------------------ network --
@@ -511,6 +512,7 @@ class PlayScene(Scene):
 
     def add_message(self, text, kind="info"):
         self.messages.append((text, kind))
+        self.log_scroll = 0           # a new line always brings you back down
         if len(self.messages) > 200:
             del self.messages[:80]
 
@@ -570,6 +572,12 @@ class PlayScene(Scene):
                 if value in SPELLS:
                     self.begin_target(value, SPELLS[value])
             return
+
+        if event.type == pygame.MOUSEWHEEL:
+            if self.log_rect(self.app.screen).collidepoint(pygame.mouse.get_pos()):
+                self.log_scroll = max(0, self.log_scroll + event.y * 3)
+                self.dirty = True
+                return
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             self.click_map(event.pos)
@@ -968,22 +976,29 @@ class PlayScene(Scene):
         W.panel(surf, inner, raised=False, fill=(246, 246, 242))
 
         lines = []
-        for text, kind in self.messages[-50:]:
+        for text, kind in self.messages[-200:]:
             for part in W.wrap(text, inner.width - 26, 13):
                 lines.append((part, kind))
         visible = (inner.height - 6) // 17
-        for i, (text, kind) in enumerate(lines[-visible:]):
+        self.log_lines, self.log_visible = len(lines), visible
+
+        # The original's log scrolls back, oldest at top. Ours drew a scrollbar
+        # that did nothing, which is worse than not drawing one.
+        self.log_scroll = max(0, min(self.log_scroll, max(0, len(lines) - visible)))
+        end = len(lines) - self.log_scroll
+        for i, (text, kind) in enumerate(lines[max(0, end - visible):end]):
             W.text(surf, text, (inner.x + 6, inner.y + 3 + i * 17), 13,
                    colour=MSG_COLOURS.get(kind, BLACK))
 
-        # A scrollbar, for looks and for the fact that the log really does run
-        # off the top during a long fight.
         track = pygame.Rect(inner.right - 14, inner.y, 14, inner.height)
         W.panel(surf, track, raised=False, fill=(214, 214, 210))
         if len(lines) > visible:
             frac = visible / max(1, len(lines))
             knob_h = max(16, int(track.height * frac))
-            W.panel(surf, pygame.Rect(track.x, track.bottom - knob_h, 14, knob_h), raised=True)
+            room = track.height - knob_h
+            back = self.log_scroll / max(1, len(lines) - visible)
+            W.panel(surf, pygame.Rect(track.x, int(track.bottom - knob_h - room * back),
+                                      14, knob_h), raised=True)
 
         if self.chatting:
             box = pygame.Rect(inner.x, inner.bottom - 22, inner.width - 16, 22)

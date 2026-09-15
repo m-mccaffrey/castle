@@ -138,7 +138,7 @@ is simply a death sentence.
 | Drag the player icon to walk; aborts if attacked or trapped | open |
 | Double-click yourself to take stairs | open |
 | Crosshair targeting with a "Command Pending" message | partial |
-| About 30 messages of scrollback | partial |
+| About 30 messages of scrollback with its own scrollbar | done - the wheel scrolls the log, the knob tracks the position, and a new line brings you back to the bottom |
 | Resizable windows | open |
 | Vi keys and numeric keypad, shift to run | done |
 | Run stops at objects, doors, and room-corridor boundaries | partial |
@@ -169,6 +169,8 @@ is simply a death sentence.
 | The clock is the character's, not the floor's | done - it restarted at zero on every staircase |
 | Status bar names the floor it is standing on | done - it said "Dungeon Level 1" while the log said "the Cellars" |
 | Inventory weight shown in grams, not tenths of a pound | done |
+| Weapon-aware, located, escalating combat messages | done - the verb follows the weapon, the blow lands somewhere, it escalates with the wound, kills and shield blocks have their own lines, and no damage number appears in the log |
+| The message log actually scrolls | done - the scrollbar used to be decoration |
 
 ## Known rough edges in our own window
 

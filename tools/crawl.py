@@ -144,11 +144,29 @@ def main():
     ap.add_argument("--port", type=int, default=7801)
     ap.add_argument("--difficulty", default=None)
     ap.add_argument("--spell", default="Spark")
+    ap.add_argument("--mighty", action="store_true",
+                    help="make the character absurdly strong, to test the "
+                         "deep floors and the bosses rather than the balance")
     a = ap.parse_args()
 
     s = Session(seed=a.seed, port=a.port)
     make_character(s, spell=a.spell, difficulty=a.difficulty)
     kit_out(s)
+    if a.mighty:
+        p = s.me()
+        p.stats = {k: 18 for k in p.stats}
+        p.level = 25
+        p.recalc()
+        p.max_hp = p.hp = 4000
+        p.max_mana = p.mana = 900
+        from stormhold.game.items import Item
+        for key, slot in (("platemail", "torso"), ("towershield", "shield"),
+                          ("helm", "head"), ("halberd", "weapon")):
+            it = Item(key, enchant=5)
+            it.known = True
+            p.equipment[slot] = it
+        p.spells = set(SPELLS)
+
     s.walk_to(*s.level().down_at)
     s.key(pygame.K_PERIOD, mod=pygame.KMOD_SHIFT)
     s.settle(1.5)

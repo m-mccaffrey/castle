@@ -514,3 +514,63 @@ class TestDifficulty(unittest.TestCase):
         scene.handle(pygame.event.Event(pygame.MOUSEBUTTONUP,
                                         pos=button.rect.center, button=1))
         self.assertEqual(scene.difficulty, "Experts Only")
+
+
+class TestTheMessageLogScrollsBack(unittest.TestCase):
+    """"The message log keeps a scrollback with its own scrollbar, oldest at
+    top." Ours drew the scrollbar and ignored the wheel."""
+
+    def setUp(self):
+        self.app = make_app()
+        self.app.screen = pygame.display.set_mode((1280, 800))
+        self.world = World(seed=6)
+        self.player = self.world.add_player("Talker")
+        self.play = PlayScene(self.app)
+        self.play.you = self.world.self_view(self.player)
+        self.app.play = self.play
+        self.app.replace(self.play)
+        for i in range(120):
+            self.play.add_message(f"Line {i}", "info")
+        self.play.draw(self.app.screen)
+
+    def wheel(self, y):
+        self.play.handle(pygame.event.Event(pygame.MOUSEWHEEL, y=y, x=0))
+        self.play.draw(self.app.screen)
+
+    def shown(self):
+        """Which of our numbered lines are on screen, by reading the state."""
+        end = self.play.log_lines - self.play.log_scroll
+        return max(0, end - self.play.log_visible), end
+
+    def test_the_newest_line_is_on_screen_to_begin_with(self):
+        self.assertEqual(self.play.log_scroll, 0)
+        _, end = self.shown()
+        self.assertEqual(end, self.play.log_lines)
+
+    def test_the_wheel_scrolls_back_and_forward(self):
+        import pygame as pg
+        pg.mouse.set_pos(self.play.log_rect(self.app.screen).center)
+        self.wheel(1)
+        self.assertGreater(self.play.log_scroll, 0, "the wheel did nothing")
+        back = self.play.log_scroll
+        self.wheel(-1)
+        self.assertLess(self.play.log_scroll, back)
+
+    def test_it_cannot_scroll_past_either_end(self):
+        import pygame as pg
+        pg.mouse.set_pos(self.play.log_rect(self.app.screen).center)
+        for _ in range(200):
+            self.wheel(1)
+        self.assertEqual(self.play.log_scroll,
+                         self.play.log_lines - self.play.log_visible)
+        for _ in range(400):
+            self.wheel(-1)
+        self.assertEqual(self.play.log_scroll, 0)
+
+    def test_a_new_message_brings_you_back_to_the_bottom(self):
+        import pygame as pg
+        pg.mouse.set_pos(self.play.log_rect(self.app.screen).center)
+        self.wheel(1)
+        self.assertGreater(self.play.log_scroll, 0)
+        self.play.add_message("Something happens.", "info")
+        self.assertEqual(self.play.log_scroll, 0)
