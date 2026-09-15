@@ -1456,3 +1456,99 @@ class TestTheTwoMissingTraps(unittest.TestCase):
                                     {"a": "use", "id": potion.id})
         self.assertTrue(self.p.has("levitating"),
                         [e.get("text") for e in self.world.events])
+
+
+class TestTheMonsterBehavioursWeLacked(unittest.TestCase):
+    """Four of the original's creature habits that the audit had as open.
+
+    We keep our own bestiary, so these are attached to our creatures: what is
+    being reproduced is the behaviour, not the beast.
+    """
+
+    def setUp(self):
+        from stormhold.game.world import World
+        self.world = World(seed=9)
+        self.p = self.world.add_player("Quarry", spell="Spark")
+        self.world.move_player_to(self.p, 14)
+        self.level = self.world.levels[14]
+
+    def test_something_can_pass_through_rock(self):
+        from stormhold.game import ai
+        wall = next((i, j) for j in range(self.level.h)
+                    for i in range(self.level.w)
+                    if self.level.get(i, j) == T.WALL)
+        through = ai.find_path(self.level, wall[0], wall[1], self.p.x, self.p.y,
+                               through_rock=True)
+        self.assertTrue(through, "nothing can path out of solid stone")
+        golem = self.world.spawn("stone_golem", self.p.x, self.p.y, 14)
+        self.assertTrue(golem.tpl.get("through_rock"))
+
+    def test_something_breaks_doors_rather_than_opening_them(self):
+        from stormhold.game import ai
+        from stormhold.game.monsters import MONSTERS
+        breakers = [k for k, t in MONSTERS.items() if t.get("breaks_doors")]
+        self.assertTrue(breakers, "nothing in the keep breaks a door")
+        golem = self.world.spawn(breakers[0], self.p.x + 2, self.p.y, 14)
+        self.level.place(golem)
+        spot = (self.p.x + 1, self.p.y)
+        self.level.set(spot[0], spot[1], T.DOOR)
+        golem.target_id = self.p.id
+        golem.path = [spot]
+        golem.path_goal = (self.p.x, self.p.y)   # so the prepared step is used
+        self.world.events.clear()
+        # The door is the next square on its way to us, which is the case
+        # that matters; take_turn would re-path through the rock instead.
+        ai._step_toward(self.world, self.level, golem, self.p.x, self.p.y)
+        said = [e["text"] for e in self.world.events if e["t"] == "msg"]
+        self.assertEqual(self.level.get(*spot), T.DOOR_OPEN)
+        self.assertTrue(any("blasts open the door" in m for m in said), said)
+
+    def test_something_taunts_you_while_it_fights(self):
+        from stormhold.game import ai
+        from stormhold.game.monsters import MONSTERS
+        talkers = [k for k, t in MONSTERS.items() if t.get("taunts")]
+        self.assertTrue(talkers, "nothing in the keep says anything")
+        thief = self.world.spawn(talkers[0], self.p.x + 1, self.p.y, 14)
+        self.level.place(thief)
+        thief.target_id = self.p.id
+        heard = []
+        for _ in range(200):
+            self.world.events.clear()
+            ai.take_turn(self.world, self.level, thief)
+            heard += [e["text"] for e in self.world.events
+                      if e["t"] == "msg" and "says:" in e["text"]]
+            self.p.hp = self.p.max_hp
+            if heard:
+                break
+        self.assertTrue(heard, "it never said a word in two hundred blows")
+
+    def test_a_slow_poison_takes_hold_later(self):
+        from stormhold.game import combat
+        from stormhold.game.monsters import MONSTERS
+        slow = [k for k, t in MONSTERS.items() if t.get("poison_delay")]
+        self.assertTrue(slow, "no creature has a slow poison")
+        ghoul = self.world.spawn(slow[0], self.p.x + 1, self.p.y, 14)
+        self.level.place(ghoul)
+        self.p.max_hp = self.p.hp = 5000
+        for _ in range(200):
+            combat.melee(self.world, ghoul, self.p)
+            if self.p.has("poison_later"):
+                break
+        self.assertTrue(self.p.has("poison_later"), "the bite never told")
+        self.assertFalse(self.p.has("poisoned"), "it took hold at once")
+
+        # ...and then it does.
+        self.level.clock += 10 ** 6
+        self.world.events.clear()
+        self.world.after_action(self.level, self.p)
+        self.assertTrue(self.p.has("poisoned"))
+        said = [e["text"] for e in self.world.events if e["t"] == "msg"]
+        self.assertTrue(any("taken hold" in m for m in said), said)
+
+    def test_a_tribe_can_hire_something_worse(self):
+        from stormhold.game.monsters import MONSTERS
+        employers = [k for k, t in MONSTERS.items() if t.get("hires")]
+        self.assertTrue(employers, "no tribe hires anybody")
+        for key in employers:
+            self.assertIn(MONSTERS[key]["hires"], MONSTERS,
+                          "hired something that does not exist")

@@ -122,12 +122,12 @@ is simply a death sentence.
 | Vampires drain hit points that will not come back unaided | partial |
 | Summoners gate in more of their own kind | partial |
 | Thieves steal from the purse and vanish | done |
-| Earth elementals pass through rock and break doors | open |
-| Manticores taunt during combat | open |
+| Something passes through rock and breaks doors | done - our stone golems swim through stone at half speed and blast doors rather than opening them |
+| Something taunts you during combat | done - the cutpurse talks while it robs you |
 | Slime is sessile, drawn by vibration, and clings and grows | open |
 | Dragon breath by colour: white cold, red fire, blue lightning, green poison | partial |
-| Green dragon poison is delayed and curable | open |
-| Goblin tribes may hire a larger monster as a guard | open |
+| A poison that is slow to take hold | done - the crypt ghoul's bite numbs first and burns later, which is what makes a cure worth carrying |
+| A tribe may hire something larger as a guard | done - a goblin pack turns up with a shambler behind it about a quarter of the time |
 
 ## Interface
 

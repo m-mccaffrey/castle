@@ -63,7 +63,13 @@ def melee(world, attacker, defender, cost_free=False):
         if tpl.get("drain") and defender.kind == "player" and rng.random() < 0.3:
             rider = ("drain", tpl["drain"])
         elif tpl.get("poison"):
-            rider = ("poisoned", tpl["poison"])
+            # "Green dragons ... their poison is slow to take hold" - a
+            # delayed poison does nothing for a while and then starts, which
+            # is what makes carrying a cure worth the weight.
+            if tpl.get("poison_delay"):
+                rider = ("poison_later", tpl["poison"])
+            else:
+                rider = ("poisoned", tpl["poison"])
         elif tpl.get("burn"):
             rider = ("burning", 4)
     else:
@@ -90,6 +96,13 @@ def melee(world, attacker, defender, cost_free=False):
         name, power = rider
         if name == "drain":
             world.drain_player(defender, power, attacker)
+        elif name == "poison_later":
+            now = world.clock_for(defender.depth)
+            delay = attacker.tpl.get("poison_delay", 400)
+            defender.add_effect("poison_later", now + delay, power)
+            if defender.kind == "player":
+                world.msg("A cold numbness spreads from the wound.", "bad",
+                          to=defender)
         else:
             defender.add_effect(name, world.clock_for(defender.depth) + 500, power)
 

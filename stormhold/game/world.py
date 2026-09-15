@@ -94,6 +94,18 @@ class World:
             level.place(m)
             # "when found in numbers can be much more deadly" - rats, wolves,
             # dogs and goblins arrive as a pack, not as a single specimen.
+            # "Goblin tribes are sometimes able to hire a larger monster to
+            # act as a guard" - a pack that turns up with something worse
+            # standing behind it.
+            hire = m.tpl.get("hires")
+            if hire and rng.random() < m.tpl.get("hire_chance", 0.25):
+                spot = level.find_free(x, y, max_r=4)
+                if spot:
+                    guard = self.spawn(hire, spot[0], spot[1], level.depth)
+                    guard.max_hp = int(guard.max_hp * tough_mult)
+                    guard.hp = guard.max_hp
+                    level.place(guard)
+
             pack = m.tpl.get("pack")
             if pack:
                 for _ in range(rng.randint(pack[0] - 1, pack[1] - 1)):
@@ -380,8 +392,17 @@ class World:
                 self.fx(name, actor.x, actor.y, level.depth)
                 if actor.dead:
                     return
+        # A delayed poison does not wear off when its timer runs out - that
+        # is the moment it takes hold.
+        creeping = actor.effect_value("poison_later", 0)
         gone = actor.expire_effects(now)
+        if "poison_later" in gone and not actor.dead:
+            actor.add_effect("poisoned", now + 600, creeping or 3)
+            self.msg("The numbness turns to fire. The poison has taken hold.",
+                     "bad", to=actor)
         for name in gone:
+            if name == "poison_later":
+                continue
             if actor.kind == "player":
                 self.msg(f"Your {name.replace('_', ' ')} fades.", "info", to=actor)
 

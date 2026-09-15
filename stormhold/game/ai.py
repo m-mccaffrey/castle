@@ -14,8 +14,14 @@ from ..common.fov import has_los
 from . import combat
 
 
-def find_path(level, sx, sy, tx, ty, ignore_id=None, max_nodes=700):
-    """A*, treating a closed door as passable at a cost: monsters open doors."""
+def find_path(level, sx, sy, tx, ty, ignore_id=None, max_nodes=700,
+              through_rock=False):
+    """A*, treating a closed door as passable at a cost: monsters open doors.
+
+    `through_rock` is for the things that do not need the corridors at all -
+    "earth elementals can pass through rock" - which changes what a wall
+    means to them and nothing else.
+    """
     if (sx, sy) == (tx, ty):
         return []
     start = (sx, sy)
@@ -49,14 +55,17 @@ def find_path(level, sx, sy, tx, ty, ignore_id=None, max_nodes=700):
             if nxt in closed:
                 continue
             tile = level.tiles[ny * level.w + nx]
-            if tile in (T.WALL, T.VOID, T.TREE):
+            solid = tile in (T.WALL, T.VOID, T.TREE)
+            if solid and not (through_rock and tile == T.WALL):
                 continue
             cost = 1.414 if (dx and dy) else 1.0
+            if solid:
+                cost += 2.5                      # stone is slow going
             if tile == T.DOOR:
                 cost += 1.5
             elif tile in (T.WATER, T.RUBBLE):
                 cost += 0.8
-            if dx and dy:
+            if dx and dy and not through_rock:
                 a = level.tiles[cy * level.w + nx]
                 b = level.tiles[ny * level.w + cx]
                 if is_solid(a) and is_solid(b):
@@ -90,7 +99,8 @@ def _acquire(world, level, m):
 def _step_toward(world, level, m, tx, ty):
     stale = (m.path is None or not m.path or m.path_goal != (tx, ty))
     if stale:
-        m.path = find_path(level, m.x, m.y, tx, ty, ignore_id=m.id)
+        m.path = find_path(level, m.x, m.y, tx, ty, ignore_id=m.id,
+                           through_rock=bool(m.tpl.get("through_rock")))
         m.path_goal = (tx, ty)
 
     step = m.path[0] if m.path else None
@@ -107,8 +117,25 @@ def _step_toward(world, level, m, tx, ty):
     nx, ny = step
     tile = level.get(nx, ny)
     if tile == T.DOOR:
+        if m.tpl.get("breaks_doors"):
+            # "The %i blasts open the door!" - some things do not knock.
+            world.set_tile(level, nx, ny, T.DOOR_OPEN)
+            world.sound("slam", nx, ny, level.depth)
+            world.msg(f"The {m.name} blasts open the door!", "bad",
+                      depth=level.depth)
+            return m.action_cost(MOVE_COST, moving=True)
         world.set_tile(level, nx, ny, T.DOOR_OPEN)
         world.sound("door", nx, ny, level.depth)
+        return m.action_cost(MOVE_COST, moving=True)
+    if tile == T.WALL and m.tpl.get("through_rock"):
+        if level.occupancy.get((nx, ny)) is None:
+            m.facing = _dir_index(nx - m.x, ny - m.y)
+            level.move_actor(m, nx, ny)
+            if m.path:
+                m.path.pop(0)
+            # Twice as long to swim through stone as to walk.
+            return int(m.action_cost(MOVE_COST, moving=True) * 2)
+        m.path = None
         return m.action_cost(MOVE_COST, moving=True)
     if not level.walkable(nx, ny, m.id):
         m.path = None
@@ -214,6 +241,12 @@ def take_turn(world, level, m):
 
     if dist <= 1:
         m.facing = _dir_index(target.x - m.x, target.y - m.y)
+        # Some things talk while they fight. The original's manticores taunt;
+        # ours do it rarely enough that it stays unnerving.
+        taunts = m.tpl.get("taunts")
+        if taunts and world.rng.random() < 0.12:
+            world.msg(f'The {m.name} says: "{world.rng.choice(taunts)}"',
+                      "warn", to=target)
         combat.melee(world, m, target)
         return m.action_cost(ATTACK_COST)
 
