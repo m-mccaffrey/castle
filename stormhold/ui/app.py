@@ -13,6 +13,7 @@ import pygame
 
 from ..common.constants import (
     DIRS, STATS, STAT_ABBR, START_STAT, START_POINTS, PROTOCOL_VERSION,
+    DIFFICULTIES, DEFAULT_DIFFICULTY,
     TILE_NAMES, T, SIGHT_DUNGEON, SIGHT_TOWN, chebyshev, xp_for_level,
 )
 from ..common.fov import compute_fov
@@ -183,6 +184,19 @@ class MenuScene(Scene):
 # ===========================================================================
 
 class CharGenScene(Scene):
+    # Every y on this screen, in one place. layout() builds the hit targets
+    # from it and draw() puts the labels at the same numbers, which is the
+    # only way the two stay in agreement - they drifted once already.
+    Y = {
+        "intro": 92, "blurb": 112, "points": 172,
+        "stats": 194, "stat_step": 34,
+        "difficulty_label": 330, "difficulty": 346, "difficulty_step": 28,
+        "spell_label": 410, "spell": 426, "spell_step": 30,
+        "colour_label": 492, "colour": 508,
+        "actions": 552, "saves_label": 594, "saves": 610, "saves_step": 26,
+        "error": 676,
+    }
+
     def __init__(self, app, saves=None):
         super().__init__(app)
         self.saves = saves or []
@@ -190,6 +204,7 @@ class CharGenScene(Scene):
         self.points = START_POINTS
         self.colour = 0
         self.spell = STARTING_SPELLS[0]
+        self.difficulty = app.settings.get("difficulty", DEFAULT_DIFFICULTY)
         self.error = ""
         self.layout(app.screen.get_size())
 
@@ -198,30 +213,43 @@ class CharGenScene(Scene):
         self.plus = {}
         self.minus = {}
         for i, stat in enumerate(STATS):
-            y = 190 + i * 38
+            y = self.Y["stats"] + i * self.Y["stat_step"]
             self.minus[stat] = W.Button((cx - 30, y, 28, 26), "-", ("dec", stat))
             self.plus[stat] = W.Button((cx + 88, y, 28, 26), "+", ("inc", stat))
+        self.difficulty_buttons = []
+        for i, (label, _symbol, _t, _x) in enumerate(DIFFICULTIES):
+            col, row = i % 2, i // 2
+            self.difficulty_buttons.append(
+                W.Button((cx - 210 + col * 222,
+                          self.Y["difficulty"] + row * self.Y["difficulty_step"],
+                          214, 26),
+                         label, ("difficulty", label)))
+
         # The original's last step is choosing one starting spell from six.
         self.spell_buttons = []
         for i, name in enumerate(STARTING_SPELLS):
             col, row = i % 3, i // 3
             self.spell_buttons.append(
-                W.Button((cx - 210 + col * 148, 428 + row * 32, 140, 28),
+                W.Button((cx - 210 + col * 148,
+                          self.Y["spell"] + row * self.Y["spell_step"],
+                          140, 28),
                          name, ("spell", name)))
         self.buttons = [
-            W.Button((cx - 210, 500, 180, 34), "Enter the keep", "go"),
-            W.Button((cx + 30, 500, 180, 34), "Back", "back"),
+            W.Button((cx - 210, self.Y["actions"], 180, 32), "Enter the keep", "go"),
+            W.Button((cx + 30, self.Y["actions"], 180, 32), "Back", "back"),
         ]
         self.resume_buttons = []
         for i, s in enumerate(self.saves[:6]):
             self.resume_buttons.append(
-                W.Button((cx - 210, 552 + i * 30, 420, 26),
+                W.Button((cx - 210, self.Y["saves"] + i * self.Y["saves_step"],
+                          420, 24),
                          f"Carry on as {s['name']} (level {s['level']}, reached {s.get('deepest', 0)})",
                          ("resume", s["name"])))
 
     def handle(self, event):
         for b in (list(self.plus.values()) + list(self.minus.values())
-                  + self.spell_buttons + self.buttons + self.resume_buttons):
+                  + self.difficulty_buttons + self.spell_buttons
+                  + self.buttons + self.resume_buttons):
             action = b.handle(event)
             if not action:
                 continue
@@ -235,20 +263,23 @@ class CharGenScene(Scene):
                     self.points += 1
                 elif op == "spell":
                     self.spell = value
+                elif op == "difficulty":
+                    self.difficulty = value
+                    self.app.settings["difficulty"] = value
                 elif op == "resume":
                     self.app.join_as(value, self.stats, self.colour, resume=True,
-                                     spell=self.spell)
+                                     spell=self.spell, difficulty=self.difficulty)
             elif action == "go":
                 self.app.join_as(self.app.settings.get("name", "Adventurer"),
                                  self.stats, self.colour, resume=False,
-                                 spell=self.spell)
+                                 spell=self.spell, difficulty=self.difficulty)
             elif action == "back":
                 self.app.disconnect("")
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_RETURN:
                 self.app.join_as(self.app.settings.get("name", "Adventurer"),
                                  self.stats, self.colour, resume=False,
-                                 spell=self.spell)
+                                 spell=self.spell, difficulty=self.difficulty)
             elif event.key == pygame.K_LEFT:
                 self.colour = (self.colour - 1) % 6
             elif event.key == pygame.K_RIGHT:
@@ -258,22 +289,24 @@ class CharGenScene(Scene):
         surf.fill((18, 24, 40))
         w = surf.get_width()
         cx = w // 2
-        box = pygame.Rect(cx - 260, 46, 520, min(surf.get_height() - 60, 700))
+        box = pygame.Rect(cx - 300, 46, 600,
+                          min(surf.get_height() - 56, self.Y["error"] + 30))
         client = W.window(surf, box, "Create a character")
 
-        W.text(surf, "Stormhold has no character classes.", (client.x + 8, 100), 14, bold=True)
+        W.text(surf, "Stormhold has no character classes.",
+               (client.x + 8, self.Y["intro"]), 14, bold=True)
         for i, line in enumerate(W.wrap(
                 "Spend your points however you like. Strength carries armour and swings "
                 "it hard, Dexterity hits and dodges, Intelligence powers spells, "
                 "Constitution keeps you alive. You learn magic from books you find or buy.",
                 client.width - 16, 13)):
-            W.text(surf, line, (client.x + 8, 122 + i * 17), 13)
+            W.text(surf, line, (client.x + 8, self.Y["blurb"] + i * 17), 13)
 
-        W.text(surf, f"Points left: {self.points}", (cx - 210, 166), 15, bold=True,
+        W.text(surf, f"Points left: {self.points}", (cx - 210, self.Y["points"]), 15, bold=True,
                colour=(0, 96, 0) if self.points else (120, 0, 0))
 
         for i, stat in enumerate(STATS):
-            y = 190 + i * 38
+            y = self.Y["stats"] + i * self.Y["stat_step"]
             W.text(surf, STAT_ABBR[stat] + "  " + stat.title(), (cx - 210, y + 5), 14, bold=True)
             W.panel(surf, (cx + 2, y, 82, 26), raised=False, fill=WHITE)
             value = str(self.stats[stat])
@@ -285,14 +318,22 @@ class CharGenScene(Scene):
             self.plus[stat].draw(surf)
             W.text(surf, self.hint(stat), (cx + 124, y + 6), 12, colour=(70, 70, 70))
 
-        W.text(surf, "Colour on the map (left/right arrows)", (cx - 210, 344), 13, bold=True)
+        W.text(surf, "How hard should the keep be?",
+               (cx - 210, self.Y["difficulty_label"]), 13, bold=True)
+        for b in self.difficulty_buttons:
+            b.selected = (b.action[1] == self.difficulty)
+            b.draw(surf)
+
+        W.text(surf, "Colour on the map (left/right arrows)",
+               (cx - 210, self.Y["colour_label"]), 13, bold=True)
         for i in range(6):
             img = self.app.sheet.player(i, "sword", False, False, False)[0]
-            spot = pygame.Rect(cx - 210 + i * 44, 362, 40, 40)
+            spot = pygame.Rect(cx - 210 + i * 40, self.Y["colour"], 36, 36)
             W.panel(surf, spot, raised=i != self.colour)
-            surf.blit(img, (spot.x + 4, spot.y + 4))
+            surf.blit(img, (spot.x + 2, spot.y + 2))
 
-        W.text(surf, "The one spell you already know", (cx - 210, 410), 13, bold=True)
+        W.text(surf, "The one spell you already know",
+               (cx - 210, self.Y["spell_label"]), 13, bold=True)
         for b in self.spell_buttons:
             b.selected = (b.action[1] == self.spell)
             b.draw(surf)
@@ -301,11 +342,12 @@ class CharGenScene(Scene):
             b.draw(surf)
         if self.resume_buttons:
             W.text(surf, "Or carry on with a character already saved here:",
-                   (cx - 210, 540), 13, bold=True)
+                   (cx - 210, self.Y["saves_label"]), 13, bold=True)
             for b in self.resume_buttons:
                 b.draw(surf)
         if self.error:
-            W.text(surf, self.error, (cx - 210, 726), 13, colour=(150, 0, 0), bold=True)
+            W.text(surf, self.error, (cx - 210, self.Y["error"]), 13,
+                   colour=(150, 0, 0), bold=True)
 
     @staticmethod
     def hint(stat):
@@ -2411,11 +2453,12 @@ class App:
         self.hosting_note = hosting_note
         self.pending_saves = []
 
-    def join_as(self, name, stats, colour, resume, spell=None):
+    def join_as(self, name, stats, colour, resume, spell=None, difficulty=None):
         self.settings["name"] = name
         self.save_settings()
         self.client.send(P.C_HELLO, {"name": name, "stats": stats, "colour": colour,
                                      "resume": resume, "spell": spell,
+                                     "difficulty": difficulty,
                                      "version": PROTOCOL_VERSION})
 
     def act(self, action):

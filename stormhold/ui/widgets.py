@@ -113,7 +113,10 @@ class Button:
         # to `pressed` from draw() disarms the button between the press and
         # the release, so the click never fires.
         down = self.pressed or self.selected
-        panel(surf, self.rect, raised=not down)
+        # A chosen button is also tinted: a two-pixel bevel alone is too quiet
+        # to answer "which difficulty am I on?" at a glance.
+        panel(surf, self.rect, raised=not down,
+              fill=(198, 208, 232) if self.selected else FACE)
         colour = INK if self.enabled else DISABLED
         img = font(13, bold=True).render(self.label, True, colour)
         off = 1 if down else 0

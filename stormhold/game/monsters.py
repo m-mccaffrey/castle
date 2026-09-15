@@ -69,13 +69,17 @@ def spawn_table(depth):
     return out or [("cave_rat", 1.0)]
 
 
-def scaled(template, depth):
-    """Creatures met deeper than their home floor have had longer to grow."""
+def scaled(template, depth, tough=1.0, worth=1.0):
+    """Creatures met deeper than their home floor have had longer to grow.
+
+    `tough` and `worth` are the difficulty setting: how hard the creature is
+    and what killing it is worth.
+    """
     over = max(0, depth - template["min_d"])
     return dict(
-        hp=int(template["hp"] * (1 + over * 0.09)),
+        hp=max(1, int(template["hp"] * (1 + over * 0.09) * tough)),
         ac=template["ac"] + over // 3,
         hit=template["hit"] + int(over * 0.4),
-        dmg_bonus=int(over * 0.5),
-        xp=int(template["xp"] * (1 + over * 0.14)),
+        dmg_bonus=int(over * 0.5 + (tough - 1.0) * 2),
+        xp=max(1, int(template["xp"] * (1 + over * 0.14) * worth)),
     )

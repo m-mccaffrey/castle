@@ -539,10 +539,10 @@ class Player(Actor):
 
 
 class Monster(Actor):
-    def __init__(self, key, x, y, depth, rng):
+    def __init__(self, key, x, y, depth, rng, tough=1.0, worth=1.0):
         super().__init__(x, y)
         tpl = MONSTERS[key]
-        s = scaled(tpl, depth)
+        s = scaled(tpl, depth, tough, worth)
         self.kind = "monster"
         self.key = key
         self.tpl = tpl
@@ -578,8 +578,8 @@ class Monster(Actor):
         return max(10, int(cost))
 
 
-def make_monster(key, x, y, depth, rng):
-    return Monster(key, x, y, depth, rng)
+def make_monster(key, x, y, depth, rng, tough=1.0, worth=1.0):
+    return Monster(key, x, y, depth, rng, tough, worth)
 
 
 class NPC(Actor):

@@ -84,7 +84,7 @@ class TestWindowLayout(unittest.TestCase):
                 scene.draw(self.app.screen)
                 cx = self.app.screen.get_width() // 2
                 self.assertEqual(scene.buttons[0].rect,
-                                 pygame.Rect(cx - 210, 500, 180, 34))
+                                 pygame.Rect(cx - 210, CharGenScene.Y['actions'], 180, 32))
 
     def test_every_scene_survives_a_draw_at_each_size(self):
         """A smoke test: the window must not explode at any sensible size."""
@@ -473,3 +473,44 @@ class TestChoosingAStartingSpell(unittest.TestCase):
         world = World(seed=9)
         p = world.add_player("Liar", spell="Wish For Everything")
         self.assertEqual(sorted(p.spells), [STARTING_SPELLS[0]])
+
+
+class TestDifficulty(unittest.TestCase):
+    """The original's four settings, and what they do to the keep."""
+
+    def test_four_are_offered_with_the_originals_names(self):
+        from stormhold.common.constants import DIFFICULTIES, DEFAULT_DIFFICULTY
+        self.assertEqual([d[0] for d in DIFFICULTIES],
+                         ["Easy", "Intermediate", "Difficult", "Experts Only"])
+        self.assertEqual(DEFAULT_DIFFICULTY, "Intermediate")
+
+    def test_harder_settings_make_tougher_creatures_worth_more(self):
+        from stormhold.game.world import World
+        last_hp = last_xp = 0
+        for name in ("Easy", "Intermediate", "Difficult", "Experts Only"):
+            with self.subTest(difficulty=name):
+                world = World(seed=4, difficulty=name)
+                kobold = world.spawn("kobold", 1, 1, 1)
+                self.assertGreater(kobold.hp, last_hp)
+                self.assertGreater(kobold.xp_value, last_xp)
+                last_hp, last_xp = kobold.hp, kobold.xp_value
+
+    def test_a_nonsense_setting_falls_back_to_the_default(self):
+        from stormhold.net.server import valid_difficulty
+        self.assertEqual(valid_difficulty("Impossible"), "Intermediate")
+        self.assertEqual(valid_difficulty("Easy"), "Easy")
+
+    def test_the_picker_chooses_and_survives_a_redraw(self):
+        app = make_app()
+        app.screen = pygame.display.set_mode((1024, 700))
+        scene = CharGenScene(app)
+        app.replace(scene)
+        scene.draw(app.screen)
+        button = [b for b in scene.difficulty_buttons
+                  if b.action[1] == "Experts Only"][0]
+        scene.handle(pygame.event.Event(pygame.MOUSEBUTTONDOWN,
+                                        pos=button.rect.center, button=1))
+        scene.draw(app.screen)
+        scene.handle(pygame.event.Event(pygame.MOUSEBUTTONUP,
+                                        pos=button.rect.center, button=1))
+        self.assertEqual(scene.difficulty, "Experts Only")

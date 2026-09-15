@@ -14,7 +14,9 @@ import socket
 import threading
 import time
 
-from ..common.constants import PROTOCOL_VERSION, STATS, START_STAT, START_POINTS, TOWN_DEPTH, chebyshev
+from ..common.constants import (PROTOCOL_VERSION, STATS, START_STAT, START_POINTS,
+                                 TOWN_DEPTH, chebyshev, DIFFICULTIES,
+                                 DEFAULT_DIFFICULTY)
 from ..game.world import World
 from . import protocol as P
 
@@ -26,6 +28,12 @@ TILE_CHUNK = 1500          # tile triples per packet
 def clean_name(raw):
     text = "".join(ch for ch in str(raw or "") if ch.isprintable()).strip()
     return text[:MAX_NAME] or "Adventurer"
+
+
+def valid_difficulty(raw):
+    """One of the original's four, or the default if it is anything else."""
+    names = [label for label, _sym, _t, _x in DIFFICULTIES]
+    return raw if raw in names else DEFAULT_DIFFICULTY
 
 
 def valid_stats(raw):
@@ -232,6 +240,13 @@ class GameServer:
                     session.send(P.S_ERROR, {"msg": f"{name} is already in the keep."})
                     return
 
+            # The first arrival opens the keep, so their difficulty is the
+            # one the floors are built at. Everyone after that is told what
+            # they have walked into rather than silently overriding it.
+            first = not any(s.player for s in self.sessions.values())
+            if first and data.get("difficulty"):
+                self.world.difficulty = valid_difficulty(data["difficulty"])
+
             save = self.saves.get(name.lower()) if data.get("resume") else None
             stats = valid_stats(data.get("stats") or {})
             colour = int(data.get("colour", 0)) % 6
@@ -243,7 +258,9 @@ class GameServer:
                 "id": player.id,
                 "resumed": bool(save),
                 "motd": (f"Welcome back, {name}." if save else
-                         f"Welcome to Aldershade, {name}. The keep gate is north of the square."),
+                         f"Welcome to Aldershade, {name}. The keep gate is north "
+                         f"of the square."),
+                "difficulty": self.world.difficulty,
             })
             self.send_level(session)
             self.send_inventory(session)

@@ -18,16 +18,22 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import pygame                                              # noqa: E402
 
 from tools.playtest import Session                          # noqa: E402
+from stormhold.game.spells import SPELLS                    # noqa: E402
 
 
 def make_character(s, spread=(("strength", 6), ("dexterity", 4),
-                              ("intelligence", 3), ("constitution", 3))):
+                              ("intelligence", 3), ("constitution", 3)),
+                   spell="Spark", difficulty=None):
     s.click([b for b in s.app.scene.buttons if b.action == "host"][0].rect.center)
     s.settle(2)
     sc = s.app.scene
     for stat, n in spread:
         for _ in range(n):
             s.click(sc.plus[stat].rect.center)
+    if difficulty:
+        s.click([b for b in sc.difficulty_buttons
+                 if b.action[1] == difficulty][0].rect.center)
+    s.click([b for b in sc.spell_buttons if b.action[1] == spell][0].rect.center)
     s.click([b for b in sc.buttons if b.action == "go"][0].rect.center)
     s.settle(2.5)
 
@@ -73,6 +79,12 @@ def monsters_near(s, reach=9):
             and max(abs(m.x - p.x), abs(m.y - p.y)) <= reach]
 
 
+def best_attack_spell(s):
+    from stormhold.game.spells import SPELLS
+    known = [n for n in s.me().spells if SPELLS[n].get("dmg")]
+    return max(known, key=lambda n: SPELLS[n]["mana"], default=None)
+
+
 def crawl(s, to_depth=5, turns=3000, log=print):
     seen, order = set(), []
 
@@ -99,6 +111,12 @@ def crawl(s, to_depth=5, turns=3000, log=print):
             s.step(6); note(); continue
         if near:
             m = min(near, key=lambda m: max(abs(m.x - p.x), abs(m.y - p.y)))
+            gap = max(abs(m.x - p.x), abs(m.y - p.y))
+            spell = best_attack_spell(s)
+            if spell and gap > 1 and p.mana >= SPELLS[spell]["mana"]:
+                s.app.play.send_action({"a": "cast", "spell": spell,
+                                        "x": m.x, "y": m.y})
+                s.step(4); note(); continue
             step_toward(m.x, m.y); note(); continue
         if lv.ground.get((p.x, p.y)):
             s.app.play.send_action({"a": "pickup"})
@@ -124,10 +142,12 @@ def main():
     ap.add_argument("--depth", type=int, default=5)
     ap.add_argument("--turns", type=int, default=3000)
     ap.add_argument("--port", type=int, default=7801)
+    ap.add_argument("--difficulty", default=None)
+    ap.add_argument("--spell", default="Spark")
     a = ap.parse_args()
 
     s = Session(seed=a.seed, port=a.port)
-    make_character(s)
+    make_character(s, spell=a.spell, difficulty=a.difficulty)
     kit_out(s)
     s.walk_to(*s.level().down_at)
     s.key(pygame.K_PERIOD, mod=pygame.KMOD_SHIFT)
@@ -135,7 +155,7 @@ def main():
 
     took, messages = crawl(s, a.depth, a.turns)
     p = s.me()
-    print(f"=== seed {a.seed}: {took} turns, depth {p.depth}, level {p.level}, "
+    print(f"=== seed {a.seed} ({s.world.difficulty}): {took} turns, depth {p.depth}, level {p.level}, "
           f"xp {p.xp}, hp {p.hp}/{p.max_hp}, kills {p.kills}, deaths {p.deaths}")
     s.shot(f"crawl-{a.seed}")
     print("=== every distinct message:")

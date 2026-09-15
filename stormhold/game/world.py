@@ -20,6 +20,7 @@ from ..common.constants import (
     T, DIRS, TOWN_DEPTH, MAX_DEPTH, GRACE_TICKS, MOVE_COST, ATTACK_COST,
     CAST_COST, PICKUP_COST, DROP_COST, EQUIP_COST, QUAFF_COST, READ_COST,
     STAIRS_COST, REST_COST, FREE_COST, SIGHT_DUNGEON, SIGHT_TOWN, REGEN_TICKS,
+    DEFAULT_DIFFICULTY, difficulty_factors,
     DEATH_GOLD_PENALTY, DEATH_XP_PENALTY, RESURRECT_HP_FRACTION,
     chebyshev, clamp, is_solid,
 )
@@ -35,8 +36,12 @@ from . import combat, ai
 
 
 class World:
-    def __init__(self, seed=None):
+    def __init__(self, seed=None, difficulty=DEFAULT_DIFFICULTY):
         self.seed = seed if seed is not None else random.randrange(1 << 30)
+        # The original's four settings. Whoever opens the keep chooses it, and
+        # it applies to everything living in it, because the party shares the
+        # floors they are fighting on.
+        self.difficulty = difficulty
         self.rng = random.Random(self.seed)
         self.appearances = Appearances(self.seed)
         self.levels = {}
@@ -82,7 +87,7 @@ class World:
             if rng.random() > 0.85 * count_mult:
                 continue
             key = self._weighted(table)
-            m = make_monster(key, x, y, level.depth, rng)
+            m = self.spawn(key, x, y, level.depth)
             m.max_hp = int(m.max_hp * tough_mult)
             m.hp = m.max_hp
             m.xp_value = int(m.xp_value * (1 + (party - 1) * 0.22))
@@ -95,7 +100,7 @@ class World:
                     spot = level.find_free(x, y, max_r=3)
                     if not spot:
                         break
-                    mate = make_monster(key, spot[0], spot[1], level.depth, rng)
+                    mate = self.spawn(key, spot[0], spot[1], level.depth)
                     mate.max_hp = int(mate.max_hp * tough_mult)
                     mate.hp = mate.max_hp
                     level.place(mate)
@@ -110,11 +115,16 @@ class World:
 
         if level.boss_key:
             bx, by = level.find_floor(level.boss_room["cx"], level.boss_room["cy"])
-            boss = make_monster(level.boss_key, bx, by, level.depth, rng)
+            boss = self.spawn(level.boss_key, bx, by, level.depth)
             boss.max_hp = int(boss.max_hp * (1 + (party - 1) * 0.5))
             boss.hp = boss.max_hp
             level.place(boss)
             level.boss = boss
+
+    def spawn(self, key, x, y, depth, rng=None):
+        """Make a creature at this world's difficulty."""
+        tough, worth = difficulty_factors(self.difficulty)
+        return make_monster(key, x, y, depth, rng or self.rng, tough, worth)
 
     def _weighted(self, pairs):
         total = sum(w for _, w in pairs)
@@ -417,7 +427,7 @@ class World:
         table = spawn_table(level.depth)
         key = self._weighted(table)
         was = m.name
-        fresh = make_monster(key, m.x, m.y, level.depth, self.rng)
+        fresh = self.spawn(key, m.x, m.y, level.depth)
         level.remove(m)
         fresh.hp = max(1, int(fresh.max_hp * share))
         level.place(fresh)
@@ -1383,8 +1393,7 @@ class World:
                                    p.y + self.rng.randint(-4, 4), 6)
             if not spot or not level.walkable(*spot):
                 continue
-            m = make_monster(self._weighted(table), spot[0], spot[1],
-                             level.depth, self.rng)
+            m = self.spawn(self._weighted(table), spot[0], spot[1], level.depth)
             m.target_id = p.id
             level.place(m)
             called += 1
@@ -1540,7 +1549,7 @@ class World:
                 if not level.walkable(sx, sy):
                     continue
                 key = self.rng.choice(m.tpl["summons"])
-                add = make_monster(key, sx, sy, level.depth, self.rng)
+                add = self.spawn(key, sx, sy, level.depth)
                 add.next_at = level.clock + 100
                 add.target_id = target.id
                 level.place(add)

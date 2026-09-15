@@ -323,3 +323,26 @@ def clamp(v, lo, hi):
 
 def chebyshev(ax, ay, bx, by):
     return max(abs(ax - bx), abs(ay - by))
+
+
+# ------------------------------------------------------------- difficulty ---
+# The original ends character creation with four difficulty settings, drawn as
+# ski-trail symbols: Easy, Intermediate (the default), Difficult and Experts
+# Only. What each one does to the numbers is not written down anywhere we can
+# read, so the multipliers below are ours: they scale how hard the creatures
+# hit and how much experience they are worth, which keeps the ladder honest.
+DIFFICULTIES = (
+    ("Easy",          "circle",   0.75, 0.75),
+    ("Intermediate",  "square",   1.00, 1.00),
+    ("Difficult",     "diamond",  1.30, 1.30),
+    ("Experts Only",  "warning",  1.60, 1.60),
+)
+DEFAULT_DIFFICULTY = "Intermediate"
+
+
+def difficulty_factors(name):
+    """(how tough the creatures are, what they are worth) for a setting."""
+    for label, _symbol, tough, xp in DIFFICULTIES:
+        if label == name:
+            return tough, xp
+    return 1.0, 1.0
