@@ -1696,3 +1696,117 @@ class TestTwoHandedWeapons(unittest.TestCase):
         ok, said = p.equip(halberd)
         self.assertFalse(ok)
         self.assertIn("cannot let go", said)
+
+
+class TestThingsCanActuallyBeUsed(unittest.TestCase):
+    """The belt was unreachable, so nothing consumable could ever be used.
+
+    "Objects in your pack cannot be activated" was enforced, and nothing in
+    the game ever put anything on a belt - so every potion, scroll and wand
+    answered "That is buried in your pack" for the whole game. `belt_has_room`
+    was dead code and belt contents were always empty.
+    """
+
+    def setUp(self):
+        from stormhold.game.world import World
+        from stormhold.game.items import Item
+        self.world = World(seed=3)
+        self.p = self.world.add_player("Drinker", spell="Spark")
+        self.level = self.world.levels[0]
+        belt = Item("belt3")
+        belt.known = True
+        self.p.equipment["waist"] = belt
+        self.belt = belt
+        self.potion = Item("potion_heal")
+        self.potion.known = True
+        self.p.add_item(self.potion)
+
+    def act(self, action):
+        self.world.events.clear()
+        self.world.do_player_action(self.level, self.p, action)
+        return [e["text"] for e in self.world.events if e["t"] == "msg"]
+
+    def test_a_potion_in_the_pack_cannot_be_drunk(self):
+        said = self.act({"a": "use", "id": self.potion.id})
+        self.assertTrue(any("buried in your pack" in m for m in said), said)
+
+    def test_you_can_put_it_on_your_belt(self):
+        said = self.act({"a": "stow", "id": self.potion.id, "slot": "waist"})
+        self.assertIn(self.potion, self.belt.contents)
+        self.assertNotIn(self.potion, self.p.inventory)
+        self.assertTrue(any("on your" in m for m in said), said)
+
+    def test_and_then_it_can_be_drunk(self):
+        self.p.hp = 1
+        self.act({"a": "stow", "id": self.potion.id, "slot": "waist"})
+        said = self.act({"a": "use", "id": self.potion.id})
+        self.assertGreater(self.p.hp, 1, said)
+
+    def test_and_then_it_is_gone(self):
+        self.p.hp = 1
+        self.act({"a": "stow", "id": self.potion.id, "slot": "waist"})
+        self.act({"a": "use", "id": self.potion.id})
+        self.assertNotIn(self.potion, self.belt.contents,
+                         "the potion survived being drunk")
+        self.assertNotIn(self.potion, self.p.inventory)
+
+    def test_a_belt_holds_only_as_many_things_as_it_has_slots(self):
+        from stormhold.game.items import Item
+        extras = []
+        for _ in range(5):
+            item = Item("potion_mana")
+            item.known = True
+            self.p.add_item(item)
+            extras.append(item)
+        for item in [self.potion] + extras:
+            self.act({"a": "stow", "id": item.id, "slot": "waist"})
+        self.assertEqual(len(self.belt.contents),
+                         self.belt.base["belt_slots"])
+
+    def test_you_can_take_it_back_off(self):
+        self.act({"a": "stow", "id": self.potion.id, "slot": "waist"})
+        said = self.act({"a": "unstow", "id": self.potion.id})
+        self.assertIn(self.potion, self.p.inventory)
+        self.assertNotIn(self.potion, self.belt.contents)
+        self.assertTrue(any("back in your pack" in m for m in said), said)
+
+    def test_a_wand_quiver_takes_wands_and_nothing_else(self):
+        from stormhold.game.items import Item
+        quiver = Item("quiver")
+        quiver.known = True
+        self.p.equipment["quiver"] = quiver
+        said = self.act({"a": "stow", "id": self.potion.id, "slot": "quiver"})
+        self.assertTrue(any("is for wands" in m for m in said), said)
+        wand = Item("wand", charges=3)
+        wand.known = True
+        self.p.add_item(wand)
+        self.act({"a": "stow", "id": wand.id, "slot": "quiver"})
+        self.assertIn(wand, quiver.contents)
+
+    def test_a_wand_in_the_quiver_is_within_reach(self):
+        from stormhold.game.items import Item
+        quiver = Item("quiver")
+        quiver.known = True
+        self.p.equipment["quiver"] = quiver
+        wand = Item("wand", charges=3)
+        wand.known = True
+        self.p.add_item(wand)
+        self.act({"a": "stow", "id": wand.id, "slot": "quiver"})
+        self.assertTrue(self.world.within_reach(self.p, wand))
+
+    def test_a_spent_wand_says_it_is_dead(self):
+        from stormhold.game.items import Item
+        wand = Item("wand", charges=0)
+        wand.known = True
+        self.assertIn("Dead", wand.name(None))
+
+    def test_a_chest_keeps_its_bulk_whatever_is_in_it(self):
+        """"Bags' bulk varies with contents, chests' is fixed."""
+        from stormhold.game.items import Item
+        chest, sack = Item("chest"), Item("sack")
+        empty_chest, empty_sack = chest.bulk, sack.bulk
+        for holder in (chest, sack):
+            for _ in range(3):
+                holder.contents.append(Item("potion_heal"))
+        self.assertEqual(chest.bulk, empty_chest, "the chest swelled")
+        self.assertGreater(sack.bulk, empty_sack, "the sack did not")

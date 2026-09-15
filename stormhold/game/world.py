@@ -460,9 +460,9 @@ class World:
         """Can this be activated where it is? Worn slots and the belt only."""
         if item in p.equipment.values():
             return True
-        belt = p.equipment.get("waist")
-        if belt is not None and item in getattr(belt, "contents", []):
-            return True
+        for worn in (p.equipment.get("waist"), p.equipment.get("quiver")):
+            if worn is not None and item in getattr(worn, "contents", []):
+                return True
         # equipping something out of the pack is always allowed; it is only
         # activation that the belt gates
         return bool(item.slot)
@@ -1078,7 +1078,7 @@ class World:
         elif use == "poison":
             p.add_effect("poisoned", now + 600, 4)
             self.msg("That was a mistake. Your stomach turns.", "bad", to=p)
-        p.remove_item(item, 1)
+        p.consume(item, 1)
         p.recalc()
         self.events.append({"t": "inv", "to": p.id})
         return p.action_cost(QUAFF_COST) or QUAFF_COST
@@ -1146,7 +1146,7 @@ class World:
             self.msg("A wave of dread rolls out from you.", "good", to=p)
 
         if consumed:
-            p.remove_item(item, 1)
+            p.consume(item, 1)
             self.events.append({"t": "inv", "to": p.id})
             return p.action_cost(READ_COST) or READ_COST
         return FREE_COST
@@ -1161,7 +1161,7 @@ class World:
             self.msg(f"You already know {spell}.", "info", to=p)
             return FREE_COST
         p.spells.add(spell)
-        p.remove_item(item, 1)
+        p.consume(item, 1)
         self.msg(f"You study the tome. {spell} is yours.", "good", to=p)
         self.sound("levelup", p.x, p.y, level.depth)
         self.events.append({"t": "inv", "to": p.id})
@@ -1697,6 +1697,73 @@ class World:
         self.move_player_to(target, TOWN_DEPTH)
         self.events.append({"t": "inv", "to": target.id})
 
+    def _act_stow(self, level, p, action):
+        """Move something from the pack onto a belt or into the quiver.
+
+        Without this the belt was unreachable: nothing in the game ever put
+        anything on one, and since "objects in your pack cannot be
+        activated", no potion, scroll or wand could ever be used at all.
+        """
+        item = p.find_item(int(action.get("id", 0)))
+        if item is None:
+            return FREE_COST
+        slot = action.get("slot", "waist")
+        holder = p.equipment.get(slot)
+        if holder is None or holder.contents is None:
+            self.msg("You are not wearing anything that would hold it.",
+                     "warn", to=p)
+            return FREE_COST
+        if holder.base.get("wands_only") and not item.base.get("charges"):
+            self.msg(f"The {holder.name(self.appearances)} is for wands.",
+                     "warn", to=p)
+            return FREE_COST
+        if holder.base.get("coins_only"):
+            self.msg("That is for coin.", "warn", to=p)
+            return FREE_COST
+        slots = holder.base.get("belt_slots")
+        if slots is not None and len(holder.contents) >= slots:
+            self.msg(f"The {holder.name(self.appearances)} is full.",
+                     "warn", to=p)
+            return FREE_COST
+        if (sum(i.weight for i in holder.contents) + item.weight
+                > holder.base.get("capacity", 0)
+                or sum(i.bulk for i in holder.contents) + item.bulk
+                > holder.base.get("bulk_capacity", 0)):
+            self.msg(f"That will not fit in the "
+                     f"{holder.name(self.appearances)}.", "warn", to=p)
+            return FREE_COST
+
+        moved = p.remove_item(item, 1)
+        if moved is None:
+            return FREE_COST
+        holder.contents.append(moved)
+        p.recalc()
+        self.msg(f"You put {with_article(moved.name(self.appearances))} on your "
+                 f"{holder.name(self.appearances)}.", "info", to=p)
+        self.events.append({"t": "inv", "to": p.id})
+        return p.action_cost(EQUIP_COST) or EQUIP_COST
+
+    def _act_unstow(self, level, p, action):
+        """Take something back off the belt and into the pack."""
+        wanted = int(action.get("id", 0))
+        for slot in ("waist", "quiver"):
+            holder = p.equipment.get(slot)
+            for item in list(getattr(holder, "contents", None) or []):
+                if item.id != wanted:
+                    continue
+                ok, why = p.room_for(item)
+                if not ok:
+                    self.msg(why, "warn", to=p)
+                    return FREE_COST
+                holder.contents.remove(item)
+                p.inventory.append(item)
+                p.recalc()
+                self.msg(f"You put {with_article(item.name(self.appearances))} "
+                         f"back in your pack.", "info", to=p)
+                self.events.append({"t": "inv", "to": p.id})
+                return p.action_cost(EQUIP_COST) or EQUIP_COST
+        return FREE_COST
+
     def _act_sort(self, level, p, action):
         """Tidy the pack. Costs nothing: it is your own pack."""
         p.sort_pack(self.appearances)
@@ -2214,6 +2281,11 @@ class World:
             "pack_bulk": pack_b, "pack_max_bulk": max_b,
             "pack_name": p.pack.name(self.appearances) if p.pack else "Your hands",
             "encumbrance": p.encumbrance[0],
+            # What is on the belt and in the quiver, which is the only place
+            # anything can be reached from in a hurry.
+            "stowed": {slot: [self.item_view(i)
+                              for i in (getattr(p.equipment.get(slot), "contents", None) or [])]
+                       for slot in ("waist", "quiver")},
         }
 
     def item_view(self, item, shop=False):

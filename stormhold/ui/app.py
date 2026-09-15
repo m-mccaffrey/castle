@@ -1265,6 +1265,7 @@ class PackScene(OverlayScene):
         self.hover_slot = None
         self.naming = None          # a TextField while renaming something
         self.popup = None           # ((x, y), lines) from a right click
+        self.stow_rects = []        # the little squares on the belt
         self.grid_rect = pygame.Rect(0, 0, 10, 10)
         self.scroll = 0
 
@@ -1281,6 +1282,9 @@ class PackScene(OverlayScene):
 
     def item_at(self, pos):
         """Whatever is under the cursor: (item, source) or (None, None)."""
+        for rect, item in getattr(self, "stow_rects", []):
+            if rect.collidepoint(pos):
+                return item, ("stowed", None)
         for slot, rect in self.slot_rects.items():
             if rect.collidepoint(pos):
                 worn = self.equipment().get(slot)
@@ -1292,8 +1296,17 @@ class PackScene(OverlayScene):
                 return item, ("pack", None)
         return None, (None, None)
 
+    STOW_SLOTS = ("waist", "quiver")
+
+    def stowed(self, slot):
+        return (self.inv.get("stowed") or {}).get(slot, [])
+
     def slot_accepts(self, slot, item):
         want = item.get("slot")
+        if slot in self.STOW_SLOTS and want != slot:
+            # Anything can go on a belt; the server decides whether it fits.
+            worn = self.equipment().get(slot)
+            return bool(worn)
         if want is None:
             return False
         if want in ("ring_left", "ring_right"):
@@ -1374,11 +1387,16 @@ class PackScene(OverlayScene):
                 self.app.play.add_message(
                     f"{item['name']} does not go there.", "warn")
                 return
+            if slot in self.STOW_SLOTS and item.get("slot") != slot:
+                self.app.act({"a": "stow", "id": item["id"], "slot": slot})
+                return
             self.app.act({"a": "equip", "id": item["id"], "slot": slot})
             return
 
         if self.grid_rect.collidepoint(pos):
-            if drag["from"] == "slot":
+            if drag["from"] == "stowed":
+                self.app.act({"a": "unstow", "id": item["id"]})
+            elif drag["from"] == "slot":
                 self.app.act({"a": "unequip", "slot": drag["slot"]})
             return
 
@@ -1449,6 +1467,7 @@ class PackScene(OverlayScene):
         from ..common.constants import (DOLL_TOP, DOLL_LEFT, DOLL_RIGHT,
                                         SLOT_LABELS, SLOT_ANCHORS)
         self.slot_rects = {}
+        self.stow_rects = []
         sw, sh = self.SLOT_W, self.SLOT_H
 
         top_y = area.y
@@ -1644,6 +1663,22 @@ class PackScene(OverlayScene):
             W.text(surf, name, (rect.x + 31, rect.y + 21), 11, bold=True, colour=colour)
         if self.selected is not None and worn is not None and worn["id"] == self.selected["id"]:
             pygame.draw.rect(surf, W.TITLE_A, rect, 2)
+
+        # What is on the belt, in a row of little squares under it. These are
+        # the only things you can reach in a fight, so they have to be visible
+        # and draggable.
+        if slot in self.STOW_SLOTS and worn:
+            row = pygame.Rect(rect.x + 4, rect.bottom + 2, rect.width - 8, 24)
+            slots = max(1, len(self.stowed(slot)) or 1)
+            width = min(24, row.width // max(2, slots))
+            for i, item in enumerate(self.stowed(slot)):
+                cell = pygame.Rect(row.x + i * (width + 2), row.y, width, 22)
+                W.panel(surf, cell, raised=True, fill=(226, 226, 220))
+                img = self.app.sheet.item(item["icon"])
+                if img:
+                    surf.blit(pygame.transform.smoothscale(img, (16, 16)),
+                              (cell.x + 3, cell.y + 3))
+                self.stow_rects.append((cell, item))
 
     CELL = 96
     CELL_H = 84

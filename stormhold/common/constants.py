@@ -232,7 +232,7 @@ def encumbrance_for(weight, capacity):
 SLOTS = (
     "head", "neck", "back", "torso", "bracers", "arms", "waist",
     "legs", "feet", "shield", "weapon", "ring_left", "ring_right",
-    "pack", "purse",
+    "pack", "purse", "quiver",
 )
 
 SLOT_LABELS = {
@@ -241,7 +241,7 @@ SLOT_LABELS = {
     "waist": "Belt", "legs": "Leggings", "feet": "Boots",
     "shield": "Shield", "weapon": "Weapon",
     "ring_left": "Right ring", "ring_right": "Left ring",
-    "pack": "Pack", "purse": "Purse",
+    "pack": "Pack", "purse": "Purse", "quiver": "Wand Quiver",
 }
 
 # Where each slot sits on the figure, as a fraction of the drawing area, so a
@@ -262,12 +262,13 @@ SLOT_ANCHORS = {
     "feet":       (0.50, 0.88),
     "pack":       (0.36, 0.30),
     "purse":      (0.62, 0.55),
+    "quiver":     (0.40, 0.58),
 }
 
 # Slots laid out around the figure: which column, and in what order.
 DOLL_TOP = ("head", "neck", "back")
 DOLL_LEFT = ("torso", "bracers", "weapon", "ring_left", "waist", "pack")
-DOLL_RIGHT = ("shield", "arms", "legs", "ring_right", "feet", "purse")
+DOLL_RIGHT = ("shield", "arms", "legs", "ring_right", "feet", "quiver", "purse")
 
 # How a creature's condition reads when you examine it. The original never
 # shows a number here - six words, read from its own strings.

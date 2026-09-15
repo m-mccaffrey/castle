@@ -20,7 +20,7 @@ deliberate divergence.
 | Status line shows overall speed then movement speed | done |
 | Containers have both weight and bulk limits | done |
 | Magical containers report a fixed weight, not their contents | done |
-| Bags' bulk varies with contents, chests' is fixed | open |
+| Bags' bulk varies with contents, chests' is fixed | done - a Chest was added with a fixed bulk beside the sack that swells |
 | Copper weighs 1 g and displaces 1 cc per coin | done |
 | Four coinages: copper, silver 10, gold 100, platinum 1000 | done |
 | Coins are not consolidated; deep finds come in better metal | done |
@@ -87,7 +87,7 @@ deliberate divergence.
 | Charged items recharge on a timer | done |
 | Only worn slots and belt slots can be activated | done |
 | Belts are containers sized in slots; a 10-slot belt is rare | done |
-| Wand Quiver slot | open |
+| Wand Quiver slot | done - a slot on the doll that takes wands and nothing else, and a wand in it is within reach. A spent wand reads as a Dead Wand. |
 
 ## The world
 
@@ -176,6 +176,7 @@ is simply a death sentence.
 | Doors on every floor, opened by walking into them | done - the keep had none at all: the pass that places them ran before the pass that builds the walls it looks for, so Open, Close, the blocked-door message and the door-opening code in the monster AI were all dead |
 | A closed door blocks sight, so a room is a sealed box | done, and now actually reachable |
 | Two people in one keep | tested - joining, chat, seeing each other, split floors, and an idle player not freezing the rest |
+| Anything consumable could be used at all | **fixed** - nothing in the game ever put anything on a belt, and "objects in your pack cannot be activated" was enforced, so every potion, scroll and wand in the game answered "That is buried in your pack". Dragging onto the belt or quiver stows; dragging back out returns it; and using something up now actually uses it up wherever it was carried |
 | The trap door and the animation trap | done - the last two of the original's fourteen. A trap door does no damage and drops you a floor; an animation trap raises the dead around you |
 | Levitation avoids pits and trap doors | done, with a Potion of Levitation to get it |
 | Saving, and carrying a character between evenings | done - autosave, File > Save, and a round trip test |

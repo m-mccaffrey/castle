@@ -440,6 +440,26 @@ class Player(Actor):
                     return inner
         return None
 
+    def consume(self, item, qty=1):
+        """Use something up, wherever it is being carried.
+
+        remove_item only knows about the pack, so once belts could really
+        hold things a potion drunk off the belt was never used up.
+        """
+        taken = self.remove_item(item, qty)
+        if taken is not None:
+            return taken
+        for worn in self.equipment.values():
+            contents = getattr(worn, "contents", None)
+            if not contents or item not in contents:
+                continue
+            if item.stackable and item.qty > qty:
+                item.qty -= qty
+                return Item(item.key, qty=qty)
+            contents.remove(item)
+            return item
+        return None
+
     def remove_item(self, item, qty=1):
         if item not in self.inventory:
             return None

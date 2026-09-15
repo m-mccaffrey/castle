@@ -980,6 +980,17 @@ def icon_sack():
     return ic.outline().shade()
 
 
+def icon_quiver():
+    ic = Icon()
+    ic.rect(10, 8, 12, 21, DARK_BROWN)               # the tube
+    ic.rect(10, 8, 12, 2, BROWN)
+    ic.rect(9, 14, 14, 3, (MAROON, YELLOW, 0.35))    # strap
+    for x in (12, 16, 20):                           # wands standing in it
+        ic.rect(x, 3, 2, 7, SILVER)
+        ic.rect(x, 3, 2, 2, AQUA)
+    return ic.outline().shade()
+
+
 def icon_chest():
     ic = Icon()
     ic.rect(3, 12, 26, 16, BROWN)

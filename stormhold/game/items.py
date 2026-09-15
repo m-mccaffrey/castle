@@ -123,6 +123,12 @@ BASES = {
     "coins":       dict(name="copper pieces", icon="gold", bulk=0, wt=0, value=1, depth=0, kind="coins"),
     "pack":        dict(name="Backpack", slot="pack", icon="pack", bulk=1000, wt=1000, value=60, depth=0, kind="container", capacity=12000, bulk_capacity=50000),
     "holdpack":    dict(name="Pack of Holding", slot="pack", icon="pack", bulk=1000, wt=1000, value=900, depth=9, kind="container", capacity=50000, bulk_capacity=150000, wt_fixed=5000, bulk_fixed=75000),
+    # "Two slots we did not have: a Wand Quiver, and belts that are
+    # containers sized in slots." A wand in the pack cannot be used; a wand in
+    # the quiver can.
+    "quiver":      dict(name="Wand Quiver", slot="quiver", icon="quiver", bulk=2000, wt=400, value=180, depth=5, kind="container", capacity=3000, bulk_capacity=9000, wands_only=True),
+    # A bag's bulk follows what is in it; a chest's does not.
+    "chest":       dict(name="Chest", slot=None, icon="chest", bulk=40000, wt=6000, value=70, depth=2, kind="container", capacity=30000, bulk_capacity=60000, bulk_fixed=40000),
     "sack":        dict(name="Sack", slot=None, icon="sack", bulk=700, wt=500, value=25, depth=0, kind="container", capacity=10000, bulk_capacity=12000),
 }
 
@@ -397,6 +403,9 @@ class Item:
                 prefix = "Enchanted "     # magical, but you cannot read it yet
             else:
                 prefix = "Normal "
+        # "A spent wand becomes a Dead Wand."
+        if base.get("charges") and self.known and self.charges <= 0:
+            label = f"Dead {label}"
         out = f"{prefix}{label}"
         if self.qty > 1:
             out = f"{self.qty} {pluralise(out, self.qty)}"
