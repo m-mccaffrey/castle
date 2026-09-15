@@ -18,11 +18,12 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from stormhold.common.constants import DIFFICULTIES                # noqa: E402
+from stormhold.common.constants import DIFFICULTIES, mana_cost     # noqa: E402
 from stormhold.game.actors import Player                           # noqa: E402
 from stormhold.game import combat                                  # noqa: E402
 from stormhold.game.items import Item                              # noqa: E402
 from stormhold.game.monsters import spawn_table                    # noqa: E402
+from stormhold.game.spells import SPELLS                           # noqa: E402
 from stormhold.game.world import World                             # noqa: E402
 
 # What a character who has been spending their loot is plausibly wearing at
@@ -105,8 +106,138 @@ def fight(world, party, foes, limit=4000):
     return False, rounds
 
 
+# --------------------------------------------------------------------------
+#  The same fight, played properly
+# --------------------------------------------------------------------------
+
+def arena(world, depth, party, foes, spread=4):
+    """Put everybody on a real floor, so spells have something to hit.
+
+    Fighting with the actors floating off the level was how an earlier
+    version of this file reported 0% for every spell: `cast` looks up what is
+    standing on the target square, and nothing ever was.
+    """
+    level = world.levels[depth]
+    spot = next((x, y) for y in range(2, level.h - 2)
+                for x in range(2, level.w - spread - 2)
+                if all(level.passable(x + dx, y + dy)
+                       for dx in range(-1, spread + 1) for dy in (-1, 0, 1)))
+    x, y = spot
+    for n, p in enumerate(party):
+        level.remove(p)
+        p.x, p.y = x, y + (n % 3) - 1
+        level.place(p)
+    for n, m in enumerate(foes):
+        m.x, m.y = x + 1 + n, y
+        level.place(m)
+    return level
+
+
+def stock_belt(p, heal=0, mana=0):
+    """A utility belt, because a potion in the pack cannot be drunk."""
+    belt = Item("beltutil")
+    belt.known = True
+    p.equipment["waist"] = belt
+    for key, count in (("potion_heal", heal), ("potion_mana", mana)):
+        for _ in range(count):
+            it = Item(key)
+            it.known = True
+            belt.contents.append(it)
+    return belt
+
+
+def a_potion_of(p, use):
+    belt = p.equipment.get("waist")
+    for it in getattr(belt, "contents", None) or []:
+        if it.base.get("use") == use:
+            return it
+    return None
+
+
+def best_attack_spell(p):
+    """The hardest hit this caster can pay for right now."""
+    best, best_dmg = None, 0
+    for name in p.spells:
+        spell = SPELLS.get(name)
+        if not spell or not spell.get("dmg"):
+            continue
+        if mana_cost(spell["mana"], p.level, spell.get("level", 1)) > p.mana:
+            continue
+        n, sides, per = spell["dmg"]
+        damage = n * (sides + 1) / 2 + per * p.level
+        if damage > best_dmg:
+            best, best_dmg = name, damage
+    return best
+
+
+def fight_well(world, depth, party, foes, limit=2000):
+    """The same fight, played by somebody who is paying attention.
+
+    Drinks when hurt, casts the hardest spell it can pay for, falls back on
+    the weapon when the mana runs out. Every move goes through
+    `do_player_action`, so this is the game's own rules and not a sketch of
+    them.
+    """
+    level = arena(world, depth, party, foes)
+    deaths = {p.id: p.deaths for p in party}
+    for _ in range(limit):
+        if all(m.dead for m in foes):
+            return True
+        if any(p.deaths != deaths[p.id] for p in party):
+            return False
+        for p in party:
+            target = next((m for m in foes if not m.dead), None)
+            if target is None:
+                break
+            if p.hp < p.max_hp * 0.45 and a_potion_of(p, "heal"):
+                world.do_player_action(level, p, {
+                    "a": "use", "id": a_potion_of(p, "heal").id})
+                continue
+            if p.mana < p.max_mana * 0.2 and a_potion_of(p, "mana"):
+                world.do_player_action(level, p, {
+                    "a": "use", "id": a_potion_of(p, "mana").id})
+                continue
+            spell = best_attack_spell(p)
+            if spell:
+                world.do_player_action(level, p, {"a": "cast", "spell": spell,
+                                                  "x": target.x, "y": target.y})
+                continue
+            combat.melee(world, p, target)
+        for m in foes:
+            if m.dead:
+                continue
+            swings = 100.0 / max(1, m.speed)
+            while swings > 0:
+                if swings < 1 and world.rng.random() > swings:
+                    break
+                combat.melee(world, m, world.rng.choice(party))
+                swings -= 1
+    return False
+
+
+def played_properly(setting, depth, foe, party_size=1, enchant=0, trials=50,
+                    spells=(), heal=0, mana=0, pack=1):
+    won = 0
+    for trial in range(trials):
+        w = World(seed=trial, difficulty=setting)
+        party = []
+        for n in range(party_size):
+            hero = w.add_player(f"Hero{n}", spell="Spark")
+            equip_like(hero, depth, enchant)
+            hero.spells.update(spells)
+            stock_belt(hero, heal, mana)
+            hero.recalc()
+            hero.hp, hero.mana = hero.max_hp, hero.max_mana
+            party.append(hero)
+        w.move_player_to(party[0], depth)
+        foes = [w.spawn(foe, 0, 0, depth) for _ in range(pack)]
+        won += fight_well(w, depth, party, foes)
+    return won / trials
+
+
 def main():
     ap = argparse.ArgumentParser()
+
     ap.add_argument("--difficulty", default=None,
                     help="one setting, or every setting if left out")
     ap.add_argument("--trials", type=int, default=300)
@@ -114,7 +245,38 @@ def main():
                     help="how many of them there are")
     ap.add_argument("--enchant", type=int, default=0,
                     help="how good the gear is, as a plus on everything")
+    ap.add_argument("--play", action="store_true",
+                    help="fight it properly instead: spells, potions, and a "
+                         "spell book the character could actually own")
+    ap.add_argument("--spells", default="Spark,Fireball,Lightning Bolt",
+                    help="what the character has learned, for --play")
+    ap.add_argument("--heal", type=int, default=3,
+                    help="healing potions on the belt, for --play")
+    ap.add_argument("--mana", type=int, default=2,
+                    help="mana potions on the belt, for --play")
     args = ap.parse_args()
+
+    if args.play:
+        spells = [n.strip() for n in args.spells.split(",") if n.strip() in SPELLS]
+        for setting in ([args.difficulty] if args.difficulty
+                        else [d[0] for d in DIFFICULTIES]):
+            print(f"\n=== {setting}, played properly "
+                  f"({args.trials} fights per row, +{args.enchant} gear, "
+                  f"party of {args.party}, {args.heal} healing and "
+                  f"{args.mana} mana potions, spells: {', '.join(spells)}) ===")
+            print(f"{'floor':>5}  {'1 foe':>7} {'2 foes':>7} {'3 foes':>7}  "
+                  f"typical resident")
+            for depth in (1, 5, 11, 14, 17, 20, 23, 25):
+                common = max(spawn_table(depth), key=lambda row: row[1])[0]
+                rates = [played_properly(setting, depth, common, args.party,
+                                         args.enchant, args.trials,
+                                         spells, args.heal, args.mana, pack)
+                         for pack in (1, 2, 3)]
+                name = World(seed=1, difficulty=setting).spawn(
+                    common, 0, 0, depth).name
+                print(f"{depth:5d}  {rates[0]:6.0%} {rates[1]:6.0%} "
+                      f"{rates[2]:6.0%}  {name}")
+        return
 
     settings = ([args.difficulty] if args.difficulty
                 else [d[0] for d in DIFFICULTIES])

@@ -173,6 +173,26 @@ class TestItems(unittest.TestCase):
                 self.assertGreaterEqual(it.weight, 0)
 
 
+    def test_the_keep_drops_spell_books(self):
+        """Chargen promises "books you find or buy" - so they must be findable."""
+        rng = random.Random(11)
+        for depth in (1, 8, 16, MAX_DEPTH):
+            books = [it for it in (generate_item(depth, rng) for _ in range(600))
+                     if it.spell]
+            self.assertTrue(books, f"no spell book ever dropped on floor {depth}")
+            for book in books:
+                self.assertIn(book.spell, SPELLS)
+                self.assertEqual(book.name(None), f"Tome of {book.spell}")
+                self.assertGreater(book.value(), 0)
+
+    def test_a_bare_tome_is_never_generated(self):
+        """A book with no spell on it would teach nothing."""
+        rng = random.Random(12)
+        for _ in range(3000):
+            it = generate_item(9, rng)
+            self.assertFalse(it.key == "tome" and not it.spell)
+
+
 class TestSpells(unittest.TestCase):
     def test_learning_is_gated_by_level_and_wits(self):
         ok, _ = can_learn("Fireball", 3, 10)

@@ -107,6 +107,23 @@ def can_learn(spell, level, intelligence):
     return True, ""
 
 
+def make_tome(name):
+    """The one place a spell book is built.
+
+    A book is an ordinary item of the "tome" base carrying the spell it
+    teaches; its name and price come from the spell, so the shelf in town and
+    the floor of the keep produce exactly the same object.
+    """
+    from .items import Item, BASES
+    book = Item("tome", spell=name)
+    book.base = dict(BASES["tome"])
+    book.base["name"] = f"Tome of {name}"
+    book.base["value"] = book_value(name)
+    book.base["icon"] = BOOK_ICONS.get(SPELLS[name]["school"], "book_red")
+    book.known = True
+    return book
+
+
 def spells_for_sale(depth, rng, count=5):
     """What the magic shop has on the shelf, scaled to how deep the party is."""
     pool = [n for n, s in SPELLS.items() if s["level"] <= max(3, depth + 3)]

@@ -2114,17 +2114,9 @@ class World:
                 it = Item(key)
                 it.known = True
                 items.append(it)
-            from .spells import spells_for_sale, book_value
+            from .spells import spells_for_sale, make_tome
             for name in spells_for_sale(depth, rng, 4):
-                book = Item("scroll_map", spell=name)
-                book.base = dict(BASES["scroll_map"])
-                book.base["name"] = f"Tome of {name}"
-                book.base["value"] = book_value(name)
-                book.base["icon"] = "book_red"
-                book.base["wt"] = 30
-                book.base["kind"] = "book"
-                book.known = True
-                items.append(book)
+                items.append(make_tome(name))
         elif shop == "temple":
             for key in ("potion_heal", "potion_cure", "scroll_uncurse"):
                 it = Item(key, qty=2)
