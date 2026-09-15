@@ -185,6 +185,29 @@ class TestItems(unittest.TestCase):
                 self.assertEqual(book.name(None), f"Tome of {book.spell}")
                 self.assertGreater(book.value(), 0)
 
+    def test_a_found_tome_teaches_its_spell(self):
+        """End to end: the book the keep drops is the book you can read."""
+        from stormhold.game.world import World
+        from stormhold.game.spells import make_tome
+        w = World(seed=5, difficulty="Intermediate")
+        p = w.add_player("Reader", spell="Spark")
+        w.move_player_to(p, 1)
+        belt = Item("belt")
+        belt.known = True
+        p.equipment["waist"] = belt
+        book = make_tome("Frost Shard")
+        p.inventory.append(book)
+        p.level, p.stats["intelligence"] = 5, 14
+        p.recalc()
+        # A book in the pack is out of reach, like any other activated thing.
+        w.do_player_action(w.levels[1], p, {"a": "use", "id": book.id})
+        self.assertNotIn("Frost Shard", p.spells)
+        w.do_player_action(w.levels[1], p, {"a": "stow", "id": book.id,
+                                            "slot": "waist"})
+        w.do_player_action(w.levels[1], p, {"a": "use", "id": book.id})
+        self.assertIn("Frost Shard", p.spells)
+        self.assertNotIn(book, belt.contents)
+
     def test_a_bare_tome_is_never_generated(self):
         """A book with no spell on it would teach nothing."""
         rng = random.Random(12)

@@ -65,8 +65,7 @@ def kit_out(s, wants=(("general", "Two Slot Belt"),
                 if store.confirm:
                     s.click(store.confirm["yes"].center)
                     s.settle(0.6)
-        s.key(pygame.K_ESCAPE)
-        s.settle(0.4)
+        back_to_the_map(s)
 
     s.key(pygame.K_i)
     s.settle(0.5)
@@ -79,8 +78,7 @@ def kit_out(s, wants=(("general", "Two Slot Belt"),
         rect, item = todo[0]
         s.drag(rect.center, pack.slot_rects[item["slot"]].center)
         s.settle(0.6)
-    s.key(pygame.K_ESCAPE)
-    s.settle(0.4)
+    back_to_the_map(s)
     # Dragging pack items onto the doll in pack order can end with the
     # starting dagger back in hand over the sword we just paid for.
     wear_the_best_of_what_you_have(s)
@@ -136,7 +134,18 @@ def go_home(s):
 
 
 def dive_back(s, depth):
-    """Down the stairs until we are back where we left off."""
+    """Down the stairs until we are back where we left off.
+
+    Not before resting, though. Waking at the temple on a fraction of your
+    hit points and walking straight back down the stairs is how one death
+    turns into ten.
+    """
+    for _ in range(30):
+        p = s.me()
+        if p.hp >= p.max_hp * 0.9 or monsters_near(s, 3):
+            break
+        s.app.play.send_action({"a": "rest"})
+        s.step(6)
     for _ in range(40):
         p = s.me()
         if p.depth >= depth:
@@ -271,6 +280,22 @@ def study_anything_readable(s):
             s.step(3)
 
 
+def back_to_the_map(s):
+    """Close whatever window is open, and nothing else.
+
+    Pressing Escape when no window is open *opens* the game menu, and the
+    menu then swallows every keystroke after it - which is how the bot came
+    to stand in the town square for four hundred turns, unable to press the
+    key for "go down the stairs".
+    """
+    for _ in range(4):
+        if s.app.scene.__class__.__name__ == "PlayScene":
+            return True
+        s.key(pygame.K_ESCAPE)
+        s.settle(0.3)
+    return s.app.scene.__class__.__name__ == "PlayScene"
+
+
 def visit(s, npc):
     """Stand next to a shopkeeper.
 
@@ -300,6 +325,11 @@ def go_shopping(s, log=None):
     world, p = s.world, s.me()
     town = world.levels[0]
     npcs = {n["shop"]: n for n in town.npcs}
+    # Only loot we walked into town with is for sale. Without this the junk
+    # dealer at the end of the round buys back, at a loss, the sword and
+    # armour we bought two shops earlier - which is where five thousand
+    # copper went in the last run.
+    for_sale = {it.id for it in p.inventory}
 
     for shop in ("weaponsmith", "armourer", "magic", "junk"):
         npc = npcs.get(shop)
@@ -309,9 +339,14 @@ def go_shopping(s, log=None):
             continue
         s.settle(0.4)
         # Sell everything this trade will take that we are not wearing.
+        have = ammunition(p)
         for item in list(p.inventory):
+            if item.id not in for_sale:
+                continue
             if item.spell or item.base.get("use") in ("heal", "mana", "cure"):
                 continue
+            if item.slot and worth_wearing(item, p.equipment.get(item.slot), have):
+                continue                # it is better than what we have on
             if world.shop_refusal(shop, item):
                 continue
             s.app.play.send_action({"a": "sell", "shop": shop, "id": item.id,
@@ -350,6 +385,12 @@ def go_shopping(s, log=None):
                     shelf.append((row, item))
                 elif item.base.get("use") in ("heal", "mana") and room_on_belt:
                     shelf.append((row, item))
+            # Keep enough back for a healing potion until there is one on
+            # the belt. Five weapons and no healing is how the bot used to
+            # come out of town.
+            if room_on_belt and p.copper < 2000:
+                shelf = [row_item for row_item in shelf
+                         if row_item[1].base.get("use") == "heal"]
             if shelf:
                 wanted = min(shelf, key=ranked)
             if wanted is None:
@@ -357,8 +398,11 @@ def go_shopping(s, log=None):
             s.app.play.send_action({"a": "buy", "shop": shop,
                                     "id": wanted[0]["id"], "npc": npc["x"]})
             s.step(3)
-        s.key(pygame.K_ESCAPE)
-        s.settle(0.3)
+            # Put it on before deciding what else to buy, or every weapon on
+            # the rack looks like an upgrade on the dagger still in hand.
+            wear_the_best_of_what_you_have(s)
+            keep_the_belt_stocked(s)
+        back_to_the_map(s)
 
     # A belt is the only thing that makes a potion usable at all.
     if p.equipment.get("waist") is None:
@@ -372,8 +416,7 @@ def go_shopping(s, log=None):
                                             "id": row["id"], "npc": npc["x"]})
                     s.step(3)
                     break
-            s.key(pygame.K_ESCAPE)
-            s.settle(0.3)
+            back_to_the_map(s)
 
     wear_the_best_of_what_you_have(s)
     study_anything_readable(s)
@@ -415,6 +458,11 @@ def crawl(s, to_depth=5, turns=3000, log=print, shopping=True):
         # nearest pile never leaves the first floor. After a while, go down.
         greedy = on_this_floor < 60
         near = monsters_near(s)
+        # "Near" for fighting is everything in sight; "near" for resting has
+        # to be much tighter. Nine squares is almost always occupied by
+        # something, so the bot never rested, never healed between fights,
+        # and ground itself down to nothing over a floor.
+        close = monsters_near(s, 3)
         keep_the_belt_stocked(s)
 
         # --- staying alive --------------------------------------------------
@@ -423,10 +471,12 @@ def crawl(s, to_depth=5, turns=3000, log=print, shopping=True):
             if potion is not None:
                 s.app.play.send_action({"a": "use", "id": potion.id})
                 s.step(4); note(); continue
-        if p.hp < p.max_hp * 0.35 and not near:
+        # Rest up to nearly full, not to a third: walking into the next room
+        # on eight hit points is how the last one died.
+        if p.hp < p.max_hp * 0.85 and not close:
             s.app.play.send_action({"a": "rest"})
             s.step(6); note(); continue
-        if not near and p.mana < p.max_mana * 0.3:
+        if not close and p.mana < p.max_mana * 0.3:
             potion = a_potion_of(s, "mana")
             if potion is not None:
                 s.app.play.send_action({"a": "use", "id": potion.id})
