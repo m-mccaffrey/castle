@@ -205,6 +205,23 @@ def article(word):
     return "an" if word[:1].lower() in "aeiou" else "a"
 
 
+def with_article(name):
+    """"a Normal Dagger", but "Gauntlets" and "3 Potions of Healing".
+
+    Names that already begin with a count, and names of things that are
+    grammatically plural - bracers, boots, gauntlets, leggings - take no
+    article at all.
+    """
+    if not name:
+        return name
+    if name[:1].isdigit():
+        return name
+    last = name.split()[-1].lower().strip('.,!"')
+    if last.endswith("s") and not last.endswith("ss"):
+        return name
+    return f"{article(name)} {name}"
+
+
 def pluralise(label, qty):
     """Two Potions of Healing, not two Potion of Healings."""
     if qty <= 1:

@@ -28,7 +28,7 @@ from ..common.fov import compute_fov, has_los, line_between
 from .level import generate_dungeon, generate_town
 from .actors import Player, NPC, make_monster, stat_bonus
 from .items import (Item, Appearances, generate_item, generate_gold,
-                    coin_metal, article, BASES)
+                    coin_metal, article, with_article, BASES)
 from .monsters import spawn_table
 from .spells import SPELLS, can_learn, elemental_factor, starting_spell
 from .traps import TRAPS, search_here, disarm_at, a_or_an
@@ -636,11 +636,9 @@ class World:
             return
         names = [i.name(self.appearances) for i in pile]
         if len(names) == 1:
-            one = names[0]
-            # "You see Purse here." Coins and quantities already read as a
-            # count, so only a bare singular name wants an article.
-            lead = "" if one[:1].isdigit() else f"{article(one)} "
-            self.msg(f"You see {lead}{one} here.", "loot", to=p)
+            # "You see Purse here." wants an article; "3 Potions" and
+            # "Gauntlets" do not.
+            self.msg(f"You see {with_article(names[0])} here.", "loot", to=p)
         else:
             self.msg(f"You see several things here: {', '.join(names)}.", "loot", to=p)
 
@@ -928,9 +926,8 @@ class World:
             self.msg("Your pack is full.", "warn", to=p)
             return FREE_COST
         level.take_ground_item(p.x, p.y, item)
-        picked = item.name(self.appearances)
-        lead = "" if picked[:1].isdigit() else f"{article(picked)} "
-        self.msg(f"You pick up {lead}{picked}.", "loot", to=p)
+        self.msg(f"You pick up {with_article(item.name(self.appearances))}.",
+                 "loot", to=p)
         self.sound("pickup", p.x, p.y, level.depth)
         return p.action_cost(PICKUP_COST) or PICKUP_COST
 
@@ -1932,9 +1929,8 @@ class World:
             return FREE_COST
         p.copper -= price
         self.appearances.identify(take.key)
-        name = take.name(self.appearances)
-        self.msg(f"You buy {article(name)} {name} for {price} copper.",
-                 "loot", to=p)
+        self.msg(f"You buy {with_article(take.name(self.appearances))} "
+                 f"for {price} copper.", "loot", to=p)
         self.sound("buy", p.x, p.y, level.depth)
         self.events.append({"t": "inv", "to": p.id})
         self.events.append({"t": "shop", "to": p.id, "npc": action.get("npc"),
@@ -1955,8 +1951,8 @@ class World:
                      f"for {price} copper. You will not see it again.",
                      "loot", to=p)
         else:
-            name = item.name(self.appearances)
-            self.msg(f"You sell {article(name)} {name} for {price} copper.",
+            self.msg(f"You sell {with_article(item.name(self.appearances))} "
+                     f"for {price} copper.",
                      "loot", to=p)
         self.sound("gold", p.x, p.y, level.depth)
         self.events.append({"t": "inv", "to": p.id})

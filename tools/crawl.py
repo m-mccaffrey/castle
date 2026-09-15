@@ -112,7 +112,7 @@ def crawl(s, to_depth=5, turns=3000, log=print):
         on_this_floor += 1
         # Killing things drops more things, so a bot that always walks to the
         # nearest pile never leaves the first floor. After a while, go down.
-        greedy = on_this_floor < 120
+        greedy = on_this_floor < 60
         near = monsters_near(s)
         if p.hp < p.max_hp * 0.35 and not near:
             s.app.play.send_action({"a": "rest"})
@@ -138,7 +138,11 @@ def crawl(s, to_depth=5, turns=3000, log=print):
             if (p.x, p.y) == tuple(lv.down_at):
                 s.key(pygame.K_PERIOD, mod=pygame.KMOD_SHIFT)
                 s.settle(1.2); note(); continue
-            step_toward(*lv.down_at); note(); continue
+            # Walking one greedy step at a time gets stuck against the first
+            # wall between here and the stairs; go by the actual path.
+            if not s.walk_to(*lv.down_at, limit=60):
+                step_toward(*lv.down_at)
+            note(); continue
         break
     note()
     return took, order

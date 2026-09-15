@@ -1173,3 +1173,25 @@ class TestSortPack(unittest.TestCase):
         potions = [i for i in self.p.inventory if i.base.get("kind") == "potion"]
         self.assertTrue(self.world.appearances.is_known(potions[0].key))
         self.assertFalse(self.world.appearances.is_known(potions[-1].key))
+
+
+class TestArticles(unittest.TestCase):
+    """Small words, but they are in every line of the log."""
+
+    def names(self, *pairs):
+        from stormhold.game.items import Item, with_article
+        return [with_article(Item(k).name(None)) for k in pairs]
+
+    def test_singular_things_get_one(self):
+        a, b = self.names("dagger", "axe")
+        self.assertTrue(a.startswith("a "), a)
+        self.assertTrue(b.startswith("a "), b)
+
+    def test_plural_things_do_not(self):
+        for text in self.names("bracers", "gauntlets", "boots", "leggings"):
+            self.assertFalse(text.startswith(("a ", "an ")), text)
+
+    def test_a_counted_stack_does_not(self):
+        from stormhold.game.items import Item, with_article
+        text = with_article(Item("arrow", qty=12).name(None))
+        self.assertTrue(text.startswith("12 "), text)
