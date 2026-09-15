@@ -153,6 +153,12 @@ is simply a death sentence.
 |---|---|
 | Rations, and eating them for hit points | removed - the original has no food, hunger or eating of any kind; "Food" appears once in the executable as an object category and nowhere in the manual |
 
+## Known rough edges in our own window
+
+| Issue | Note |
+|---|---|
+| Overlay hit targets are computed during draw, not layout | Correct after the first frame, so a click in the ~33ms before a screen's first draw is swallowed. Harmless in practice; recorded rather than papered over. |
+
 ## Deliberate divergences
 
 | Ours | Why |

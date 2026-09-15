@@ -17,7 +17,9 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 import pygame                                            # noqa: E402
 
 from stormhold.ui.app import (App, MenuScene, CharGenScene,      # noqa: E402
-                              StoreScene, ServiceScene)
+                              StoreScene, ServiceScene, PackScene,
+                              SpellScene, SheetScene, AttributesScene,
+                              MenuOverlay, HelpScene, OverlayScene)
 from stormhold.game.world import World                            # noqa: E402
 
 SIZES = [(1024, 700), (1280, 800), (1440, 900), (1920, 1080)]
@@ -179,6 +181,95 @@ class TestStoreIsTheInventory(unittest.TestCase):
         second.draw(self.app.screen)
         self.assertIsNot(self.app.under(first), first)
         self.assertIs(self.app.under(second), first)
+
+
+class TestEveryScene(unittest.TestCase):
+    """Every screen, at every sensible size, drawn and clicked.
+
+    Two of the first three screens tested this way had real bugs - buttons that
+    were drawn in one place and hit-tested in another, and an overlay stack that
+    recursed until Python gave up. The rest deserve the same treatment rather
+    than an assumption.
+    """
+
+    def setUp(self):
+        self.app = make_app()
+        self.world = World(seed=7)
+        self.player = self.world.add_player("Subject")
+        self.app.inventory = self.world.inventory_view(self.player)
+        self.app.play = _PlayStub(self.world.self_view(self.player))
+        self.app.play.spells = sorted(self.player.spells)
+        self.acted = []
+        self.app.act = self.acted.append
+
+    def overlays(self):
+        play = self.app.play
+        return [PackScene(self.app),
+                SpellScene(self.app, play),
+                SheetScene(self.app),
+                AttributesScene(self.app),
+                MenuOverlay(self.app),
+                StoreScene(self.app, self.world.shop_view(
+                    self.player, "general", 1, "Pell's General Store")),
+                ServiceScene(self.app, self.world.shop_view(
+                    self.player, "temple", 2, "Temple"))]
+
+    def test_every_scene_draws_at_every_size(self):
+        for size in SIZES:
+            self.app.screen = pygame.display.set_mode(size)
+            for scene in [MenuScene(self.app), CharGenScene(self.app),
+                          HelpScene(self.app)] + self.overlays():
+                with self.subTest(scene=type(scene).__name__, size=size):
+                    self.app.scenes = [MenuScene(self.app)]
+                    self.app.push(scene)
+                    scene.draw(self.app.screen)
+
+    def test_no_overlay_leaves_a_placeholder_hit_target(self):
+        """A rect of 10x10 at the origin means draw() never positioned it."""
+        self.app.screen = pygame.display.set_mode((1280, 800))
+        stale = pygame.Rect(0, 0, 10, 10)
+        for scene in self.overlays():
+            with self.subTest(scene=type(scene).__name__):
+                self.app.scenes = [MenuScene(self.app)]
+                self.app.push(scene)
+                scene.draw(self.app.screen)
+                for name in dir(scene):
+                    if name.startswith("_"):
+                        continue
+                    value = getattr(scene, name, None)
+                    if isinstance(value, pygame.Rect):
+                        self.assertNotEqual(value, stale,
+                                            f"{type(scene).__name__}.{name}")
+
+    def test_clicking_anywhere_on_any_scene_never_raises(self):
+        """A stray click must not take the game down."""
+        self.app.screen = pygame.display.set_mode((1280, 800))
+        w, h = self.app.screen.get_size()
+        spots = [(5, 5), (w // 2, h // 2), (w - 5, h - 5),
+                 (w // 4, h // 3), (w - 40, 40)]
+        for scene in self.overlays():
+            self.app.scenes = [MenuScene(self.app)]
+            self.app.push(scene)
+            scene.draw(self.app.screen)
+            for pos in spots:
+                with self.subTest(scene=type(scene).__name__, pos=pos):
+                    for kind in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP):
+                        scene.handle(pygame.event.Event(kind, pos=pos, button=1))
+                    scene.draw(self.app.screen)
+
+    def test_keyboard_on_every_scene_never_raises(self):
+        self.app.screen = pygame.display.set_mode((1280, 800))
+        keys = [pygame.K_ESCAPE, pygame.K_RETURN, pygame.K_TAB, pygame.K_UP,
+                pygame.K_DOWN, pygame.K_a, pygame.K_1]
+        for scene in self.overlays():
+            self.app.scenes = [MenuScene(self.app)]
+            self.app.push(scene)
+            scene.draw(self.app.screen)
+            for key in keys:
+                with self.subTest(scene=type(scene).__name__, key=key):
+                    scene.handle(pygame.event.Event(pygame.KEYDOWN, key=key,
+                                                    unicode="a", mod=0))
+                    scene.draw(self.app.screen)
 
 
 if __name__ == "__main__":
