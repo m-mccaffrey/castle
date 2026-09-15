@@ -153,6 +153,19 @@ def enemies_near(level, x, y, radius):
             and chebyshev(a.x, a.y, x, y) <= radius]
 
 
+def enemies_in_sight(world, level, player, radius):
+    """The creatures this player can actually see.
+
+    "Not with something in sight" was being decided by distance alone, so a
+    creature around a corner stopped you resting while the same creature was
+    "nothing in sight to shoot at". Sight is what the messages claim, so
+    sight is what they should ask about.
+    """
+    world.update_fov(player)
+    return [a for a in enemies_near(level, player.x, player.y, radius)
+            if (a.y * level.w + a.x) in player.fov]
+
+
 def players_near(level, x, y, radius):
     return [a for a in level.actors.values()
             if a.kind == "player" and not a.dead

@@ -348,7 +348,7 @@ class World:
                 actor.resting = False
                 self.msg("You wake, clear-headed." if for_mana else "You feel rested.",
                          "good", to=actor)
-            elif not for_mana and combat.enemies_near(level, actor.x, actor.y, 8):
+            elif not for_mana and combat.enemies_in_sight(self, level, actor, 8):
                 # Resting breaks the moment something comes into view; sleep is
                 # deeper and breaks only when something actually hits you,
                 # which combat handles.
@@ -692,7 +692,7 @@ class World:
 
     def _act_rest(self, level, p, action):
         """Sit still until you are mended, or until something interrupts."""
-        if combat.enemies_near(level, p.x, p.y, 8):
+        if combat.enemies_in_sight(self, level, p, 8):
             self.msg("Not with something watching you.", "warn", to=p)
             return FREE_COST
         if p.hp >= p.max_hp and p.mana >= p.max_mana:
@@ -812,7 +812,7 @@ class World:
         total = 0
         prev_ways = open_ways(p.x, p.y)
         for step in range(40):
-            if combat.enemies_near(level, p.x, p.y, 7):
+            if combat.enemies_in_sight(self, level, p, 7):
                 if step == 0:
                     self.msg("Not with something in sight.", "warn", to=p)
                 break

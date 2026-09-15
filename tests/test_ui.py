@@ -633,3 +633,77 @@ class TestTheFastMap(unittest.TestCase):
             with self.subTest(size=size):
                 self.app.screen = pygame.display.set_mode(size)
                 self.play.draw(self.app.screen)
+
+
+class TestTargetingASpell(unittest.TestCase):
+    """Choosing a spell, then clicking what to aim it at.
+
+    The whole path - spellbook, target mode, click on the map, the action
+    that reaches the server - had never been driven.
+    """
+
+    def setUp(self):
+        self.app = make_app()
+        self.app.screen = pygame.display.set_mode((1280, 800))
+        self.world = World(seed=3)
+        self.player = self.world.add_player("Caster", spell="Spark")
+        self.world.move_player_to(self.player, 1)
+        self.world.update_fov(self.player, force=True)
+        self.play = PlayScene(self.app)
+        self.app.play = self.play
+        self.app.replace(self.play)
+        import stormhold.net.protocol as P
+        level = self.world.levels[1]
+        self.play.on_message(P.S_LEVEL, {"w": level.w, "h": level.h, "depth": 1,
+                                         "name": level.name, "town": False})
+        view = self.world.snapshot_for(self.player)
+        self.play.you, self.play.actors = view["you"], view["actors"]
+        self.play.items, self.play.party = view["items"], view["party"]
+        self.world.resend_level(self.player)
+        self.play.map.apply(self.player.pending_tiles)
+        self.sent = []
+        self.play.send_action = self.sent.append
+        self.play.draw(self.app.screen)
+
+    def pixel_for(self, tx, ty):
+        """Walk the viewport until screen_to_tile hands back this square."""
+        view = self.play.viewport(self.app.screen)
+        for py in range(view.y + 2, view.bottom - 2, 4):
+            for px in range(view.x + 2, view.right - 2, 4):
+                if self.play.screen_to_tile((px, py)) == (tx, ty):
+                    return (px, py)
+        return None
+
+    def test_choosing_a_ranged_spell_asks_for_a_target(self):
+        from stormhold.game.spells import SPELLS
+        self.play.begin_target("Spark", SPELLS["Spark"])
+        self.assertEqual(self.play.target_mode, ("spell", "Spark"))
+        self.assertEqual(self.sent, [], "it cast before you aimed it")
+        self.assertTrue(any("target" in m[0] for m in self.play.messages))
+
+    def test_clicking_a_square_casts_at_that_square(self):
+        from stormhold.game.spells import SPELLS
+        self.play.begin_target("Spark", SPELLS["Spark"])
+        me = self.play.me()
+        target = (me["x"] + 2, me["y"])
+        pixel = self.pixel_for(*target)
+        self.assertIsNotNone(pixel, "no pixel maps to the square beside you")
+        self.play.click_map(pixel)
+        self.assertEqual(self.sent, [{"a": "cast", "spell": "Spark",
+                                      "x": target[0], "y": target[1]}])
+        self.assertIsNone(self.play.target_mode, "target mode never ended")
+
+    def test_a_spell_that_needs_no_target_goes_off_at_once(self):
+        from stormhold.game.spells import SPELLS
+        self.play.begin_target("Shield", SPELLS["Shield"])
+        self.assertIsNone(self.play.target_mode)
+        self.assertEqual(self.sent, [{"a": "cast", "spell": "Shield"}])
+
+    def test_escape_calls_it_off(self):
+        from stormhold.game.spells import SPELLS
+        self.play.begin_target("Spark", SPELLS["Spark"])
+        self.play.handle(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_ESCAPE,
+                                            unicode="", mod=0))
+        self.assertIsNone(self.play.target_mode)
+        self.assertEqual(self.sent, [])
+        self.assertTrue(any("Never mind" in m[0] for m in self.play.messages))
