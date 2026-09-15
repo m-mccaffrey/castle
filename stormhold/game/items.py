@@ -201,6 +201,32 @@ class Appearances:
         return base["name"]
 
 
+# The original grades gear in its name: "Broken, Ripped, Rusty, Normal,
+# Enchanted, Cursed". The first three are what a negative enchantment looks
+# like, and which one you get depends on what the thing is made of.
+DAMAGED = {
+    "cloth": "Ripped", "leather": "Ripped",
+    "metal": "Rusty", "wood": "Broken",
+}
+MATERIAL = {
+    "robe": "cloth", "cloak": "cloth",
+    "leather": "leather", "studded": "leather", "cap": "leather",
+    "gloves": "leather", "boots": "leather", "leggings": "leather",
+    "belt": "leather", "belt3": "leather", "beltutil": "leather",
+    "buckler": "wood", "shield": "wood", "quarterstaff": "wood",
+    "runestaff": "wood", "shortbow": "wood", "longbow": "wood",
+    "crossbow": "wood", "wand": "wood",
+}
+
+
+def damaged_prefix(key, base):
+    """What a battered one of these is called."""
+    material = MATERIAL.get(key)
+    if material is None:
+        material = "metal"                # mail, plate, blades, hafted
+    return DAMAGED[material]
+
+
 def article(word):
     """a or an, depending on how the next word starts."""
     return "an" if word[:1].lower() in "aeiou" else "a"
@@ -360,7 +386,9 @@ class Item:
         if gradeable:
             if self.known or shop:
                 if self.cursed and self.enchant <= 0:
-                    prefix = f"cursed {self.enchant:+d} " if self.enchant else "cursed "
+                    prefix = f"Cursed {self.enchant:+d} " if self.enchant else "Cursed "
+                elif self.enchant < 0:
+                    prefix = f"{damaged_prefix(self.key, base)} {self.enchant:+d} "
                 elif self.enchant:
                     prefix = f"{self.enchant:+d} "
                 else:

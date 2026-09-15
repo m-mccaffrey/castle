@@ -1958,6 +1958,27 @@ class SheetScene(OverlayScene):
     title = "Character"
     size = (720, 486)
 
+    def __init__(self, app):
+        super().__init__(app)
+        # It looked like a text field and was a drawn rectangle. The original
+        # lets you rename the character mid-game, "adding such descriptions as
+        # you feel you deserve (the bold, the mighty)".
+        self.name = W.TextField((0, 0, 220, 22),
+                                (app.play.you or {}).get("name", ""), 24)
+
+    def handle(self, event):
+        # Ask first: the field unfocuses itself on Enter, so checking
+        # afterwards would never see that the name was being edited.
+        editing = self.name.focused
+        self.name.handle(event)
+        if (editing and event.type == pygame.KEYDOWN
+                and event.key in (pygame.K_RETURN, pygame.K_KP_ENTER)):
+            self.app.act({"a": "callme", "name": self.name.value})
+            return
+        if editing and event.type == pygame.KEYDOWN:
+            return                       # typing is not a shortcut
+        super().handle(event)
+
     def draw(self, surf):
         below = self.app.under(self)
         if below is not None:
@@ -1968,9 +1989,14 @@ class SheetScene(OverlayScene):
         from ..common.constants import format_clock
 
         W.text(surf, "Character name:", (client.x + 6, client.y + 4), 13, bold=True)
-        namebox = pygame.Rect(client.x + 128, client.y, 220, 22)
-        W.panel(surf, namebox, raised=False, fill=WHITE)
-        W.text(surf, you.get("name", ""), (namebox.x + 6, namebox.y + 3), 14)
+        self.name.rect = pygame.Rect(client.x + 128, client.y, 220, 22)
+        if not self.name.focused and self.name.value != you.get("name", ""):
+            self.name.value = you.get("name", "")
+        self.name.draw(surf)
+        if self.name.focused:
+            W.text(surf, "Enter to take the name.",
+                   (self.name.rect.right + 10, client.y + 4), 12,
+                   colour=(90, 90, 90))
 
         # ---- the gauges ----------------------------------------------------
         gauge_top = client.y + 34

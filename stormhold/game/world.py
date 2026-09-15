@@ -1704,6 +1704,29 @@ class World:
         self.events.append({"t": "inv", "to": p.id})
         return FREE_COST
 
+    def _act_callme(self, level, p, action):
+        """Rename the character.
+
+        "You may rename your character during the game, adding such
+        descriptions as you feel you deserve (the bold, the mighty)."
+        """
+        raw = str(action.get("name", ""))
+        clean = "".join(ch for ch in raw if ch.isprintable()).strip()[:24]
+        if not clean or clean == p.name:
+            return FREE_COST
+        taken = {q.name.lower() for q in self.players.values() if q is not p}
+        if clean.lower() in taken:
+            self.msg(f"Somebody in the keep is already called {clean}.",
+                     "warn", to=p)
+            return FREE_COST
+        was = p.name
+        p.name = clean
+        self.msg(f"{was} will be known as {clean} from here on.", "good",
+                 depth=p.depth)
+        self.events.append({"t": "renamed", "to": p.id, "was": was,
+                            "name": clean})
+        return FREE_COST
+
     def _act_rename(self, level, p, action):
         """Let a player call a thing whatever they like."""
         item = p.find_item(int(action.get("id", 0)))

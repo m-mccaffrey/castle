@@ -1552,3 +1552,77 @@ class TestTheMonsterBehavioursWeLacked(unittest.TestCase):
         for key in employers:
             self.assertIn(MONSTERS[key]["hires"], MONSTERS,
                           "hired something that does not exist")
+
+
+class TestNamingYourself(unittest.TestCase):
+    """"You may rename your character during the game, adding such
+    descriptions as you feel you deserve (the bold, the mighty)."
+
+    The character sheet had a box that looked like a text field and was a
+    drawn rectangle.
+    """
+
+    def setUp(self):
+        from stormhold.game.world import World
+        self.world = World(seed=3)
+        self.p = self.world.add_player("Hild", spell="Spark")
+        self.level = self.world.levels[0]
+
+    def rename(self, name):
+        self.world.events.clear()
+        self.world.do_player_action(self.level, self.p,
+                                    {"a": "callme", "name": name})
+        return [e["text"] for e in self.world.events if e["t"] == "msg"]
+
+    def test_you_can_add_a_description_to_your_name(self):
+        said = self.rename("Hild the Bold")
+        self.assertEqual(self.p.name, "Hild the Bold")
+        self.assertTrue(any("known as Hild the Bold" in m for m in said), said)
+
+    def test_it_tells_the_rest_of_the_party(self):
+        self.world.events.clear()
+        self.world.do_player_action(self.level, self.p,
+                                    {"a": "callme", "name": "Hild the Bold"})
+        told = [e for e in self.world.events
+                if e["t"] == "msg" and e.get("depth") is not None]
+        self.assertTrue(told, "nobody else was told")
+
+    def test_you_cannot_take_a_name_somebody_else_is_using(self):
+        other = self.world.add_player("Bjorn", spell="Spark")
+        said = self.rename("Bjorn")
+        self.assertEqual(self.p.name, "Hild")
+        self.assertTrue(any("already called" in m for m in said), said)
+
+    def test_an_empty_name_changes_nothing(self):
+        self.rename("   ")
+        self.assertEqual(self.p.name, "Hild")
+
+
+class TestQualityPrefixes(unittest.TestCase):
+    """"Broken, Ripped, Rusty, Normal, Enchanted, Cursed" - we had three."""
+
+    def named(self, key, enchant=0, cursed=False, known=True):
+        from stormhold.game.items import Item
+        item = Item(key, enchant=enchant, cursed=cursed)
+        item.known = known
+        return item.name(None)
+
+    def test_plain_gear_is_normal(self):
+        self.assertTrue(self.named("dagger").startswith("Normal"))
+
+    def test_a_battered_thing_is_named_for_what_it_is_made_of(self):
+        self.assertTrue(self.named("leather", -2).startswith("Ripped"))
+        self.assertTrue(self.named("chainmail", -1).startswith("Rusty"))
+        self.assertTrue(self.named("shortbow", -1).startswith("Broken"))
+        self.assertTrue(self.named("dagger", -1).startswith("Rusty"))
+
+    def test_a_good_thing_keeps_its_plus(self):
+        self.assertTrue(self.named("dagger", 2).startswith("+2"))
+
+    def test_a_cursed_thing_says_so(self):
+        self.assertTrue(self.named("leather", -1, cursed=True).startswith("Cursed"))
+
+    def test_before_you_know_it_it_is_only_enchanted_or_normal(self):
+        self.assertTrue(self.named("dagger", 2, known=False).startswith("Enchanted"))
+        self.assertTrue(self.named("dagger", -2, known=False).startswith("Enchanted"))
+        self.assertTrue(self.named("dagger", 0, known=False).startswith("Normal"))

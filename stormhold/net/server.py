@@ -345,6 +345,14 @@ class GameServer:
                 s = self.session_for(event["to"])
                 if s:
                     self.send_level(s)
+            elif etype == "renamed":
+                # The save is keyed by name, so carry it across and forget the
+                # old key, or the character would fork in two.
+                self.saves.pop(str(event.get("was", "")).lower(), None)
+                s = self.session_for(event["to"])
+                if s and s.player:
+                    self.store_save(s.player)
+                    self.flush_saves()
             elif etype == "died":
                 s = self.session_for(event["to"])
                 if s:

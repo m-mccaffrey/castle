@@ -41,7 +41,7 @@ deliberate divergence.
 | Mana regenerates about 1 per hour | done |
 | Level gain restores mana fully | done |
 | Undead drain experience and can cost a level, losing its gains | partial |
-| Character may be renamed mid-game | open |
+| Character may be renamed mid-game | done - the character sheet's name box used to be a drawn rectangle that looked like a field; it is one now, and the save follows the new name |
 
 ## Magic
 
@@ -76,7 +76,7 @@ deliberate divergence.
 | Item figures in grams and cc from the Object Directory | done |
 | Armour value ladder 0-54 in sixes; shields a size x material grid | done |
 | Weapon Class 0-12 sets damage; same class, same damage | open |
-| Quality prefixes: Broken, Ripped, Rusty, Normal, Enchanted, Cursed | partial |
+| Quality prefixes: Broken, Ripped, Rusty, Normal, Enchanted, Cursed | done - a battered thing is named for what it is made of: Ripped leather, Rusty steel, Broken wood |
 | Class identify: one of a type identifies all of that type | done |
 | Identify on use, identify on wield | done |
 | The Sage identifies for a fee | done |
@@ -101,8 +101,8 @@ deliberate divergence.
 | A known trap is less likely to spring, not immune | done |
 | Searching and disarming may take several tries; disarming can spring it | done |
 | Trap list: arrow, dart, blade, fire, acid, three gases, pit, deadfall, teleport, glyph | done |
-| Trap door drops you a level; animation trap raises the dead | open |
-| Levitation avoids gravity-operated traps | open |
+| Trap door drops you a level; animation trap raises the dead | done |
+| Levitation avoids gravity-operated traps | done |
 | Difficulty alters monsters, traps, treasure and the XP curve | partial |
 
 ## Monsters
@@ -133,7 +133,7 @@ is simply a death sentence.
 
 | Rule | Status |
 |---|---|
-| Map view of the explored level, with a Fast Map option | partial |
+| Map view of the explored level, with a Fast Map option | done |
 | Right click anything for a popup description, capped at 10 lines | done - on the map it names what is there and gives a creature's condition in words rather than numbers; in the pack and the store it gives name, weight, bulk and what the thing does. There was no popup of any kind. |
 | Drag the player icon to walk; aborts if attacked or trapped | open |
 | Double-click yourself to take stairs | done |
