@@ -53,6 +53,12 @@ SPELLS = OrderedDict([
     ("Detect Life",     dict(school="Divination", level=2,  int_req=9,  mana=3,  rng=0, detect="monsters", dur=80, desc="Shows every living thing on the floor.")),
     ("Cartography",     dict(school="Divination", level=5,  int_req=11, mana=8,  rng=0, reveal=True, desc="The whole floor's plan, laid out in your mind.")),
     ("Revelation",      dict(school="Divination", level=7,  int_req=12, mana=10, rng=0, identify=True, desc="Tells you truly what one thing in your pack is.")),
+    # "Clairvoyance ... maps a 10 by 10 area around you, and shows secret
+    # doors and traps in it" - a near view that tells you more than the far
+    # one does.
+    ("Clairvoyance",    dict(school="Divination", level=4,  int_req=10, mana=5,  rng=0, clairvoyance=10, desc="The ground around you, and what is hidden in it.")),
+    # "Detect Traps is certain within ten squares and falls off beyond."
+    ("Detect Traps",    dict(school="Divination", level=3,  int_req=10, mana=4,  rng=0, find_traps=10, desc="Every trap nearby, and a chance at the far ones.")),
     ("Treasure Sense",  dict(school="Divination", level=6,  int_req=11, mana=6,  rng=0, detect="items", dur=80, desc="Shows where the gold and the goods are lying.")),
     ("True Sight",      dict(school="Divination", level=13, int_req=14, mana=14, rng=0, truesight=True, dur=60, desc="See in the dark, and see what is hidden.")),
 

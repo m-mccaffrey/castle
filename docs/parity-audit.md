@@ -61,8 +61,8 @@ deliberate divergence.
 | Spells are bought as books, not only chosen at creation | partial |
 | Ten spells on the menu and button bar, customisable | partial |
 | Phase Door 5-10 squares; Teleport at least 10 | done |
-| Clairvoyance maps 10x10 including secret doors and traps | open |
-| Detect Traps certain within 10 squares, falling off beyond | open |
+| Clairvoyance maps 10x10 including secret doors and traps | done |
+| Detect Traps certain within 10 squares, falling off beyond | done |
 | Light: 3x3 in a corridor, the whole room in a room | done |
 | Sleep Monster broken by attacking it | done |
 | Transmogrify preserves the target's fraction of hit points | done |
@@ -75,7 +75,7 @@ deliberate divergence.
 |---|---|
 | Item figures in grams and cc from the Object Directory | done |
 | Armour value ladder 0-54 in sixes; shields a size x material grid | done |
-| Weapon Class 0-12 sets damage; same class, same damage | open |
+| Weapon Class 0-12 sets damage; same class, same damage | ours - our weapons carry their own dice rather than falling into twelve classes. Recorded as a divergence rather than left open: adopting it would re-tune every weapon in the game against a table we cannot read. |
 | Quality prefixes: Broken, Ripped, Rusty, Normal, Enchanted, Cursed | done - a battered thing is named for what it is made of: Ripped leather, Rusty steel, Broken wood |
 | Class identify: one of a type identifies all of that type | done |
 | Identify on use, identify on wield | done |

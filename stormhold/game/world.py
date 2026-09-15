@@ -1387,6 +1387,42 @@ class World:
         if spell.get("reveal"):
             self.reveal_level(p, level)
             self.msg("The whole floor lies open in your mind.", "good", to=p)
+        if spell.get("clairvoyance"):
+            radius = spell["clairvoyance"]
+            mem = self.memory_for(p, level)
+            found = 0
+            for y in range(max(0, p.y - radius), min(level.h, p.y + radius + 1)):
+                for x in range(max(0, p.x - radius), min(level.w, p.x + radius + 1)):
+                    i = level.idx(x, y)
+                    if level.tiles[i] != T.VOID and not mem[i]:
+                        mem[i] = 1
+                        p.pending_tiles.extend((x, y, level.tiles[i]))
+                    secret = level.secrets.get((x, y))
+                    if secret and not secret["found"]:
+                        secret["found"] = True
+                        self.set_tile(level, x, y, T.DOOR)
+                        found += 1
+                    trap = level.traps.get((x, y))
+                    if trap and not trap["found"]:
+                        trap["found"] = True
+                        found += 1
+            self.msg("The ground around you comes clear." +
+                     (f" {found} things were hiding in it." if found else ""),
+                     "good", to=p)
+        if spell.get("find_traps"):
+            # Certain inside the radius, and a fading chance beyond it.
+            sure = spell["find_traps"]
+            found = 0
+            for (x, y), trap in level.traps.items():
+                if trap["found"]:
+                    continue
+                gap = chebyshev(x, y, p.x, p.y)
+                if gap <= sure or self.rng.random() < sure / max(1, gap * 2):
+                    trap["found"] = True
+                    found += 1
+            self.msg(f"You sense {found} trap{'' if found == 1 else 's'}."
+                     if found else "Nothing underfoot is waiting for you.",
+                     "good" if found else "info", to=p)
         if spell.get("identify"):
             target = p.find_item(int(action.get("target", 0)))
             if target is not None:

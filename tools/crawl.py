@@ -38,7 +38,9 @@ def make_character(s, spread=(("strength", 6), ("dexterity", 4),
     s.settle(2.5)
 
 
-def kit_out(s, wants=(("armourer", "Leather Armour"), ("weaponsmith", "Short Sword"))):
+def kit_out(s, wants=(("general", "Two Slot Belt"),
+                      ("armourer", "Leather Armour"),
+                      ("weaponsmith", "Short Sword"))):
     town = s.level()
     for shop, want in wants:
         npc = [n for n in town.npcs if n["shop"] == shop][0]
@@ -60,7 +62,7 @@ def kit_out(s, wants=(("armourer", "Leather Armour"), ("weaponsmith", "Short Swo
     s.key(pygame.K_i)
     s.settle(0.5)
     pack = s.app.scene
-    for _ in range(6):
+    for _ in range(8):
         pack.draw(s.app.screen)
         todo = [(r, i) for r, i in pack.cell_rects if i.get("slot")]
         if not todo:
@@ -70,6 +72,29 @@ def kit_out(s, wants=(("armourer", "Leather Armour"), ("weaponsmith", "Short Swo
         s.settle(0.6)
     s.key(pygame.K_ESCAPE)
     s.settle(0.4)
+
+
+def keep_the_belt_stocked(s):
+    """Put healing on the belt, since nothing in the pack can be drunk."""
+    p = s.me()
+    belt = p.equipment.get("waist")
+    if belt is None or belt.base.get("belt_slots") is None:
+        return
+    if len(belt.contents) >= belt.base["belt_slots"]:
+        return
+    for item in list(p.inventory):
+        if item.base.get("use") in ("heal", "mana", "cure"):
+            s.app.play.send_action({"a": "stow", "id": item.id, "slot": "waist"})
+            s.step(3)
+            return
+
+
+def healing_on_the_belt(s):
+    belt = s.me().equipment.get("waist")
+    for item in getattr(belt, "contents", None) or []:
+        if item.base.get("use") == "heal":
+            return item
+    return None
 
 
 def monsters_near(s, reach=9):
@@ -114,6 +139,12 @@ def crawl(s, to_depth=5, turns=3000, log=print):
         # nearest pile never leaves the first floor. After a while, go down.
         greedy = on_this_floor < 60
         near = monsters_near(s)
+        keep_the_belt_stocked(s)
+        if p.hp < p.max_hp * 0.5:
+            potion = healing_on_the_belt(s)
+            if potion is not None:
+                s.app.play.send_action({"a": "use", "id": potion.id})
+                s.step(4); note(); continue
         if p.hp < p.max_hp * 0.35 and not near:
             s.app.play.send_action({"a": "rest"})
             s.step(6); note(); continue

@@ -1810,3 +1810,72 @@ class TestThingsCanActuallyBeUsed(unittest.TestCase):
                 holder.contents.append(Item("potion_heal"))
         self.assertEqual(chest.bulk, empty_chest, "the chest swelled")
         self.assertGreater(sack.bulk, empty_sack, "the sack did not")
+
+
+class TestTheTwoMissingDivinations(unittest.TestCase):
+    """Clairvoyance and Detect Traps, both open rows in the audit."""
+
+    def setUp(self):
+        from stormhold.game.world import World
+        self.world = World(seed=5)
+        self.p = self.world.add_player("Seer", spell="Spark")
+        self.p.level = 12
+        self.p.stats = {k: 16 for k in self.p.stats}
+        self.p.recalc()
+        self.p.mana = self.p.max_mana
+        self.p.spells |= {"Clairvoyance", "Detect Traps"}
+        self.world.move_player_to(self.p, 6)
+        self.level = self.world.levels[6]
+
+    def cast(self, name):
+        self.p.mana = self.p.max_mana
+        self.world.events.clear()
+        self.world.do_player_action(self.level, self.p,
+                                    {"a": "cast", "spell": name})
+        return [e["text"] for e in self.world.events if e["t"] == "msg"]
+
+    def test_both_are_in_the_book(self):
+        from stormhold.game.spells import SPELLS
+        for name in ("Clairvoyance", "Detect Traps"):
+            self.assertIn(name, SPELLS)
+            self.assertEqual(SPELLS[name]["school"], "Divination")
+
+    def test_detect_traps_is_certain_close_by(self):
+        """"Detect Traps is certain within ten squares."""
+        close = [(xy, t) for xy, t in self.level.traps.items()
+                 if max(abs(xy[0] - self.p.x), abs(xy[1] - self.p.y)) <= 10]
+        if not close:
+            # put one where we can be sure of the answer
+            spot = (self.p.x + 2, self.p.y)
+            self.level.traps[spot] = {"kind": "pit", "found": False,
+                                      "armed": True}
+            close = [(spot, self.level.traps[spot])]
+        self.cast("Detect Traps")
+        for xy, _ in close:
+            self.assertTrue(self.level.traps[xy]["found"],
+                            f"missed a trap {xy} within ten squares")
+
+    def test_clairvoyance_shows_the_ground_around_you(self):
+        memory = self.world.memory_for(self.p, self.level)
+        before = sum(1 for b in memory if b)
+        self.cast("Clairvoyance")
+        after = sum(1 for b in self.world.memory_for(self.p, self.level) if b)
+        self.assertGreater(after, before, "it revealed nothing")
+
+    def test_clairvoyance_finds_what_is_hidden_in_it(self):
+        """"...and shows secret doors and traps in it."""
+        spot = (self.p.x + 1, self.p.y + 1)
+        self.level.secrets[spot] = {"found": False}
+        self.level.traps[(self.p.x - 1, self.p.y)] = {"kind": "pit",
+                                                      "found": False,
+                                                      "armed": True}
+        self.cast("Clairvoyance")
+        self.assertTrue(self.level.secrets[spot]["found"])
+        self.assertTrue(self.level.traps[(self.p.x - 1, self.p.y)]["found"])
+
+    def test_clairvoyance_does_not_show_the_whole_floor(self):
+        """That is Cartography's job, and it costs more."""
+        self.cast("Clairvoyance")
+        memory = self.world.memory_for(self.p, self.level)
+        floor = sum(1 for t in self.level.tiles if t != T.VOID)
+        self.assertLess(sum(1 for b in memory if b), floor)
