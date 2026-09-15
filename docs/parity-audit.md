@@ -171,6 +171,8 @@ is simply a death sentence.
 | Inventory weight shown in grams, not tenths of a pound | done |
 | Weapon-aware, located, escalating combat messages | done - the verb follows the weapon, the blow lands somewhere, it escalates with the wound, kills and shield blocks have their own lines, and no damage number appears in the log |
 | The message log actually scrolls | done - the scrollbar used to be decoration |
+| The keep can be finished | checked - all 25 floors generate, both bosses are placed, and the last one ends the game |
+| Named bosses take no article | done |
 
 ## Known rough edges in our own window
 

@@ -1495,7 +1495,7 @@ class PackScene(OverlayScene):
         for index, item in enumerate(items):
             row, col = divmod(index, cols)
             row -= self.scroll
-            if row < 0 or row >= rows + 1:
+            if row < 0 or row >= rows:      # whole rows only; a half row reads as broken
                 continue
             r = pygame.Rect(self.grid_rect.x + 4 + col * cell,
                             self.grid_rect.y + 4 + row * cell_h, cell - 4, cell_h - 4)
@@ -2321,7 +2321,7 @@ class StoreScene(PackScene):
         for index, item in enumerate(stock):
             row, col = divmod(index, cols)
             row -= self.store_scroll
-            if row < 0 or row >= rows + 1:
+            if row < 0 or row >= rows:      # whole rows only; a half row reads as broken
                 continue
             r = pygame.Rect(self.store_rect.x + 4 + col * cell,
                             self.store_rect.y + 4 + row * cell_h, cell - 4, cell_h - 4)
