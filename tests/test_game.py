@@ -1382,3 +1382,77 @@ class TestNobodyIsCalledIt(unittest.TestCase):
         from stormhold.game.items import with_article
         for name in ("a pale gold potion", "an oily black scroll", "the Rune"):
             self.assertEqual(with_article(name), name)
+
+
+class TestTheTwoMissingTraps(unittest.TestCase):
+    """The original's list has fourteen; we had twelve.
+
+    "a trap door" drops you a level rather than hurting you, and "an
+    animation trap" raises the dead. Both are in the reference's trap list
+    and neither existed.
+    """
+
+    def setUp(self):
+        from stormhold.game.world import World
+        self.world = World(seed=5)
+        self.p = self.world.add_player("Unlucky", spell="Spark")
+        self.world.move_player_to(self.p, 8)
+        self.level = self.world.levels[8]
+
+    def spring(self, kind):
+        self.level.traps[(self.p.x, self.p.y)] = {"kind": kind, "found": False,
+                                                  "armed": True}
+        self.world.events.clear()
+        self.world.spring_trap(self.level, self.p)
+        return [e["text"] for e in self.world.events if e["t"] == "msg"]
+
+    def test_both_are_in_the_table(self):
+        from stormhold.game.traps import TRAPS
+        names = {t["name"] for t in TRAPS.values()}
+        self.assertIn("trap door", names)
+        self.assertIn("animation trap", names)
+
+    def test_a_trap_door_drops_you_a_floor_and_does_no_damage(self):
+        hp = self.p.hp
+        said = self.spring("trapdoor")
+        self.assertEqual(self.p.depth, 9)
+        self.assertEqual(self.p.hp, hp, "a trap door is not supposed to hurt")
+        self.assertTrue(any("floor further down" in m for m in said), said)
+
+    def test_an_animation_trap_raises_things(self):
+        before = sum(1 for a in self.level.actors.values()
+                     if getattr(a, "kind", None) == "monster")
+        said = self.spring("animate")
+        after = sum(1 for a in self.level.actors.values()
+                    if getattr(a, "kind", None) == "monster")
+        self.assertGreater(after, before, said)
+
+    def test_levitation_carries_you_over_anything_that_works_by_falling(self):
+        """"Levitation ... will prevent you from falling into pits and trap
+        doors."""
+        from stormhold.game.items import Item
+        for kind in ("pit", "trapdoor", "deadfall"):
+            with self.subTest(trap=kind):
+                self.world.move_player_to(self.p, 8)
+                self.level = self.world.levels[8]
+                self.p.add_effect("levitating", self.level.clock + 10 ** 6)
+                hp, depth = self.p.hp, self.p.depth
+                said = self.spring(kind)
+                self.assertEqual(self.p.hp, hp)
+                self.assertEqual(self.p.depth, depth)
+                self.assertTrue(any("drift" in m for m in said), said)
+
+    def test_a_potion_of_levitation_exists_and_does_it(self):
+        from stormhold.game.items import Item, BASES
+        self.assertIn("potion_float", BASES)
+        belt = Item("belt3")
+        belt.known = True
+        self.p.equipment["waist"] = belt
+        potion = Item("potion_float")
+        potion.known = True
+        belt.contents.append(potion)
+        self.world.events.clear()
+        self.world.do_player_action(self.level, self.p,
+                                    {"a": "use", "id": potion.id})
+        self.assertTrue(self.p.has("levitating"),
+                        [e.get("text") for e in self.world.events])

@@ -103,6 +103,7 @@ BASES = {
     "potion_might":   dict(name="Potion of Giant Strength", icon="potion_yellow", bulk=3600, wt=675, value=160, depth=5, kind="potion", use="might", power=40),
     "potion_cure":    dict(name="Potion of Cleansing", icon="potion_clear", bulk=3600, wt=675, value=90, depth=3, kind="potion", use="cure"),
     "potion_sight":   dict(name="Potion of True Sight", icon="potion_purple", bulk=3600, wt=675, value=110, depth=4, kind="potion", use="sight", power=60),
+    "potion_float":   dict(name="Potion of Levitation", icon="potion_clear", bulk=3600, wt=675, value=120, depth=3, kind="potion", use="levitate", power=50),
     "potion_poison":  dict(name="Draught of Sickness", icon="potion_green", bulk=3600, wt=675, value=10, depth=2, kind="potion", use="poison", power=12, bad=True),
 
     # ---- scrolls (title shuffled per world) ------------------------------

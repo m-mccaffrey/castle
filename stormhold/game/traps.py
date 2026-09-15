@@ -22,18 +22,25 @@ TRAPS = {
     "poison":   dict(name="poison gas trap", dmg=(1, 3), desc="A cloud of gas surrounds you!", poison=4),
     "sleep":    dict(name="sleep gas trap", dmg=(0, 0), desc="A cloud of gas surrounds you!", hold=True),
     "slow":     dict(name="slow gas trap", dmg=(0, 0),  desc="A cloud of gas surrounds you!", slow=True),
-    "pit":      dict(name="pit",           dmg=(2, 7),  desc="You fell into a pit!", stun=True),
-    "deadfall": dict(name="deadfall",      dmg=(3, 9),  desc="The ceiling comes down on you!", stun=True),
+    "pit":      dict(name="pit",           dmg=(2, 7),  desc="You fell into a pit!", stun=True, gravity=True),
+    "deadfall": dict(name="deadfall",      dmg=(3, 9),  desc="The ceiling comes down on you!", stun=True, gravity=True),
     "teleport": dict(name="teleport trap", dmg=(0, 0),  desc="The floor twists away beneath you!", teleport=True),
     "glyph":    dict(name="glyph of warding", dmg=(0, 0), desc="You trigger a hidden glyph!", alarm=True),
+    # The two the original has that we did not. A trap door does no damage at
+    # all - it simply drops you a floor, which is worse. An animation trap
+    # raises what is lying about.
+    "trapdoor": dict(name="trap door",     dmg=(0, 0),  desc="The floor gives way beneath you!", trapdoor=True, gravity=True),
+    "animate":  dict(name="animation trap", dmg=(0, 0), desc="The air shivers, and the dead sit up!", animate=True),
 }
 
 TRAP_BY_DEPTH = (
     (1, ("dart", "arrow", "pit", "glyph")),
-    (5, ("dart", "arrow", "pit", "glyph", "poison", "sleep", "blade")),
+    (5, ("dart", "arrow", "pit", "glyph", "poison", "sleep", "blade",
+         "animate")),
     (10, ("dart", "arrow", "pit", "glyph", "poison", "sleep", "blade",
-          "fire", "acid", "slow", "deadfall")),
-    (15, ("blade", "fire", "acid", "slow", "deadfall", "poison", "teleport")),
+          "fire", "acid", "slow", "deadfall", "trapdoor")),
+    (15, ("blade", "fire", "acid", "slow", "deadfall", "poison", "teleport",
+          "trapdoor", "animate")),
 )
 
 

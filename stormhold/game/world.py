@@ -593,6 +593,14 @@ class World:
         trap["armed"] = False
         level.traps.pop(spot, None)
 
+        # "Levitation ... will prevent you from falling into pits and trap
+        # doors." Anything that works by dropping you, or dropping on you,
+        # misses a character who is not standing on the floor.
+        if info.get("gravity") and p.has("levitating"):
+            self.msg("You drift over it, feet clear of the stones.",
+                     "good", to=p)
+            return True
+
         self.msg(info["desc"], "bad", to=p)
         self.fx("blast", p.x, p.y, level.depth)
         self.sound("slam", p.x, p.y, level.depth)
@@ -618,6 +626,27 @@ class World:
                 level.move_actor(p, *spot)
                 self.update_fov(p, force=True)
                 self.msg("The floor twists away, and you are somewhere else.",
+                         "bad", to=p)
+        if info.get("trapdoor"):
+            # No damage at all - it simply puts you a floor deeper, wherever
+            # that floor happens to be, which is the worse outcome.
+            self.msg("You land hard, a floor further down.", "bad", to=p)
+            self.move_player_to(p, p.depth + 1)
+            return True
+        if info.get("animate"):
+            raised = 0
+            for _ in range(self.rng.randint(2, 4)):
+                free = level.find_free(p.x, p.y, max_r=4, ignore_id=p.id)
+                if not free:
+                    break
+                key = self._weighted(spawn_table(level.depth))
+                m = self.spawn(key, free[0], free[1], level.depth)
+                m.target_id = p.id
+                m.last_seen = (p.x, p.y)
+                level.place(m)
+                raised += 1
+            if raised:
+                self.msg(f"{raised} of them climb to their feet around you.",
                          "bad", to=p)
         if info.get("alarm"):
             roused = 0
@@ -1016,6 +1045,11 @@ class World:
             for bad in ("poisoned", "burning", "slowed", "afraid"):
                 p.effects.pop(bad, None)
             self.msg("A clean warmth runs through you.", "good", to=p)
+        elif use == "levitate":
+            # "Levitation ... will prevent you from falling into pits and
+            # trap doors."
+            p.add_effect("levitating", now + power * 10)
+            self.msg("Your feet leave the flagstones.", "good", to=p)
         elif use == "sight":
             p.add_effect("truesight", now + power * 10)
             self.update_fov(p, force=True)

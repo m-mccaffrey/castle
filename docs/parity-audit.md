@@ -176,6 +176,10 @@ is simply a death sentence.
 | Doors on every floor, opened by walking into them | done - the keep had none at all: the pass that places them ran before the pass that builds the walls it looks for, so Open, Close, the blocked-door message and the door-opening code in the monster AI were all dead |
 | A closed door blocks sight, so a room is a sealed box | done, and now actually reachable |
 | Two people in one keep | tested - joining, chat, seeing each other, split floors, and an idle player not freezing the rest |
+| The trap door and the animation trap | done - the last two of the original's fourteen. A trap door does no damage and drops you a floor; an animation trap raises the dead around you |
+| Levitation avoids pits and trap doors | done, with a Potion of Levitation to get it |
+| Saving, and carrying a character between evenings | done - autosave, File > Save, and a round trip test |
+| Map! | done |
 
 ## Known rough edges in our own window
 
