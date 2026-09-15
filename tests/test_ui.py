@@ -19,7 +19,8 @@ import pygame                                            # noqa: E402
 from stormhold.ui.app import (App, MenuScene, CharGenScene,      # noqa: E402
                               StoreScene, ServiceScene, PackScene,
                               SpellScene, SheetScene, AttributesScene,
-                              MenuOverlay, HelpScene, OverlayScene)
+                              MenuOverlay, HelpScene, OverlayScene,
+                              PlayScene)
 from stormhold.game.world import World                            # noqa: E402
 
 SIZES = [(1024, 700), (1280, 800), (1440, 900), (1920, 1080)]
@@ -347,3 +348,75 @@ class TestEveryButtonActuallyFires(unittest.TestCase):
                                                     button=1))
                 self.assertNotIn(scene, self.app.scenes,
                                  f"{name} stayed open after Close")
+
+
+class TestThePlayScreensOwnControls(unittest.TestCase):
+    """The menu bar and the verb toolbar, exercised the way a player uses them.
+
+    These are the controls that are on screen the whole time you are playing,
+    and nothing tested them: the overlay tests never touched the screen
+    underneath.
+    """
+
+    def setUp(self):
+        self.app = make_app()
+        self.app.screen = pygame.display.set_mode((1280, 800))
+        self.world = World(seed=3)
+        self.player = self.world.add_player("Pilot")
+        self.play = PlayScene(self.app)
+        self.play.you = self.world.self_view(self.player)
+        self.app.play = self.play
+        self.app.inventory = self.world.inventory_view(self.player)
+        self.app.replace(self.play)
+        self.play.draw(self.app.screen)
+        self.commands = []
+        self.play.menu_command = self.commands.append
+
+    def test_every_menu_opens_and_every_item_fires(self):
+        for index, (label, items) in enumerate(self.play.menubar.menus):
+            with self.subTest(menu=label):
+                self.commands.clear()
+                self.play.menubar.open_index = None
+                rect = self.play.menubar._rects[index]
+                self.play.handle(pygame.event.Event(
+                    pygame.MOUSEBUTTONDOWN, pos=rect.center, button=1))
+                if not items:
+                    # Character!, Inventory! and Map! are commands, not menus.
+                    self.assertEqual(self.commands, [label])
+                    continue
+                self.assertEqual(self.play.menubar.open_index, index,
+                                 f"{label} did not open")
+                self.play.draw(self.app.screen)
+                rows = list(self.play.menubar._item_rects)
+                self.assertTrue(rows, f"{label} opened but drew no items")
+                for row, action, enabled in rows:
+                    self.commands.clear()
+                    self.play.menubar.open_index = index
+                    self.play.draw(self.app.screen)
+                    self.play.handle(pygame.event.Event(
+                        pygame.MOUSEBUTTONDOWN, pos=row.center, button=1))
+                    if enabled:
+                        self.assertEqual(self.commands, [action],
+                                         f"{label} > {action} did nothing")
+
+    def test_every_toolbar_verb_fires(self):
+        self.play.draw(self.app.screen)
+        for rect, action in list(self.play.toolbar.buttons):
+            with self.subTest(verb=action):
+                self.commands.clear()
+                for kind in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP):
+                    self.play.handle(pygame.event.Event(
+                        kind, pos=rect.center, button=1))
+                self.assertEqual(self.commands, [action],
+                                 f"toolbar '{action}' did nothing")
+
+    def test_an_open_menu_swallows_the_map_click_under_it(self):
+        """Choosing a menu item must not also walk you into a wall."""
+        self.play.menubar.open_index = 5
+        self.play.draw(self.app.screen)
+        walked = []
+        self.play.click_map = lambda pos: walked.append(pos)
+        row = self.play.menubar._item_rects[0][0]
+        self.play.handle(pygame.event.Event(pygame.MOUSEBUTTONDOWN,
+                                            pos=row.center, button=1))
+        self.assertEqual(walked, [])

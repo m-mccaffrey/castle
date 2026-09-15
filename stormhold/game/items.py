@@ -330,14 +330,22 @@ class Item:
         if self.spell:
             label = f"Tome of {self.spell}"
         prefix = ""
-        # Only gear carries an enchantment; a potion is never "+2".
-        if (self.known or shop) and base.get("slot"):
-            if self.cursed and self.enchant <= 0:
-                prefix = f"cursed {self.enchant:+d} " if self.enchant else "cursed "
-            elif self.enchant:
-                prefix = f"{self.enchant:+d} "
-        elif self.enchant or self.cursed:
-            pass                       # you cannot tell yet
+        # Only gear carries an enchantment; a potion is never "+2". The
+        # original always says what grade a piece of gear is, which is why its
+        # shop shelf reads "Normal Suit of Leather Armor" and "Enchanted Cape
+        # of Protection" rather than leaving plain things unqualified.
+        if base.get("slot"):
+            if self.known or shop:
+                if self.cursed and self.enchant <= 0:
+                    prefix = f"cursed {self.enchant:+d} " if self.enchant else "cursed "
+                elif self.enchant:
+                    prefix = f"{self.enchant:+d} "
+                else:
+                    prefix = "Normal "
+            elif self.enchant or self.cursed:
+                prefix = "Enchanted "     # magical, but you cannot read it yet
+            else:
+                prefix = "Normal "
         out = f"{prefix}{label}"
         if self.qty > 1:
             out = f"{self.qty} {pluralise(out, self.qty)}"

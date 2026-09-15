@@ -544,12 +544,35 @@ class TestStatusReadouts(unittest.TestCase):
         self.assertEqual(format_clock(86400 * 7 * TICKS_PER_SECOND),
                          "7d,00:00:00")
 
-    def test_speed_falls_with_burden_and_rises_with_agility(self):
+    def test_overall_speed_is_a_hundred_until_magic_says_otherwise(self):
+        """The original reads "100% / 200%" for every fresh character.
+
+        Dexterity does not enter it, and neither does the weapon in your hand:
+        we used to scale every action by both, and a nimble character with a
+        dagger read 125%.
+        """
         quick = Player("Q", {"strength": 12, "dexterity": 16,
                              "intelligence": 8, "constitution": 8})
         slow = Player("S", {"strength": 12, "dexterity": 8,
                             "intelligence": 8, "constitution": 12})
-        self.assertGreater(quick.speed_percent(), slow.speed_percent())
+        self.assertEqual(quick.speed_percent(), 100)
+        self.assertEqual(slow.speed_percent(), 100)
+
+        quick.add_effect("haste", 10 ** 9)
+        self.assertEqual(quick.speed_percent(), 200)
+        slow.add_effect("slowed", 10 ** 9)
+        self.assertEqual(slow.speed_percent(), 50)
+
+    def test_a_heavy_weapon_slows_the_swing_and_nothing_else(self):
+        from stormhold.common.constants import ATTACK_COST, REST_COST
+        from stormhold.game.items import Item
+        p = Player("W", {"strength": 14, "dexterity": 10,
+                         "intelligence": 8, "constitution": 10})
+        bare = p.action_cost(ATTACK_COST, attacking=True)
+        rest = p.action_cost(REST_COST)
+        p.equipment["weapon"] = Item("crossbow")      # speed 140
+        self.assertGreater(p.action_cost(ATTACK_COST, attacking=True), bare)
+        self.assertEqual(p.action_cost(REST_COST), rest)
 
         laden = Player("L", {"strength": 10, "dexterity": 12,
                              "intelligence": 8, "constitution": 8})

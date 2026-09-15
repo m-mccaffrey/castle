@@ -127,7 +127,8 @@ MAX_LEVEL = 30
 def _xp_table():
     table = [0, 0]
     for lvl in range(2, MAX_LEVEL + 2):
-        table.append(int(18 * (lvl - 1) ** 2.4))
+        # Level 2 costs 20 in the original, read off its character sheet.
+        table.append(int(20 * (lvl - 1) ** 2.4))
     return table
 
 

@@ -9,13 +9,6 @@ import os
 import sys
 import time
 
-def speed_text(you):
-    """The original prints overall speed, then movement speed: "100% / 200%"."""
-    mv = you.get("move_speed")
-    if mv is None:
-        return "OVERLOADED"
-    return f"{you.get('speed', 100)}% / {mv}%"
-
 import pygame
 
 from ..common.constants import (
@@ -876,9 +869,13 @@ class PlayScene(Scene):
             W.text(surf, value, (value_x, y), 12, mono=True, colour=colour)
             y += 16
 
+        # The original's last status row is the place you are standing in, and
+        # it should agree with what the log just called it.
         depth = you.get("depth", 0)
-        W.text(surf, "Aldershade" if depth == 0 else f"Dungeon Level {depth}",
-               (x, y), 12, bold=True)
+        place = getattr(self.map, "name", None)
+        if not place:
+            place = "Aldershade" if depth == 0 else f"Dungeon Level {depth}"
+        W.text(surf, place, (x, y), 12, bold=True)
         y += 18
 
         effects = you.get("effects", {})
@@ -1138,7 +1135,7 @@ class PackScene(OverlayScene):
         wt, wt_max = inv.get("weight", 0), max(1, inv.get("capacity", 1))
         bk, bk_max = inv.get("bulk", 0), max(1, inv.get("bulk_capacity", 1))
         self.title = (f"{self.app.play.you.get('name', 'Pack')}"
-                      f"   Cp: {cp}   Weight: {wt/10:.1f} ({wt_max/10:.0f})"
+                      f"   Cp: {cp}   Weight: {wt} ({wt_max})"
                       f"   Bulk: {bk} ({bk_max})")
         client, _ = self.frame(surf)
 
@@ -1684,14 +1681,13 @@ class SheetScene(OverlayScene):
             ("", ""),
             ("Weight:", f"{inv.get('weight', 0)} ({inv.get('capacity', 0)})"),
             ("Bulk:", f"{inv.get('bulk', 0)} ({inv.get('bulk_capacity', 0)})"),
-            ("Burden:", you.get("encumbrance", "")),
             ("Speed:", speed_text(you)),
             ("", ""),
             ("Hit Points:", f"{you.get('hp', 0)} ({you.get('max_hp', 0)})"),
             ("Mana Points:", f"{you.get('mana', 0)} ({you.get('max_mana', 0)})"),
+            ("Copper:", you.get("copper", 0)),
             ("Armor Value:", you.get("ac", 0)),
             ("", ""),
-            ("Copper:", you.get("copper", 0)),
             ("In the strongroom:", you.get("bank", 0)),
             ("", ""),
             ("Time played:", format_clock(you.get("clock", 0))),
@@ -2258,6 +2254,10 @@ class App:
         self.settings = self.load_settings()
         if args.name:
             self.settings["name"] = args.name
+        if args.port:
+            # --port was parsed and then ignored: hosting always read the
+            # saved setting, so the flag did nothing.
+            self.settings["port"] = args.port
         self.client = GameClient()
         self.server = None
         self.scenes = [MenuScene(self)]

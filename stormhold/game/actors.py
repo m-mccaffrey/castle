@@ -96,6 +96,7 @@ class Player(Actor):
         self.pending_tiles = []
         self.pending = None         # the action the scheduler is waiting for
         self.idle_noted = False
+        self.elapsed = 0            # this character's own clock, in ticks
         self.resting = False
 
         self.recalc()
@@ -291,11 +292,6 @@ class Player(Actor):
                 return tier
         return by_weight if by_weight[1] >= by_bulk[1] else by_bulk
 
-    @property
-    def agility_factor(self):
-        """A nimble character simply does everything a little quicker."""
-        return max(0.4, 1.0 + (self.stat("dexterity") - 10) * 0.035)
-
     def speed_percent(self):
         """Overall speed: how fast every action goes. Load does not enter."""
         cost = self.action_cost(TICKS_PER_TURN)
@@ -312,9 +308,12 @@ class Player(Actor):
         """
         return movement_speed(self.carried_weight, self.capacity)
 
-    def action_cost(self, base, moving=False):
+    def action_cost(self, base, moving=False, attacking=False):
         """How long an action takes. Only movement pays for what you carry."""
-        cost = base / self.agility_factor
+        # Overall speed starts at 100% and only magic moves it. A fresh
+        # character in the original reads "100% / 200%" whatever their
+        # Dexterity; we were scaling every action by Dex and printing 135%.
+        cost = float(base)
         if self.has("haste"):
             cost *= 0.5
         if self.has("slowed"):
@@ -324,9 +323,13 @@ class Player(Actor):
             if mv is None:
                 return None                   # too loaded to move at all
             cost *= 100.0 / mv
-        weapon = self.equipment.get("weapon")
-        if weapon and base >= TICKS_PER_TURN:
-            cost *= weapon.base.get("speed", 100) / 100.0
+        if attacking:
+            # A heavy weapon is slow to swing. It does not make you slower at
+            # reading, resting or walking, which is what it used to do - and
+            # what made the status line read 125% with a dagger in hand.
+            weapon = self.equipment.get("weapon")
+            if weapon:
+                cost *= weapon.base.get("speed", 100) / 100.0
         return max(10, int(cost))
 
     # ------------------------------------------------------------ progress --
@@ -505,6 +508,7 @@ class Player(Actor):
             "spells": sorted(self.spells),
             "deepest": self.deepest, "deaths": self.deaths, "kills": self.kills,
             "drained": self.drained, "drained_hp": self.drained_hp,
+            "elapsed": self.elapsed,
         }
 
     def load_save(self, d):
@@ -528,6 +532,7 @@ class Player(Actor):
         self.kills = d.get("kills", 0)
         self.drained = {k: d.get("drained", {}).get(k, 0) for k in STATS}
         self.drained_hp = d.get("drained_hp", 0)
+        self.elapsed = d.get("elapsed", 0)
         self.recalc()
         self.hp = clamp(d.get("hp", self.max_hp), 1, self.max_hp)
         self.mana = clamp(d.get("mana", self.max_mana), 0, self.max_mana)

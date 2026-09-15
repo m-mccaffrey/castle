@@ -27,7 +27,7 @@ from ..common.fov import compute_fov, has_los, line_between
 from .level import generate_dungeon, generate_town
 from .actors import Player, NPC, make_monster, stat_bonus
 from .items import (Item, Appearances, generate_item, generate_gold,
-                    coin_metal, BASES)
+                    coin_metal, article, BASES)
 from .monsters import spawn_table
 from .spells import SPELLS, can_learn, elemental_factor
 from .traps import TRAPS, search_here, disarm_at, a_or_an
@@ -271,6 +271,12 @@ class World:
             cost = self.act(level, ready)
             if cost is None:
                 cost = MOVE_COST
+            if ready.kind == "player":
+                # Each floor keeps its own clock so that a party can share a
+                # turn order, but the character's own clock is the one they
+                # see: it used to restart at zero every time they took the
+                # stairs.
+                ready.elapsed = getattr(ready, "elapsed", 0) + max(1, int(cost))
             if ready.depth != was_on:
                 # Taking the stairs moved them to another floor, which already
                 # set their next action time against that floor's clock. This
@@ -529,7 +535,7 @@ class World:
         if other is not None and other.kind == "monster" and not other.dead:
             combat.melee(self, p, other)
             self.sound("swing", p.x, p.y, level.depth)
-            return p.action_cost(ATTACK_COST) or ATTACK_COST
+            return p.action_cost(ATTACK_COST, attacking=True) or ATTACK_COST
         if other is not None and other.kind == "npc":
             self.events.append({"t": "shop", "to": p.id, "npc": other.id,
                                 "shop": other.shop, "name": other.name})
@@ -834,7 +840,7 @@ class World:
             combat.melee(self, p, target)
         else:
             self.msg("You swing at nothing.", "info", to=p)
-        return p.action_cost(ATTACK_COST) or ATTACK_COST
+        return p.action_cost(ATTACK_COST, attacking=True) or ATTACK_COST
 
     def _act_shoot(self, level, p, action):
         weapon = p.equipment.get("weapon")
@@ -880,7 +886,7 @@ class World:
                 self.msg(f"Your shot goes wide of the {hit_actor.name}.", "combat", to=p)
         else:
             self.msg("Your shot clatters away into the dark.", "info", to=p)
-        return p.action_cost(ATTACK_COST) or ATTACK_COST
+        return p.action_cost(ATTACK_COST, attacking=True) or ATTACK_COST
 
     # ---- objects ---------------------------------------------------------
     def _act_pickup(self, level, p, action):
@@ -1908,7 +1914,9 @@ class World:
             return FREE_COST
         p.copper -= price
         self.appearances.identify(take.key)
-        self.msg(f"You buy {take.name(self.appearances)} for {price} copper.", "loot", to=p)
+        name = take.name(self.appearances)
+        self.msg(f"You buy {article(name)} {name} for {price} copper.",
+                 "loot", to=p)
         self.sound("buy", p.x, p.y, level.depth)
         self.events.append({"t": "inv", "to": p.id})
         self.events.append({"t": "shop", "to": p.id, "npc": action.get("npc"),
@@ -1929,7 +1937,8 @@ class World:
                      f"for {price} copper. You will not see it again.",
                      "loot", to=p)
         else:
-            self.msg(f"You sell {item.name(self.appearances)} for {price} copper.",
+            name = item.name(self.appearances)
+            self.msg(f"You sell {article(name)} {name} for {price} copper.",
                      "loot", to=p)
         self.sound("gold", p.x, p.y, level.depth)
         self.events.append({"t": "inv", "to": p.id})
@@ -2095,7 +2104,7 @@ class World:
                                          SPELLS[n].get("level", 1))
                             for n in p.spells if n in SPELLS},
             "deepest": p.deepest, "kills": p.kills, "deaths": p.deaths,
-            "clock": self.clock_for(p.depth),
+            "clock": getattr(p, "elapsed", 0),
         }
 
     def inventory_view(self, p):
