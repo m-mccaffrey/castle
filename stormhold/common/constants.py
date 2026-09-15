@@ -121,25 +121,29 @@ STAT_MAX = 25
 START_STAT = 8              # every stat starts here...
 START_POINTS = 16           # ...and you have this many to spread around
 
-# Levels keep coming below floor 25, because the creatures down there do
-# too. The experience table is built from a curve, so it extends on its own;
-# the cost of level 50 is about nine times the cost of level 30.
-MAX_LEVEL = 50
-
-# Experience needed to reach each level.
-def _xp_table():
-    table = [0, 0]
-    for lvl in range(2, MAX_LEVEL + 2):
-        # Level 2 costs 20 in the original, read off its character sheet.
-        table.append(int(20 * (lvl - 1) ** 2.4))
-    return table
-
-
-XP_TABLE = _xp_table()
+# There is no level cap. The keep has no bottom, so a character who keeps
+# going down keeps growing, and the two curves stay in step: measured out to
+# floor 200, the toughest creature on a floor takes about seven casts to put
+# down at every depth, and can put you down in about fifty turns at every
+# depth. Those two ratios are flat, which is what "everything scales" has to
+# mean - not that the numbers get bigger, but that they get bigger together.
 
 
 def xp_for_level(level):
-    return XP_TABLE[min(level + 1, len(XP_TABLE) - 1)]
+    """Total experience to reach the level after this one.
+
+    A curve, not a table: a table has an end, and past the end of the old one
+    every level cost the same as the last, so levels would have become free
+    exactly where they stopped being handed out. Level 2 costs 20 in the
+    original, read off its character sheet, and the exponent is fitted to the
+    rest of that sheet.
+    """
+    return int(20 * max(1, level) ** 2.4)
+
+
+# Kept for anything that wants the early curve to hand: index L is the total
+# needed to reach level L. The function above is the authority.
+XP_TABLE = [0, 0] + [int(20 * (lvl - 1) ** 2.4) for lvl in range(2, 52)]
 
 
 # ----------------------------------------------------------- encumbrance ---

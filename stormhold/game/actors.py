@@ -10,7 +10,7 @@ import random
 
 from ..common.constants import (
     movement_speed, COPPER_GRAMS, COPPER_CC, COINS,
-    STATS, START_STAT, MAX_LEVEL, CARRY_PER_STRENGTH, encumbrance_for,
+    STATS, START_STAT, CARRY_PER_STRENGTH, encumbrance_for,
     xp_for_level, clamp, SLOTS, RING_SLOTS, TICKS_PER_TURN,
     BODY_BULK_CAPACITY, CARRY_BASE, START_COPPER, BARE_HANDS_WEIGHT, BARE_HANDS_BULK,
 )
@@ -372,7 +372,7 @@ class Player(Actor):
     def add_xp(self, amount):
         self.xp += amount
         gained = []
-        while self.level < MAX_LEVEL and self.xp >= xp_for_level(self.level):
+        while self.xp >= xp_for_level(self.level):
             self.level += 1
             before_hp, before_mana = self.max_hp, self.max_mana
             self.recalc()

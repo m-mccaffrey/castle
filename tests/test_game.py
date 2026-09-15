@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from stormhold.common.constants import (
     T, GRACE_TICKS, TOWN_DEPTH, MAX_DEPTH, encumbrance_for, CARRY_PER_STRENGTH, CARRY_BASE, SHOP_BUY_MARKUP, SHOP_SELL_RATE,
-    xp_for_level, MAX_LEVEL, SLOTS,
+    xp_for_level, SLOTS,
 )
 from stormhold.common.fov import compute_fov, has_los
 from stormhold.game.level import generate_dungeon, generate_town, reachable
@@ -110,10 +110,26 @@ class TestEncumbrance(unittest.TestCase):
 
 
 class TestCharacters(unittest.TestCase):
-    def test_levelling_stops_at_the_cap(self):
+    def test_there_is_no_level_cap(self):
+        """The keep has no bottom, so neither does the character."""
         p = Player("Hero")
+        p.add_xp(10 ** 6)
+        self.assertGreater(p.level, 50)
+        before = p.level
         p.add_xp(10 ** 9)
-        self.assertEqual(p.level, MAX_LEVEL)
+        self.assertGreater(p.level, before)
+        self.assertGreater(p.max_hp, 1000)
+
+    def test_a_level_never_becomes_free(self):
+        """The cost has to keep climbing, or the curve is a cliff.
+
+        It used to be a table, and past the end of it `xp_for_level` returned
+        the last row forever - so at exactly the point levels stopped being
+        capped they would have started costing nothing.
+        """
+        costs = [xp_for_level(n) for n in (1, 10, 50, 100, 500, 2000)]
+        self.assertEqual(costs, sorted(costs))
+        self.assertEqual(len(set(costs)), len(costs))
 
     def test_equipment_changes_derived_stats(self):
         p = Player("Guard", {"strength": 14, "dexterity": 12,
