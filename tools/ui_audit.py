@@ -32,7 +32,17 @@ class Audit:
     def __init__(self, seed=5, port=8920):
         self.s = Session(seed=seed, port=port, size=(1280, 800))
         C.make_character(self.s, spell="Spark", difficulty="Intermediate")
-        self.s.me().copper = 50000
+        p = self.s.me()
+        p.copper = 50000
+        # Something to select, or Use, Drop and Name Object are disabled on
+        # every window and the audit walks straight past them - thirty-two
+        # controls it was reporting on without ever pressing.
+        from stormhold.game.items import Item
+        for key in ("potion_heal", "shortsword", "leather"):
+            it = Item(key)
+            it.known = True
+            p.inventory.append(it)
+        self.s.settle(0.4)
         self.acts = []
         real = self.s.app.act
 
@@ -224,12 +234,30 @@ class Audit:
         sends anything to the server or opens a window, so without this they
         both report as doing nothing.
         """
-        return {k: getattr(scene, k, None) for k in
-                ("show_overview", "target_mode", "run_mode", "show_help")}
+        # Anything a control can switch on without telling the server. Name
+        # Object opens an inline text field and nothing else: no action, no
+        # window, no message - so with a narrower list than this the audit
+        # called a working button dead.
+        watch = ("show_overview", "target_mode", "run_mode", "show_help",
+                 "naming", "confirm", "popup", "selected", "store_scroll")
+        return {k: repr(getattr(scene, k, None))[:40] for k in watch}
+
+    def select_something(self):
+        """Click the first thing in the pack, so item verbs come alive."""
+        sc = self.s.app.scene
+        sc.draw(self.s.app.screen)
+        cells = getattr(sc, "cell_rects", None)
+        if not cells:
+            return False
+        self.press(cells[0][0])
+        sc.draw(self.s.app.screen)
+        return getattr(sc, "selected", None) is not None
 
     def controls(self):
         sc = self.s.app.scene
         sc.draw(self.s.app.screen)          # laying out is what fills the rects
+        self.select_something()
+        sc.draw(self.s.app.screen)
         return list(getattr(sc, "buttons", []))
 
     def check(self, where):
@@ -249,6 +277,7 @@ class Audit:
             before_scene = self.s.app.scene.__class__.__name__
             before_acts = len(self.acts)
             before_log = len(self.s.log(200))
+            before_state = self.snapshot(self.s.app.scene)
             label = f"{b.label!r}({b.action})"
             try:
                 self.press(b.rect)
@@ -266,6 +295,8 @@ class Audit:
             elif grew > 0:
                 said = self.s.log(200)[-1][:52]
                 rows.append((where, label, "ok", f'said "{said}"'))
+            elif self.snapshot(self.s.app.scene) != before_state:
+                rows.append((where, label, "ok", "changed the window"))
             elif not b.enabled:
                 rows.append((where, label, "off", "disabled"))
             else:
