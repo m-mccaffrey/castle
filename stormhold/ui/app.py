@@ -2795,6 +2795,20 @@ class App:
                 else:
                     self.play.on_message(kind, data)
 
+    def dispatch(self, event):
+        """Hand one input event to the current scene.
+
+        The only path input takes, so that the test harness and the game
+        agree. When the harness called `scene.handle` directly instead, it
+        missed the tidying below - and a button bug that was fixed and
+        verified in tests stayed broken in the running game, twice.
+        """
+        self.scene.handle(event)
+        if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            # Whoever was armed has had its chance. A release over empty
+            # space must not leave a button stuck down.
+            W.Button._armed = None
+
     def run(self):
         while self.running:
             dt = self.clock.tick(30) / 1000.0
@@ -2812,7 +2826,7 @@ class App:
                         pygame.RESIZABLE)
                     self.scene.layout(self.screen.get_size())
                 else:
-                    self.scene.handle(event)
+                    self.dispatch(event)
 
             self.scene.update(dt)
             self.scene.draw(self.screen)

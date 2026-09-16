@@ -98,14 +98,39 @@ def wrap(value, width_px, size=13, mono=False):
 
 
 class Button:
+    """A push button.
+
+    Which button is held down is tracked on the class, not on the instance,
+    because a click is two events with a frame between them and most screens
+    here rebuild their button row inside draw(). Held on the instance, the
+    press armed one object, the next frame threw it away, and the release
+    landed on a fresh one that had never been pressed - so Close and Sort
+    Pack did nothing in every shop and Escape was the only way out. A mouse
+    button being down is a fact about the mouse, so that is where it lives;
+    rebuilding the row as often as you like is then harmless.
+    """
+
+    _armed = None                   # (action, label) of the button being held
+
     def __init__(self, rect, label, action=None, enabled=True, hotkey=None):
         self.rect = pygame.Rect(rect)
         self.label = label
         self.action = action
         self.enabled = enabled
         self.hotkey = hotkey
-        self.pressed = False        # held down right now
         self.selected = False       # the chosen one of a set, drawn sunken
+
+    @property
+    def key(self):
+        return (self.action, self.label)
+
+    @property
+    def pressed(self):
+        return Button._armed == self.key
+
+    @pressed.setter
+    def pressed(self, value):
+        Button._armed = self.key if value else None
 
     def draw(self, surf):
         # `pressed` belongs to the mouse and is cleared on release. A caller
@@ -128,11 +153,16 @@ class Button:
             return None
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self.rect.collidepoint(event.pos):
-                self.pressed = True
+                Button._armed = self.key
         elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
-            was = self.pressed
-            self.pressed = False
-            if was and self.rect.collidepoint(event.pos):
+            # Only the armed button disarms itself. Clearing it here for any
+            # button meant the first one in the row wiped the arm before the
+            # button actually under the cursor got the event, so nothing ever
+            # fired. The app clears a stale arm after dispatching the frame.
+            if Button._armed != self.key:
+                return None
+            Button._armed = None
+            if self.rect.collidepoint(event.pos):
                 return self.action
         elif event.type == pygame.KEYDOWN and self.hotkey and event.key == self.hotkey:
             return self.action

@@ -63,7 +63,10 @@ class Session:
                 return
 
     def send(self, event):
-        self.app.scene.handle(event)
+        # Through App.dispatch, not straight at the scene: the app does some
+        # tidying after each event, and a harness that skips it is testing a
+        # game nobody plays.
+        self.app.dispatch(event)
         self.step()
 
     def click(self, pos, button=1):

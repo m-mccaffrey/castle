@@ -281,6 +281,22 @@ if __name__ == "__main__":
     unittest.main()
 
 
+def click(app, scene, pos):
+    """A click the way the game delivers one: press, a drawn frame, release.
+
+    The frame in the middle is the whole point. Sending the two events back
+    to back - which is what this file used to do - is not what happens when
+    a person clicks, and it hid a real bug twice: these screens rebuild their
+    button row inside draw(), so the frame between press and release threw
+    away the button that had been armed and the release landed on a fresh one.
+    Going through `app.dispatch` rather than straight at the scene matters
+    for the same reason: it is the path the running game takes.
+    """
+    app.dispatch(pygame.event.Event(pygame.MOUSEBUTTONDOWN, pos=pos, button=1))
+    scene.draw(app.screen)
+    app.dispatch(pygame.event.Event(pygame.MOUSEBUTTONUP, pos=pos, button=1))
+
+
 class TestEveryButtonActuallyFires(unittest.TestCase):
     """Press every button on every window and watch for the action.
 
@@ -332,8 +348,7 @@ class TestEveryButtonActuallyFires(unittest.TestCase):
                     scene.draw(self.app.screen)
                     seen = []
                     scene.on_action = seen.append
-                    for kind in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP):
-                        scene.handle(pygame.event.Event(kind, pos=pos, button=1))
+                    click(self.app, scene, pos)
                     self.assertTrue(seen, f"{name}: '{label}' did nothing")
 
     def test_close_really_closes_every_overlay(self):
@@ -347,9 +362,7 @@ class TestEveryButtonActuallyFires(unittest.TestCase):
                 closer = [b for b in scene.buttons
                           if b.action == "close" and b.enabled]
                 self.assertTrue(closer, f"{name} offers no way out but Escape")
-                for kind in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP):
-                    scene.handle(pygame.event.Event(kind, pos=closer[0].rect.center,
-                                                    button=1))
+                click(self.app, scene, closer[0].rect.center)
                 self.assertNotIn(scene, self.app.scenes,
                                  f"{name} stayed open after Close")
 
