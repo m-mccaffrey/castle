@@ -85,6 +85,119 @@ class Audit:
             self.s.step(2)
         self.s.settle(0.5)
 
+    # ---- the play screen's own chrome ------------------------------------
+    def menu_items(self):
+        """Every drop-down entry, as (menu index, item index, label)."""
+        self.to_play()
+        sc = self.s.app.scene
+        sc.draw(self.s.app.screen)
+        bar = getattr(sc, "menubar", None)
+        if bar is None:
+            return []
+        out = []
+        for mi, (label, items) in enumerate(bar.menus):
+            if not items:
+                out.append((mi, None, f"{label} (button)"))
+                continue
+            for ii, (ilabel, action, _on) in enumerate(items):
+                if ilabel != "-":
+                    out.append((mi, ii, f"{label} > {ilabel}"))
+        return out
+
+    def check_menus(self):
+        rows = []
+        for mi, ii, label in self.menu_items():
+            self.to_play()
+            sc = self.s.app.scene
+            sc.draw(self.s.app.screen)
+            bar = sc.menubar
+            before_scene = sc.__class__.__name__
+            before_acts = len(self.acts)
+            before_log = len(self.s.log(200))
+            before_state = self.snapshot(sc)
+            try:
+                self.press(bar._rects[mi])           # open the menu
+                if ii is not None:
+                    self.s.app.scene.draw(self.s.app.screen)
+                    bar = self.s.app.scene.menubar
+                    # _item_rects skips separators and holds
+                    # (rect, action, enabled), so line it up against the
+                    # non-separator items rather than indexing by position.
+                    wanted = bar.menus[mi][1][ii]
+                    real = [it for it in bar.menus[mi][1] if it[0] != "-"]
+                    try:
+                        at = real.index(wanted)
+                    except ValueError:
+                        rows.append(("menu", label, "SKIP", "no such item"))
+                        continue
+                    if at >= len(bar._item_rects):
+                        rows.append(("menu", label, "SKIP", "item not drawn"))
+                        continue
+                    self.press(bar._item_rects[at][0])
+            except Exception as exc:
+                rows.append(("menu", label, "CRASH", repr(exc)[:70]))
+                continue
+            after = self.s.app.scene.__class__.__name__
+            acts = self.acts[before_acts:]
+            grew = len(self.s.log(200)) - before_log
+            if acts:
+                rows.append(("menu", label, "ok", f"sent {acts[0].get('a')}"))
+            elif after != before_scene:
+                rows.append(("menu", label, "ok", f"-> {after}"))
+            elif grew:
+                rows.append(("menu", label, "ok", "message"))
+            elif self.snapshot(self.s.app.scene) != before_state:
+                rows.append(("menu", label, "ok", "toggled"))
+            else:
+                rows.append(("menu", label, "DEAD", "nothing happened"))
+        return rows
+
+    def check_toolbar(self):
+        rows = []
+        self.to_play()
+        sc = self.s.app.scene
+        sc.draw(self.s.app.screen)
+        tools = list(getattr(getattr(sc, "toolbar", None), "buttons", []))
+        for i in range(len(tools)):
+            self.to_play()
+            sc = self.s.app.scene
+            sc.draw(self.s.app.screen)
+            rect, action = sc.toolbar.buttons[i]     # (rect, action) pairs
+            label = f"{sc.toolbar.verbs[i][0]!r}({action})"
+            before_acts = len(self.acts)
+            before_log = len(self.s.log(200))
+            before_scene = sc.__class__.__name__
+            try:
+                self.press(rect)
+            except Exception as exc:
+                rows.append(("toolbar", label, "CRASH", repr(exc)[:70]))
+                continue
+            acts = self.acts[before_acts:]
+            grew = len(self.s.log(200)) - before_log
+            after = self.s.app.scene.__class__.__name__
+            if acts:
+                rows.append(("toolbar", label, "ok", f"sent {acts[0].get('a')}"))
+            elif after != before_scene:
+                rows.append(("toolbar", label, "ok", f"-> {after}"))
+            elif grew:
+                rows.append(("toolbar", label, "ok", "message"))
+            elif self.snapshot(self.s.app.scene) != before_state:
+                rows.append(("toolbar", label, "ok", "toggled"))
+            else:
+                rows.append(("toolbar", label, "DEAD", "nothing happened"))
+        return rows
+
+    @staticmethod
+    def snapshot(scene):
+        """The scene's own switches, so a toggle is not mistaken for a dud.
+
+        Map! turns the overview on and off and Examine arms a click: neither
+        sends anything to the server or opens a window, so without this they
+        both report as doing nothing.
+        """
+        return {k: getattr(scene, k, None) for k in
+                ("show_overview", "target_mode", "run_mode", "show_help")}
+
     def controls(self):
         sc = self.s.app.scene
         sc.draw(self.s.app.screen)          # laying out is what fills the rects
@@ -109,7 +222,7 @@ class Audit:
             before_log = len(self.s.log(200))
             label = f"{b.label!r}({b.action})"
             try:
-                self.press(b.rect)
+                self.press(rect)
             except Exception as exc:
                 rows.append((where, label, "CRASH",
                              traceback.format_exception_only(type(exc), exc)[-1].strip()))
@@ -145,6 +258,10 @@ def main():
     a = Audit(port=args.port)
     places = [p for p in PLACES if not args.only or args.only in p]
     rows = []
+    if not args.only or args.only in ("menu", "chrome"):
+        rows += a.check_menus()
+    if not args.only or args.only in ("toolbar", "chrome"):
+        rows += a.check_toolbar()
     for place in places:
         rows += a.check(place)
     print(f"\n{'screen':<20} {'control':<34} {'':<6} what happened")

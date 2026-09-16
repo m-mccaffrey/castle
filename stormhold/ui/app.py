@@ -593,6 +593,18 @@ class PlayScene(Scene):
     MOVE_KEYS = {
         pygame.K_UP: (0, -1), pygame.K_DOWN: (0, 1),
         pygame.K_LEFT: (-1, 0), pygame.K_RIGHT: (1, 0),
+        # The vi keys, which is how the original moves diagonally: "Arrow
+        # keys move orthogonally. Diagonals are vi keys, y u h j k l b n,
+        # exactly as in NetHack - the numeric keypad did nothing." We had it
+        # backwards: diagonals only on the keypad, and no vi keys at all, so
+        # on a laptop there was no way to move diagonally whatever. Backing
+        # into a doorway is most of how a fight is won, and it needs a
+        # diagonal step.
+        pygame.K_y: (-1, -1), pygame.K_u: (1, -1),
+        pygame.K_h: (-1, 0), pygame.K_j: (0, 1),
+        pygame.K_k: (0, -1), pygame.K_l: (1, 0),
+        pygame.K_b: (-1, 1), pygame.K_n: (1, 1),
+        # WASD and the keypad are ours, kept because they cost nothing.
         pygame.K_w: (0, -1), pygame.K_s: (0, 1),
         pygame.K_a: (-1, 0), pygame.K_d: (1, 0),
         pygame.K_KP8: (0, -1), pygame.K_KP2: (0, 1),
@@ -660,7 +672,11 @@ class PlayScene(Scene):
 
         if key in self.MOVE_KEYS:
             dx, dy = self.MOVE_KEYS[key]
-            self.send_action({"a": "move", "dx": dx, "dy": dy})
+            # "Shift plus a direction runs, and the run stops on reaching
+            # anything interesting." The verb existed and nothing was wired
+            # to it.
+            verb = "run" if (event.mod & pygame.KMOD_SHIFT) else "move"
+            self.send_action({"a": verb, "dx": dx, "dy": dy})
         elif key in (pygame.K_KP5, pygame.K_PERIOD) and not (event.mod & pygame.KMOD_SHIFT):
             self.send_action({"a": "wait"})
         elif key in (pygame.K_g, pygame.K_COMMA):

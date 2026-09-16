@@ -368,6 +368,37 @@ class TestEveryButtonActuallyFires(unittest.TestCase):
                                  f"{name} stayed open after Close")
 
 
+class TestMovementKeys(unittest.TestCase):
+    """The keys the original moves with.
+
+    "Arrow keys move orthogonally. Diagonals are vi keys, y u h j k l b n,
+    exactly as in NetHack - the numeric keypad did nothing." We had it exactly
+    backwards: diagonals on the keypad only, and no vi keys at all. On a
+    laptop there was no way to step diagonally, and backing into a doorway -
+    which is most of how a fight is won - needs a diagonal step.
+    """
+
+    EXPECTED = {
+        pygame.K_y: (-1, -1), pygame.K_k: (0, -1), pygame.K_u: (1, -1),
+        pygame.K_h: (-1, 0), pygame.K_l: (1, 0),
+        pygame.K_b: (-1, 1), pygame.K_j: (0, 1), pygame.K_n: (1, 1),
+    }
+
+    def test_every_vi_key_moves_the_right_way(self):
+        from stormhold.ui.app import PlayScene
+        for key, delta in self.EXPECTED.items():
+            with self.subTest(key=pygame.key.name(key)):
+                self.assertIn(key, PlayScene.MOVE_KEYS,
+                              f"{pygame.key.name(key)} is not a movement key")
+                self.assertEqual(PlayScene.MOVE_KEYS[key], delta)
+
+    def test_all_eight_directions_are_reachable(self):
+        from stormhold.ui.app import PlayScene
+        self.assertEqual(set(PlayScene.MOVE_KEYS.values()),
+                         {(-1, -1), (0, -1), (1, -1), (-1, 0),
+                          (1, 0), (-1, 1), (0, 1), (1, 1)})
+
+
 class TestTheBeltIsVisible(unittest.TestCase):
     """You can only drink what is on your belt, so the belt has to be findable.
 

@@ -9,6 +9,16 @@ Status: **done** = implemented and tested. **partial** = present but not to the
 original's rule. **open** = not built, with a task number. **ours** = a
 deliberate divergence.
 
+A warning about this file, earned the hard way. It is a list of claims, and a
+claim is not a fact: "Vi keys and numeric keypad, shift to run" sat here
+marked **done** while neither the vi keys nor shift-to-run had ever been
+written. Two UI bugs were reported, marked fixed, and reported again, because
+the tests that were supposed to cover them clicked in a way no player clicks.
+So: prefer a test to a row in this table, and where a row cannot be tested,
+say how it was checked. `tools/ui_audit.py` opens every screen in the game,
+clicks every control on it, and reports which ones do nothing - that kind of
+thing is worth more than a hundred lines of this.
+
 ## Units, carrying and speed
 
 | Rule | Status |
@@ -140,7 +150,7 @@ is simply a death sentence.
 | Crosshair targeting with a "Command Pending" message | partial |
 | About 30 messages of scrollback with its own scrollbar | done - the wheel scrolls the log, the knob tracks the position, and a new line brings you back to the bottom |
 | Resizable windows | open |
-| Vi keys and numeric keypad, shift to run | done |
+| Vi keys and numeric keypad, shift to run | done - and a caution: this row said "done" for months while neither the vi keys nor shift-to-run existed. Only the arrow keys, WASD and the keypad were wired up, so on a laptop there was no way to step diagonally at all. Now covered by a test. |
 | Run stops at objects, doors, and room-corridor boundaries | partial |
 | Scroll Rooms Onto Screen option | open |
 | Review Story | open |
