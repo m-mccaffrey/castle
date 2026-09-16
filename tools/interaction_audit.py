@@ -103,13 +103,180 @@ class Bench:
         sc.draw(self.s.app.screen)
         return sc if sc.__class__.__name__ == "PackScene" else None
 
-    def give(self, *keys):
-        p = self.s.me()
+    def give(self, *keys, known=True):
+        """Put things in the pack the way the server would, and tell the
+        client about it. Appending to the inventory alone is not enough: the
+        window draws what the last S_INV packet said, and the server clears
+        its event list on every action, so a hand-made "inv" event never
+        arrives. That is why the pack looked empty here for three checks.
+        """
+        srv, p = self.s.app.server, self.s.me()
         made = []
-        for key in keys:
-            it = Item(key)
-            it.known = True
-            p.inventory.append(it)
-            made.append(it)
+        with srv.lock:
+            for key in keys:
+                it = Item(key)
+                it.known = known
+                p.add_item(it)
+                made.append(it)
+            session = srv.session_for(p.id)
+            if session:
+                srv.send_inventory(session)
         self.s.settle(0.3)
         return made
+
+
+    def messages(self, n=6):
+        return self.s.log(n)
+
+    def said(self, text, n=6):
+        return any(text in m for m in self.messages(n))
+
+    def cell_for(self, scene, item_id, where="pack"):
+        """Where the window is currently drawing a given item."""
+        scene.draw(self.s.app.screen)
+        cells = scene.store_cells if where == "store" else scene.cell_rects
+        for rect, item in cells:
+            if item["id"] == item_id:
+                return rect.center
+        return None
+
+    # ---- half one: buying and selling ------------------------------------
+    def check_trade(self):
+        print("\n-- trade ------------------------------------------------")
+        self.check_prices()
+        self.check_buy()
+        self.check_poor()
+        self.check_sell()
+        self.check_refusal()
+        self.check_identify()
+
+    def check_prices(self):
+        """The reference's rule: buy at 1.4x base, sell at 0.8x."""
+        for shop in ("general", "weaponsmith", "armourer", "magic"):
+            sc = self.open_shop(shop)
+            if sc is None:
+                self.note("price", f"{shop}: no such shop in town", False)
+                continue
+            bad = [(i["name"], i["price"], max(1, int(i["value"] * SHOP_BUY_MARKUP)))
+                   for i in sc.stock()
+                   if i["price"] != max(1, int(i["value"] * SHOP_BUY_MARKUP))]
+            self.note("price", f"{shop}: {len(sc.stock())} prices are 1.4x base",
+                      not bad, "" if not bad else str(bad[:3]))
+            bad = [(r["name"], r["price"]) for r in sc.data.get("sell", [])
+                   if r["price"] != max(1, int(r["value"] * SHOP_SELL_RATE))]
+            self.note("price", f"{shop}: offers are 0.8x base",
+                      not bad, "" if not bad else str(bad[:3]))
+
+    def check_buy(self):
+        sc = self.open_shop("general")
+        if sc is None or not sc.stock():
+            return self.note("buy", "general store has stock", False)
+        p = self.s.me()
+        p.copper = 5000
+        sc = self.open_shop("general")
+        item = min(sc.stock(), key=lambda i: i["price"])
+        before, held = p.copper, len(p.inventory)
+        src = self.cell_for(sc, item["id"], "store")
+        self.drag(src, self.s.app.scene.grid_rect.center)
+        text = self.say_yes()
+        want = f"It'll cost you {item['price']} C.P. for that. Take it?"
+        self.note("buy", "dragging out of the store quotes a price",
+                  text == want, f"said {text!r}" if text != want else "")
+        self.note("buy", f"buying {item['name']} costs exactly {item['price']}",
+                  before - p.copper == item["price"],
+                  f"purse went {before} -> {p.copper}")
+        self.note("buy", "the thing bought arrives in the pack",
+                  len(p.inventory) > held, f"{held} -> {len(p.inventory)} items")
+
+    def check_poor(self):
+        sc = self.open_shop("general")
+        if sc is None or not sc.stock():
+            return
+        item = min(sc.stock(), key=lambda i: i["price"])
+        p = self.s.me()
+        p.copper = max(0, item["price"] - 1)
+        sc = self.open_shop("general")
+        src = self.cell_for(sc, item["id"], "store")
+        self.drag(src, self.s.app.scene.grid_rect.center)
+        self.say_yes()
+        self.note("buy", "a short purse is told so, and is not charged",
+                  self.said("You don't have enough money!") and p.copper == item["price"] - 1,
+                  str(self.messages(3)))
+
+    def check_sell(self):
+        p = self.s.me()
+        p.copper = 500
+        (blade,) = self.give("longsword")
+        sc = self.open_shop("weaponsmith")
+        if sc is None:
+            return self.note("sell", "weaponsmith is in town", False)
+        want_price = max(1, int(blade.value() * SHOP_SELL_RATE))
+        before = p.copper
+        src = self.cell_for(sc, blade.id)
+        if src is None:
+            return self.note("sell", "the sword shows in the pack half", False)
+        self.drag(src, self.s.app.scene.store_rect.center)
+        text = self.say_yes()
+        want = f"I'll give you {want_price} C.P. for that. Take it?"
+        self.note("sell", "dragging into the store offers a price",
+                  text == want, f"said {text!r}" if text != want else "")
+        self.note("sell", f"selling pays exactly {want_price}",
+                  p.copper - before == want_price,
+                  f"purse went {before} -> {p.copper}")
+        self.note("sell", "the thing sold leaves the pack",
+                  blade not in p.inventory)
+
+    def check_refusal(self):
+        (potion,) = self.give("potion_heal")
+        sc = self.open_shop("weaponsmith")
+        if sc is None:
+            return
+        p = self.s.me()
+        before = p.copper
+        src = self.cell_for(sc, potion.id)
+        if src is None:
+            return self.note("sell", "the potion shows in the pack half", False)
+        self.drag(src, self.s.app.scene.store_rect.center)
+        self.say_yes()
+        self.note("sell", "a weaponsmith refuses a potion, and says why",
+                  potion in p.inventory and p.copper == before
+                  and self.said("We don't buy those"),
+                  str(self.messages(3)))
+
+    def check_identify(self):
+        p = self.s.me()
+        p.copper = 9000
+        (ring,) = self.give("ring_warding", known=False)
+        sc = self.open_shop("sage")
+        if sc is None:
+            return self.note("sage", "sage is in town", False)
+        price = sc.data.get("identify_price", 0)
+        before = p.copper
+        src = self.cell_for(sc, ring.id)
+        if src is None:
+            return self.note("sage", "the unknown ring shows in the pack half", False)
+        self.drag(src, self.s.app.scene.store_rect.center)
+        text = self.say_yes()
+        want = f"I can tell you what that is for {price} C.P. Well?"
+        self.note("sage", "the sage quotes for identifying, not for buying",
+                  text == want, f"said {text!r}" if text != want else "")
+        self.note("sage", f"identifying costs {price} and names the thing",
+                  ring.known and before - p.copper == price,
+                  f"known={ring.known} purse {before} -> {p.copper}")
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--only", choices=("trade", "drag"))
+    args = ap.parse_args()
+    b = Bench()
+    if args.only in (None, "trade"):
+        b.check_trade()
+    bad = [r for r in b.rows if r[2] != "ok"]
+    print(f"\n{len(b.rows)} checks, {len(bad)} failed")
+    b.s.close()
+    return 1 if bad else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

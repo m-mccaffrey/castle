@@ -2599,7 +2599,9 @@ class StoreScene(PackScene):
             if self.shop == "sage":
                 price = self.data.get("identify_price", 0)
                 self.ask(f"I can tell you what that is for {price} C.P. Well?",
-                         {"a": "service", "shop": self.shop, "key": "identify",
+                         # "what", not "key": the server reads `what`, so the
+                         # drag path quoted a price and then did nothing at all.
+                         {"a": "service", "shop": self.shop, "what": "identify",
                           "id": item["id"], "npc": npc})
             else:
                 price = self.sell_price(item)
