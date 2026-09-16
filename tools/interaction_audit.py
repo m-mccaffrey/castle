@@ -265,6 +265,104 @@ class Bench:
                   f"known={ring.known} purse {before} -> {p.copper}")
 
 
+    # ---- half two: dressing yourself ------------------------------------
+    WEARS = [("helm", "head"), ("chainmail", "torso"), ("shield", "shield"),
+             ("boots", "feet"), ("leggings", "legs"), ("cloak", "back"),
+             ("gauntlets", "arms"), ("amulet_ward", "neck"),
+             ("ring_might", "ring_left"), ("longsword", "weapon"),
+             ("bracers", "bracers")]
+
+    def check_drag(self):
+        print("\n-- dressing ---------------------------------------------")
+        self.check_equip()
+        self.check_wrong_slot()
+        self.check_unequip()
+        self.check_belt()
+        self.check_cursed()
+
+    def worn(self, slot):
+        p = self.s.me()
+        return p.equipment.get(slot)
+
+    def check_equip(self):
+        """Every wearable dragged onto the slot it belongs in."""
+        for key, slot in self.WEARS:
+            (thing,) = self.give(key)
+            sc = self.open_pack()
+            src = self.cell_for(sc, thing.id)
+            if src is None:
+                self.note("equip", f"{key} shows in the pack", False)
+                continue
+            self.drag(src, sc.slot_rects[slot].center)
+            self.note("equip", f"{key} dragged to {slot} is worn",
+                      self.worn(slot) is thing,
+                      f"{slot} holds {getattr(self.worn(slot), 'key', None)}")
+
+    def check_wrong_slot(self):
+        """A helmet is not a boot, and the window should say so."""
+        (helm,) = self.give("cap")
+        sc = self.open_pack()
+        src = self.cell_for(sc, helm.id)
+        if src is None:
+            return self.note("equip", "the spare cap shows in the pack", False)
+        before = self.worn("feet")
+        self.drag(src, sc.slot_rects["feet"].center)
+        self.home()
+        self.note("equip", "a cap dragged to the boots slot is refused, with a reason",
+                  self.worn("feet") is before and self.said("does not go there"),
+                  str(self.messages(3)))
+
+    def check_unequip(self):
+        sc = self.open_pack()
+        helm = self.worn("head")
+        if helm is None:
+            return self.note("equip", "something is on the head to take off", False)
+        self.drag(sc.slot_rects["head"].center, sc.grid_rect.center)
+        p = self.s.me()
+        self.note("equip", "dragging a worn thing to the pack takes it off",
+                  self.worn("head") is None and helm in p.inventory,
+                  f"head holds {getattr(self.worn('head'), 'key', None)}")
+
+    def check_belt(self):
+        """A belt's squares are drop targets, and a potion lands on one."""
+        (belt,) = self.give("belt3")
+        sc = self.open_pack()
+        src = self.cell_for(sc, belt.id)
+        self.drag(src, sc.slot_rects["waist"].center)
+        self.note("belt", "a belt dragged to the waist is worn",
+                  self.worn("waist") is belt)
+        (potion,) = self.give("potion_heal")
+        sc = self.open_pack()
+        sc.draw(self.s.app.screen)
+        cells = list(sc.empty_stow_rects)
+        self.note("belt", "an empty belt draws its squares as drop targets",
+                  bool(cells), f"{len(cells)} empty squares")
+        if not cells:
+            return
+        src = self.cell_for(sc, potion.id)
+        self.drag(src, cells[0][0].center)
+        stowed = self.worn("waist").contents or []
+        self.note("belt", "a potion dropped on a belt square is stowed there",
+                  potion in stowed, f"belt holds {[i.key for i in stowed]}")
+
+    def check_cursed(self):
+        (ring,) = self.give("ring_burden")
+        ring.cursed = True
+        sc = self.open_pack()
+        src = self.cell_for(sc, ring.id)
+        if src is None:
+            return self.note("curse", "the cursed ring shows in the pack", False)
+        self.drag(src, sc.slot_rects["ring_right"].center)
+        if self.worn("ring_right") is not ring:
+            return self.note("curse", "a cursed ring goes on like any other",
+                             False, "it would not even go on")
+        sc = self.open_pack()
+        self.drag(sc.slot_rects["ring_right"].center, sc.grid_rect.center)
+        self.home()
+        self.note("curse", "a cursed ring will not come off, and says why",
+                  self.worn("ring_right") is ring, str(self.messages(3)))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", choices=("trade", "drag"))
@@ -272,6 +370,8 @@ def main():
     b = Bench()
     if args.only in (None, "trade"):
         b.check_trade()
+    if args.only in (None, "drag"):
+        b.check_drag()
     bad = [r for r in b.rows if r[2] != "ok"]
     print(f"\n{len(b.rows)} checks, {len(bad)} failed")
     b.s.close()

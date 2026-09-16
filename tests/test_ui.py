@@ -173,6 +173,26 @@ class TestStoreIsTheInventory(unittest.TestCase):
         self.drag(scene, scene.cell_rects[0][0].center, scene.store_rect.center)
         self.assertIn("what that is", scene.confirm["text"])
 
+    def test_saying_yes_to_the_sage_actually_identifies_the_thing(self):
+        """The quote used to be the whole of it. The action named the service
+        under "key" and the world reads it from "what", so you were asked for
+        your money and then nothing happened."""
+        item = Item("ring_warding")
+        item.known = False
+        self.player.add_item(item)
+        self.player.copper = 9000
+        self.app.inventory = self.world.inventory_view(self.player)
+        scene = self.store("sage")
+        cell = next(r for r, i in scene.cell_rects if i["id"] == item.id)
+        self.drag(scene, cell.center, scene.store_rect.center)
+        scene.draw(self.app.screen)
+        scene.handle(pygame.event.Event(pygame.MOUSEBUTTONDOWN,
+                                        pos=scene.confirm["yes"].center, button=1))
+        self.assertTrue(self.acted, "Yes must send an action")
+        self.world.submit(self.player, self.acted[-1])
+        self.world.run_level(self.player.depth)
+        self.assertTrue(item.known, "the sage was paid; he must say what it is")
+
     def test_the_temple_stays_a_counter(self):
         data = self.world.shop_view(self.player, "temple", 3, "Temple")
         scene = ServiceScene(self.app, data)
