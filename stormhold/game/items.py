@@ -132,7 +132,7 @@ BASES = {
     # "Two slots we did not have: a Wand Quiver, and belts that are
     # containers sized in slots." A wand in the pack cannot be used; a wand in
     # the quiver can.
-    "quiver":      dict(name="Wand Quiver", slot="quiver", icon="quiver", bulk=2000, wt=400, value=180, depth=5, kind="container", capacity=3000, bulk_capacity=9000, wands_only=True),
+    "quiver":      dict(name="Wand Quiver", slot="quiver", icon="quiver", bulk=2000, wt=400, value=180, depth=5, kind="container", capacity=3000, bulk_capacity=9000, wands_only=True, belt_slots=3),
     # A bag's bulk follows what is in it; a chest's does not.
     "chest":       dict(name="Chest", slot=None, icon="chest", bulk=40000, wt=6000, value=70, depth=2, kind="container", capacity=30000, bulk_capacity=60000, bulk_fixed=40000),
     "sack":        dict(name="Sack", slot=None, icon="sack", bulk=700, wt=500, value=25, depth=0, kind="container", capacity=10000, bulk_capacity=12000),

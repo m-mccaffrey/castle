@@ -2504,6 +2504,10 @@ class World:
             "custom": bool(item.custom_name),
             "cursed": item.cursed and item.known,
             "spell": item.spell,
+            # How many things this will hold to hand. The window could not
+            # draw a belt's empty slots without it, so an empty belt showed
+            # nothing at all and there was no sign the slots existed.
+            "slots": item.base.get("belt_slots"),
         }
 
     def shop_view(self, p, shop, npc_id, name):

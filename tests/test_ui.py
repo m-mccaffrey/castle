@@ -22,6 +22,7 @@ from stormhold.ui.app import (App, MenuScene, CharGenScene,      # noqa: E402
                               MenuOverlay, HelpScene, OverlayScene,
                               PlayScene, draw_popup)
 from stormhold.game.world import World                            # noqa: E402
+from stormhold.game.items import Item                            # noqa: E402
 
 SIZES = [(1024, 700), (1280, 800), (1440, 900), (1920, 1080)]
 
@@ -365,6 +366,65 @@ class TestEveryButtonActuallyFires(unittest.TestCase):
                 click(self.app, scene, closer[0].rect.center)
                 self.assertNotIn(scene, self.app.scenes,
                                  f"{name} stayed open after Close")
+
+
+class TestTheBeltIsVisible(unittest.TestCase):
+    """You can only drink what is on your belt, so the belt has to be findable.
+
+    It used to be drawn as a row of little squares tucked under the belt's own
+    panel on the paper doll, where the next slot down covered them - and only
+    for things that were already stowed. So a belt you had just bought showed
+    nothing whatever: no slots, no sign it had any, and nowhere obvious to
+    drop a potion.
+    """
+
+    def setUp(self):
+        self.app = make_app()
+        self.app.screen = pygame.display.set_mode((1280, 800))
+        self.world = World(seed=11)
+        self.player = self.world.add_player("Subject")
+        for key in ("belt3", "potion_heal"):
+            it = Item(key)
+            it.known = True
+            self.player.inventory.append(it)
+        belt = next(i for i in self.player.inventory if i.slot == "waist")
+        self.world.do_player_action(self.world.levels[0], self.player,
+                                    {"a": "equip", "id": belt.id,
+                                     "slot": "waist"})
+        self.app.inventory = self.world.inventory_view(self.player)
+        self.app.play = _PlayStub(self.world.self_view(self.player))
+        self.acts = []
+        self.app.act = self.acts.append
+
+    def scene(self):
+        sc = PackScene(self.app)
+        self.app.scenes = [MenuScene(self.app)]
+        self.app.push(sc)
+        sc.draw(self.app.screen)
+        return sc
+
+    def test_an_empty_belt_still_shows_its_slots(self):
+        sc = self.scene()
+        drawn = len(sc.stow_rects) + len(sc.empty_stow_rects)
+        self.assertEqual(drawn, 3,
+                         "a three slot belt should draw three slots even with "
+                         f"nothing on it, drew {drawn}")
+
+    def test_the_client_is_told_how_many_slots_a_belt_has(self):
+        worn = self.world.inventory_view(self.player)["equipment"]["waist"]
+        self.assertEqual(worn.get("slots"), 3)
+
+    def test_dropping_on_an_empty_slot_stows(self):
+        sc = self.scene()
+        potion = next(i for i in self.player.inventory
+                      if i.base.get("use") == "heal")
+        cell, slot = sc.empty_stow_rects[0]
+        sc.drag = {"item": self.world.item_view(potion), "from": "pack",
+                   "slot": None, "pos": (0, 0), "moved": True}
+        sc.finish_drag(cell.center)
+        self.assertTrue(self.acts, "dropping on an empty belt slot did nothing")
+        self.assertEqual(self.acts[-1]["a"], "stow")
+        self.assertEqual(self.acts[-1]["slot"], slot)
 
 
 class TestThePlayScreensOwnControls(unittest.TestCase):

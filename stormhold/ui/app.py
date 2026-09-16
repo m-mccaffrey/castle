@@ -1266,6 +1266,7 @@ class PackScene(OverlayScene):
         self.naming = None          # a TextField while renaming something
         self.popup = None           # ((x, y), lines) from a right click
         self.stow_rects = []        # the little squares on the belt
+        self.empty_stow_rects = []  # ...and the ones with nothing in them yet
         self.grid_rect = pygame.Rect(0, 0, 10, 10)
         self.scroll = 0
 
@@ -1378,6 +1379,14 @@ class PackScene(OverlayScene):
         if not drag["moved"]:
             return                                   # a click, not a drag
 
+        # An empty square on the belt is a drop target in its own right: it
+        # is the obvious place to aim for, and aiming at the belt buckle
+        # above it is not something anyone would guess.
+        for cell, slot in self.empty_stow_rects:
+            if cell.collidepoint(pos) and self.slot_accepts(slot, item):
+                self.app.act({"a": "stow", "id": item["id"], "slot": slot})
+                return
+
         for slot, rect in self.slot_rects.items():
             if not rect.collidepoint(pos):
                 continue
@@ -1468,6 +1477,7 @@ class PackScene(OverlayScene):
                                         SLOT_LABELS, SLOT_ANCHORS)
         self.slot_rects = {}
         self.stow_rects = []
+        self.empty_stow_rects = []
         sw, sh = self.SLOT_W, self.SLOT_H
 
         top_y = area.y
@@ -1517,9 +1527,57 @@ class PackScene(OverlayScene):
                                   start[1] + dy / length * stub), (175, 175, 170))
 
         self.draw_figure(surf, gap_area)
-
         for slot, rect in self.slot_rects.items():
             self.draw_slot(surf, rect, slot, SLOT_LABELS.get(slot, slot))
+        self.draw_to_hand(surf, gap_area)
+
+    def draw_to_hand(self, surf, area):
+        """The belt and the quiver, as a labelled strip under the figure.
+
+        These used to be drawn as a row of squares tucked under the belt's own
+        panel, where the next slot down covered them - and only for things
+        already stowed, so an empty belt showed nothing whatever. Since these
+        are the only things you can reach in a fight, and the question "where
+        are the belt slots" has a real answer, they get their own strip, with
+        every slot drawn whether or not there is anything in it.
+        """
+        cells = []
+        for slot in self.STOW_SLOTS:
+            worn = self.equipment().get(slot)
+            if not worn:
+                continue
+            held = self.stowed(slot)
+            cells.append((slot, worn, held,
+                          max(len(held), worn.get("slots") or 2)))
+        if not cells:
+            return
+
+        size, pad = 26, 4
+        total = sum(n for _s, _w, _h, n in cells)
+        label = "to hand:"
+        label_w = W.font(11, bold=True).size(label)[0] + 8
+        width = label_w + total * (size + pad) + (len(cells) - 1) * 14
+        x = area.centerx - width // 2
+        y = area.bottom - size - 2          # clear of the figure's feet
+        W.text(surf, label, (x, y + size // 2 - 7), 11, bold=True,
+               colour=(90, 90, 90))
+        x += label_w
+        for slot, worn, held, count in cells:
+            for i in range(count):
+                cell = pygame.Rect(x, y, size, size)
+                item = held[i] if i < len(held) else None
+                W.panel(surf, cell, raised=item is not None,
+                        fill=(226, 226, 220) if item else (198, 198, 192))
+                if item is not None:
+                    img = self.app.sheet.item(item["icon"])
+                    if img:
+                        surf.blit(pygame.transform.smoothscale(img, (20, 20)),
+                                  (cell.x + 3, cell.y + 3))
+                    self.stow_rects.append((cell, item))
+                else:
+                    self.empty_stow_rects.append((cell, slot))
+                x += size + pad
+            x += 14
 
     def dashed_line(self, surf, a, b, colour, dash=5):
         dx, dy = b[0] - a[0], b[1] - a[1]
@@ -1663,22 +1721,6 @@ class PackScene(OverlayScene):
             W.text(surf, name, (rect.x + 31, rect.y + 21), 11, bold=True, colour=colour)
         if self.selected is not None and worn is not None and worn["id"] == self.selected["id"]:
             pygame.draw.rect(surf, W.TITLE_A, rect, 2)
-
-        # What is on the belt, in a row of little squares under it. These are
-        # the only things you can reach in a fight, so they have to be visible
-        # and draggable.
-        if slot in self.STOW_SLOTS and worn:
-            row = pygame.Rect(rect.x + 4, rect.bottom + 2, rect.width - 8, 24)
-            slots = max(1, len(self.stowed(slot)) or 1)
-            width = min(24, row.width // max(2, slots))
-            for i, item in enumerate(self.stowed(slot)):
-                cell = pygame.Rect(row.x + i * (width + 2), row.y, width, 22)
-                W.panel(surf, cell, raised=True, fill=(226, 226, 220))
-                img = self.app.sheet.item(item["icon"])
-                if img:
-                    surf.blit(pygame.transform.smoothscale(img, (16, 16)),
-                              (cell.x + 3, cell.y + 3))
-                self.stow_rects.append((cell, item))
 
     CELL = 96
     CELL_H = 84
