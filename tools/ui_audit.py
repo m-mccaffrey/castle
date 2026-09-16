@@ -163,7 +163,11 @@ class Audit:
             elif after != before_scene:
                 rows.append(("menu", label, "ok", f"-> {after}"))
             elif grew:
-                rows.append(("menu", label, "ok", "message"))
+                # What it said, not just that it said something: a verb that
+                # answers "there is nothing here to get" is working, but a
+                # verb that only ever answers that is not.
+                said = self.s.log(200)[-1][:52]
+                rows.append(("menu", label, "ok", f'said "{said}"'))
             elif self.snapshot(self.s.app.scene) != before_state:
                 rows.append(("menu", label, "ok", "toggled"))
             else:
@@ -200,7 +204,11 @@ class Audit:
             elif after != before_scene:
                 rows.append(("toolbar", label, "ok", f"-> {after}"))
             elif grew:
-                rows.append(("toolbar", label, "ok", "message"))
+                # What it said, not just that it said something: a verb that
+                # answers "there is nothing here to get" is working, but a
+                # verb that only ever answers that is not.
+                said = self.s.log(200)[-1][:52]
+                rows.append(("toolbar", label, "ok", f'said "{said}"'))
             elif self.snapshot(self.s.app.scene) != before_state:
                 rows.append(("toolbar", label, "ok", "toggled"))
             else:
@@ -243,7 +251,7 @@ class Audit:
             before_log = len(self.s.log(200))
             label = f"{b.label!r}({b.action})"
             try:
-                self.press(rect)
+                self.press(b.rect)
             except Exception as exc:
                 rows.append((where, label, "CRASH",
                              traceback.format_exception_only(type(exc), exc)[-1].strip()))
@@ -256,7 +264,8 @@ class Audit:
             elif after_scene != before_scene:
                 rows.append((where, label, "ok", f"-> {after_scene}"))
             elif grew > 0:
-                rows.append((where, label, "ok", "message"))
+                said = self.s.log(200)[-1][:52]
+                rows.append((where, label, "ok", f'said "{said}"'))
             elif not b.enabled:
                 rows.append((where, label, "off", "disabled"))
             else:

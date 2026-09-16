@@ -393,6 +393,7 @@ class Toolbar:
     """The row of verb buttons under the menu, plus quick-cast spell icons."""
 
     HEIGHT = 30
+    SPELL_SLOTS = 10
 
     def __init__(self, verbs):
         self.verbs = verbs                  # [(label, action)]
@@ -417,10 +418,12 @@ class Toolbar:
             self.buttons.append((rect, action))
             x += w + 3
 
-        # Quick-cast slots, which fill up as spells are learned.
+        # Quick-cast slots, which fill up as spells are learned. Ten of them,
+        # which is what the original's button bar carries - we were drawing
+        # twelve for no reason anybody could point at.
         self.spell_rects = []
         x += 10
-        for i, name in enumerate(spells[:12]):
+        for i, name in enumerate(spells[:self.SPELL_SLOTS]):
             rect = pygame.Rect(x, bar.y + 3, 26, self.HEIGHT - 7)
             panel(surf, rect, raised=True)
             img = font(11, bold=True).render(str(i + 1), True, (60, 60, 120))
