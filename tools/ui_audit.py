@@ -42,10 +42,20 @@ class Audit:
         self.s.app.act = spy
 
     # ---- getting to each screen -----------------------------------------
-    def to_play(self):
-        while self.s.app.scene.__class__.__name__ != "PlayScene":
+
+    # Menu entries that end the session rather than doing something in it.
+    # "Leave the keep" disconnects, and after that nothing gets back to the
+    # play screen - so an unbounded walk home sat pressing Escape at a
+    # disconnected menu forever, which is what hung this audit.
+    DESTRUCTIVE = {"File > Leave the keep"}
+
+    def to_play(self, tries=8):
+        for _ in range(tries):
+            if self.s.app.scene.__class__.__name__ == "PlayScene":
+                return True
             self.s.key(pygame.K_ESCAPE)
-            self.s.settle(0.3)
+            self.s.settle(0.2)
+        return self.s.app.scene.__class__.__name__ == "PlayScene"
 
     def open(self, where):
         self.to_play()
@@ -107,7 +117,15 @@ class Audit:
     def check_menus(self):
         rows = []
         for mi, ii, label in self.menu_items():
-            self.to_play()
+            if label in self.DESTRUCTIVE:
+                rows.append(("menu", label, "skip", "ends the session"))
+                print("   ", rows[-1], flush=True)
+                continue
+            # Only walk home if something took us away: most menu items leave
+            # the play screen up, and going the whole way back between each of
+            # twenty-odd items is most of the running time.
+            if self.s.app.scene.__class__.__name__ != "PlayScene":
+                self.to_play()
             sc = self.s.app.scene
             sc.draw(self.s.app.screen)
             bar = sc.menubar
@@ -150,6 +168,7 @@ class Audit:
                 rows.append(("menu", label, "ok", "toggled"))
             else:
                 rows.append(("menu", label, "DEAD", "nothing happened"))
+            print("   ", rows[-1], flush=True)
         return rows
 
     def check_toolbar(self):
@@ -159,7 +178,8 @@ class Audit:
         sc.draw(self.s.app.screen)
         tools = list(getattr(getattr(sc, "toolbar", None), "buttons", []))
         for i in range(len(tools)):
-            self.to_play()
+            if self.s.app.scene.__class__.__name__ != "PlayScene":
+                self.to_play()
             sc = self.s.app.scene
             sc.draw(self.s.app.screen)
             rect, action = sc.toolbar.buttons[i]     # (rect, action) pairs
@@ -185,6 +205,7 @@ class Audit:
                 rows.append(("toolbar", label, "ok", "toggled"))
             else:
                 rows.append(("toolbar", label, "DEAD", "nothing happened"))
+            print("   ", rows[-1], flush=True)
         return rows
 
     @staticmethod
