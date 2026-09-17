@@ -974,6 +974,12 @@ class PlayScene(Scene):
                        ("Rest Until Healed", "rest", True),
                        ("Sleep Until Mana is Restored", "sleep", True),
                        ("-", None, True),
+                       # Ours, not the original's - and they were generated,
+                       # described by Examine and impossible to use, because
+                       # nothing ever sent the verb.
+                       ("Drink from a Fountain", "fountain", True),
+                       ("Sit on the Throne", "throne", True),
+                       ("-", None, True),
                        ("Open", "open", True),
                        ("Close", "close", True),
                        ("-", None, True),
@@ -2461,15 +2467,22 @@ class ServiceScene(OverlayScene):
                           "name": self.data.get("name")})
             self.selected_service = None
         elif action == "identify" and self.selected_sell:
-            self.app.act({"a": "service", "what": "identify", "id": self.selected_sell["id"]})
+            self.app.act({"a": "service", "what": "identify", "shop": self.shop,
+                          "id": self.selected_sell["id"], "npc": npc,
+                          "name": self.data.get("name")})
         elif action in ("heal", "uncurse"):
-            self.app.act({"a": "service", "what": action})
+            self.app.act({"a": "service", "what": action, "shop": self.shop,
+                          "npc": npc, "name": self.data.get("name")})
         elif action in ("deposit", "withdraw"):
             try:
                 amount = int(self.amount.value or 0)
             except ValueError:
                 amount = 0
-            self.app.act({"a": "service", "what": action, "amount": amount})
+            # The counter has to be told who it is, or the refresh that
+            # follows comes back as an untitled shop.
+            self.app.act({"a": "service", "what": action, "amount": amount,
+                          "shop": self.shop, "npc": npc,
+                          "name": self.data.get("name")})
 
     def draw_temple(self, surf, client, top, list_h):
         """Services and their prices, the way the temple presents them."""

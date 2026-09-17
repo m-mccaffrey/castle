@@ -630,12 +630,17 @@ class World:
                                 "shop": other.shop, "name": other.name})
             return FREE_COST
         if other is not None:
-            return FREE_COST                    # a companion is in the way
+            self.msg(f"{other.name} is in the way.", "info", to=p)
+            return FREE_COST
 
         if not level.walkable(nx, ny, p.id):
             return FREE_COST
         if dx and dy and is_solid(level.get(p.x + dx, p.y)) and is_solid(level.get(p.x, p.y + dy)):
-            return FREE_COST                    # no squeezing through corners
+            # Silence here reads as a dropped keypress. The rule is real and
+            # it costs fights, so say it.
+            self.msg("You cannot squeeze diagonally between two walls.",
+                     "info", to=p)
+            return FREE_COST
 
         cost = p.action_cost(MOVE_COST, moving=True)
         if cost is None:
@@ -1409,18 +1414,34 @@ class World:
                          if r["x"] <= tx < r["x"] + r["w"]
                          and r["y"] <= ty < r["y"] + r["h"]), None)
             mem = self.memory_for(p, level)
+
+            def light(xx, yy):
+                """Remember a square, and queue it for the client.
+
+                Setting the memory bit alone was not enough, and was worse
+                than doing nothing: update_fov only sends a tile when the
+                bit is *not* already set, so a square lit this way could
+                never be sent again. Lantern said "Light fills the room",
+                took the mana, and the room stayed black for the rest of
+                the game unless you left the floor and came back.
+                """
+                if not level.in_bounds(xx, yy):
+                    return
+                i = level.idx(xx, yy)
+                if not mem[i]:
+                    mem[i] = 1
+                    p.pending_tiles.extend((xx, yy, level.tiles[i]))
+
             if room:
                 for yy in range(room["y"], room["y"] + room["h"]):
                     for xx in range(room["x"], room["x"] + room["w"]):
-                        mem[level.idx(xx, yy)] = 1
+                        light(xx, yy)
                 self.msg("Light fills the room.", "good", to=p)
             else:
                 for yy in range(ty - 1, ty + 2):
                     for xx in range(tx - 1, tx + 2):
-                        if level.in_bounds(xx, yy):
-                            mem[level.idx(xx, yy)] = 1
+                        light(xx, yy)
                 self.msg("A pool of light spreads around you.", "good", to=p)
-            self.events.append({"t": "map", "to": p.id})
 
         if spell.get("sleep"):
             occ = level.actor_at(tx, ty)
@@ -2377,6 +2398,22 @@ class World:
             self.msg(f"You withdraw {amount} copper.", "info", to=p)
 
         self.events.append({"t": "inv", "to": p.id})
+        # ...and the counter itself, or nothing on it changes while you are
+        # standing there. Deposit a hundred copper and the panel went on
+        # saying what it said before: the money had moved, the log said so,
+        # and all three figures on screen were stale until you shut the
+        # window and opened it again. The sage had the same fault one step
+        # milder - his offer for a thing he had just identified was still
+        # the price he would have paid while it was unknown.
+        if action.get("shop") or what in ("identify", "deposit", "withdraw",
+                                          "heal", "uncurse"):
+            self.events.append({"t": "shop", "to": p.id,
+                                "npc": action.get("npc"),
+                                "shop": action.get("shop") or
+                                        ("bank" if what in ("deposit", "withdraw")
+                                         else "sage" if what == "identify"
+                                         else "temple"),
+                                "name": action.get("name", "")})
         return FREE_COST
 
     # ====================================================== snapshot ========
