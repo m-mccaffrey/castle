@@ -503,6 +503,8 @@ class PlayScene(Scene):
         self.terrain_key = None
         self.camera = (0, 0)
         self.target_mode = None       # ("spell", name) while choosing a target
+        self.cursor = None            # the crosshairs, in level squares
+        self.pan = None               # [dx, dy] while the `v` command scrolls
         self.chatting = False
         self.chat_text = ""
         self.log_scroll = 0           # lines back from the newest
@@ -604,9 +606,11 @@ class PlayScene(Scene):
         pygame.K_h: (-1, 0), pygame.K_j: (0, 1),
         pygame.K_k: (0, -1), pygame.K_l: (1, 0),
         pygame.K_b: (-1, 1), pygame.K_n: (1, 1),
-        # WASD and the keypad are ours, kept because they cost nothing.
-        pygame.K_w: (0, -1), pygame.K_s: (0, 1),
-        pygame.K_a: (-1, 0), pygame.K_d: (1, 0),
+        # WASD used to be here too, "because it costs nothing". It cost two
+        # of the original's commands: `s` is Search and `d` is Disarm Trap,
+        # and both walked instead. The keypad is not ours either - the help
+        # file gives a table of both sets, alphabetic and numeric, so this is
+        # the original's keyboard exactly, plus the arrow keys.
         pygame.K_KP8: (0, -1), pygame.K_KP2: (0, 1),
         pygame.K_KP4: (-1, 0), pygame.K_KP6: (1, 0),
         pygame.K_KP7: (-1, -1), pygame.K_KP9: (1, -1),
@@ -663,10 +667,14 @@ class PlayScene(Scene):
             return
 
         key = event.key
+        shift = bool(event.mod & pygame.KMOD_SHIFT)
         self.dirty = True
 
+        if self.crosshair_keys(key):
+            return
+
         if self.target_mode and key == pygame.K_ESCAPE:
-            self.target_mode = None
+            self.target_mode = self.cursor = None
             self.add_message("Never mind.", "info")
             return
 
@@ -677,22 +685,45 @@ class PlayScene(Scene):
             # to it.
             verb = "run" if (event.mod & pygame.KMOD_SHIFT) else "move"
             self.send_action({"a": verb, "dx": dx, "dy": dy})
-        elif key in (pygame.K_KP5, pygame.K_PERIOD) and not (event.mod & pygame.KMOD_SHIFT):
+        elif key in (pygame.K_KP5, pygame.K_PERIOD) and not shift:
             self.send_action({"a": "wait"})
+        elif key in (pygame.K_COMMA, pygame.K_PERIOD) and shift:
+            # `<` and `>`. This has to come before the Get branch: `<` is
+            # shift plus comma, the Get branch matched the comma first, and
+            # so the only way up a staircase was the menu.
+            self.send_action({"a": "stairs"})
         elif key in (pygame.K_g, pygame.K_COMMA):
             self.send_action({"a": "pickup"})
+        elif key == pygame.K_o:
+            self.send_action({"a": "open"})
+        elif key == pygame.K_c and not shift:
+            self.send_action({"a": "close"})
+        elif key == pygame.K_s:
+            self.send_action({"a": "search"})
+        elif key == pygame.K_d:
+            self.send_action({"a": "disarm"})
+        elif key == pygame.K_f:
+            self.send_action({"a": "freehand"})
+        elif key == pygame.K_r and not shift:
+            self.send_action({"a": "rest"})
+        elif key == pygame.K_r and shift:
+            self.send_action({"a": "sleep"})
+        elif key == pygame.K_m:
+            self.menu_command("Map!")
+        elif key == pygame.K_x:
+            self.begin_look()
+        elif key == pygame.K_v:
+            self.begin_view()
         elif key == pygame.K_i:
             self.app.push(PackScene(self.app))
         elif key == pygame.K_z:
             self.app.push(SpellScene(self.app, self))
-        elif key == pygame.K_c:
+        elif key == pygame.K_c and shift:
+            # The original opens this from the Character! menu and binds no
+            # letter to it; `c` itself belongs to Close Door.
             self.app.push(SheetScene(self.app))
-        elif key == pygame.K_f:
-            self.fire_at_nearest()
-        elif key == pygame.K_PERIOD and (event.mod & pygame.KMOD_SHIFT):
-            self.send_action({"a": "stairs"})
-        elif key == pygame.K_COMMA and (event.mod & pygame.KMOD_SHIFT):
-            self.send_action({"a": "stairs"})
+        elif key == pygame.K_t:
+            self.fire_at_nearest()     # ours: the original has no missile key
         elif key == pygame.K_RETURN:
             self.chatting = True
             self.chat_text = ""
@@ -758,7 +789,7 @@ class PlayScene(Scene):
 
         if self.target_mode:
             kind, name = self.target_mode
-            self.target_mode = None
+            self.target_mode = self.cursor = None
             if kind == "examine":
                 self.send_action({"a": "examine", "x": tx, "y": ty})
             else:
@@ -814,8 +845,80 @@ class PlayScene(Scene):
         if spell.get("rng", 0) == 0:
             self.send_action({"a": "cast", "spell": spell_name})
             return
+        self.pan = None
         self.target_mode = ("spell", spell_name)
-        self.add_message(f"Click a target for {spell_name}, or press Esc.", "info")
+        self.aim_here()
+        self.add_message(f"Command Pending: choose a target for {spell_name}. "
+                         "Move the crosshairs and press Return, or Esc.", "info")
+
+    def begin_look(self):
+        """The `x` command: look at a site."""
+        # Leaving the window where the `v` command left it would mean the
+        # movement keys scrolled it instead of moving the crosshairs, and
+        # Return put the window back instead of taking the shot.
+        self.pan = None
+        self.target_mode = ("examine", None)
+        self.aim_here()
+        self.add_message("Command Pending: move the crosshairs to what you "
+                         "want to look at and press Return.", "info")
+
+    def begin_view(self):
+        """The `v` command: "View the dungeon by scrolling the screen."
+
+        The map window normally keeps you in the middle of it. This lets the
+        movement keys push the window around instead, which is the only way
+        to look at the far side of a room from the keyboard after a Detect
+        spell has shown you something there.
+        """
+        self.target_mode = self.cursor = None
+        self.pan = [0, 0]
+        self.add_message("Viewing: the movement keys scroll the window. "
+                         "Return or Esc puts it back.", "info")
+
+    def aim_here(self):
+        """Put the crosshairs on yourself to start with, as the original does."""
+        me = self.me()
+        self.cursor = [me["x"], me["y"]] if me else None
+
+    def crosshair_keys(self, key):
+        """Movement keys drive the crosshairs, or the window, when either is up.
+
+        "Several commands require a target or a direction. In this case
+        you'll get a command pending message in the description window, and
+        the cursor will change to cross hairs. Use the movement keys (or
+        mouse) to target the cursor and hit return."
+        """
+        if self.pan is not None:
+            if key in self.MOVE_KEYS:
+                dx, dy = self.MOVE_KEYS[key]
+                self.pan[0] += dx
+                self.pan[1] += dy
+            elif key in (pygame.K_RETURN, pygame.K_ESCAPE, pygame.K_v):
+                self.pan = None
+                self.add_message("The window follows you again.", "info")
+            else:
+                return False
+            self.dirty = True
+            return True
+
+        if self.target_mode is None or self.cursor is None:
+            return False
+        if key in self.MOVE_KEYS:
+            dx, dy = self.MOVE_KEYS[key]
+            self.cursor[0] = max(0, min(self.map.w - 1, self.cursor[0] + dx))
+            self.cursor[1] = max(0, min(self.map.h - 1, self.cursor[1] + dy))
+            self.dirty = True
+            return True
+        if key == pygame.K_RETURN:
+            kind, name = self.target_mode
+            tx, ty = self.cursor
+            self.target_mode, self.cursor = None, None
+            if kind == "examine":
+                self.send_action({"a": "examine", "x": tx, "y": ty})
+            else:
+                self.send_action({"a": "cast", "spell": name, "x": tx, "y": ty})
+            return True
+        return False
 
     # ------------------------------------------------------------- drawing --
     MENU_H = W.MenuBar.HEIGHT
@@ -900,8 +1003,7 @@ class PlayScene(Scene):
         elif action == "options":
             self.add_message("Options are kept in the launcher for now.", "info")
         elif action == "examine":
-            self.target_mode = ("examine", None)
-            self.add_message("Click something to examine it.", "info")
+            self.begin_look()
         elif action == "save":
             # It used to say the server handled it, which was only true when
             # somebody disconnected.
@@ -940,6 +1042,9 @@ class PlayScene(Scene):
             cx = -(cols - self.map.w) // 2
         if self.map.h <= rows:
             cy = -(rows - self.map.h) // 2
+        if self.pan is not None:
+            cx = max(-cols // 2, min(self.map.w - 1, cx + self.pan[0]))
+            cy = max(-rows // 2, min(self.map.h - 1, cy + self.pan[1]))
         self.camera = (cx, cy)
 
         sheet = self.app.sheet
@@ -1029,11 +1134,37 @@ class PlayScene(Scene):
             surf.blit(sh, (px - img.get_width() // 2 + 1, py + 1))
             surf.blit(img, (px - img.get_width() // 2, py))
 
+        # The crosshairs themselves, which is what "the cursor will change to
+        # cross hairs" means when there is no mouse in your hand.
+        if self.cursor is not None:
+            px = view.x + (self.cursor[0] - cx) * TILE
+            py = view.y + (self.cursor[1] - cy) * TILE
+            box = pygame.Rect(px, py, TILE, TILE)
+            pygame.draw.rect(surf, YELLOW, box, 2)
+            pygame.draw.line(surf, YELLOW, (box.centerx, box.y - 6),
+                             (box.centerx, box.y - 1))
+            pygame.draw.line(surf, YELLOW, (box.centerx, box.bottom + 1),
+                             (box.centerx, box.bottom + 6))
+            pygame.draw.line(surf, YELLOW, (box.x - 6, box.centery),
+                             (box.x - 1, box.centery))
+            pygame.draw.line(surf, YELLOW, (box.right + 1, box.centery),
+                             (box.right + 6, box.centery))
+
         surf.set_clip(clip)
+
+        if self.pan is not None:
+            label = W.font(15, bold=True).render(
+                "Viewing  -  movement keys scroll, Return puts it back", True, YELLOW)
+            box = pygame.Rect(view.centerx - label.get_width() // 2 - 8, view.y + 8,
+                              label.get_width() + 16, 26)
+            pygame.draw.rect(surf, (20, 20, 30), box)
+            pygame.draw.rect(surf, YELLOW, box, 1)
+            surf.blit(label, (box.x + 8, box.y + 4))
 
         if self.target_mode:
             label = W.font(15, bold=True).render(
-                f"Click a target for {self.target_mode[1] or 'Examine'}  (Esc to cancel)",
+                f"Command Pending: {self.target_mode[1] or 'Examine'}"
+                "  -  move the crosshairs, Return to confirm, Esc to cancel",
             True, YELLOW)
             box = pygame.Rect(view.centerx - label.get_width() // 2 - 8, view.y + 8,
                               label.get_width() + 16, 26)

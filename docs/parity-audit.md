@@ -147,9 +147,15 @@ is simply a death sentence.
 | Right click anything for a popup description, capped at 10 lines | done - on the map it names what is there and gives a creature's condition in words rather than numbers; in the pack and the store it gives name, weight, bulk and what the thing does. There was no popup of any kind. |
 | Drag the player icon to walk; aborts if attacked or trapped | open |
 | Double-click yourself to take stairs | done |
-| Crosshair targeting with a "Command Pending" message | partial |
+| Crosshair targeting with a "Command Pending" message | done - the message now says Command Pending, and the crosshairs are drawn and driven from the keyboard |
 | About 30 messages of scrollback with its own scrollbar | done - the wheel scrolls the log, the knob tracks the position, and a new line brings you back to the bottom |
 | Resizable windows | open |
+| The command letters: `<` `>` `o` `c` `s` `d` `m` `i` `r` `R` `x` `v` `f` `g` | done - all fourteen, checked against the table in CASTLE1.HLP by `tools/key_audit.py`, which presses each one and prints what ours did beside what the help says. Eleven of them were wrong: `s` and `d` walked (WASD shadowed Search and Disarm, so WASD is gone), `c` opened the character sheet, `f` fired an arrow, `<` picked up off the floor because the Get branch matched the comma before it looked at the shift, and `o m r R x v` did nothing at all. |
+| Crosshairs driven by the movement keys, Return to confirm | done - `x` and any targeted spell put the crosshairs on you, the movement keys move them without moving you, Return takes the shot |
+| `v` scrolls the dungeon window from the keyboard | done |
+| The command letters: `<` `>` `o` `c` `s` `d` `m` `i` `r` `R` `x` `v` `f` `g` | done - all fourteen, checked against the table in CASTLE1.HLP by `tools/key_audit.py`, which presses each one and prints what ours did beside what the help says. Eleven of them were wrong: `s` and `d` walked (WASD shadowed Search and Disarm, so WASD is gone), `c` opened the character sheet, `f` fired an arrow, `<` picked up off the floor because the Get branch matched the comma before it looked at the shift, and `o m r R x v` did nothing at all. |
+| Crosshairs driven by the movement keys, Return to confirm | done - `x` and any targeted spell put the crosshairs on you, the movement keys move them without moving you, Return takes the shot |
+| `v` scrolls the dungeon window from the keyboard | done |
 | Vi keys and numeric keypad, shift to run | done - and a caution: this row said "done" for months while neither the vi keys nor shift-to-run existed. Only the arrow keys, WASD and the keypad were wired up, so on a laptop there was no way to step diagonally at all. Now covered by a test. |
 | Run stops at objects, doors, and room-corridor boundaries | partial |
 | Scroll Rooms Onto Screen option | open |
