@@ -223,6 +223,19 @@ def _wallify(level):
 
 
 def _add_doors(level, rng):
+    """One door to a doorway.
+
+    This used to walk each room's edge ring on its own and roll for every
+    floor square in a wall line, which is how you got two doors in a row and
+    two doors side by side opening on the same stub of corridor: two rooms
+    back to back each put one on their own side, and a two-wide gap got one
+    of each. Doors are now chosen for the whole floor at once, and a place
+    is passed over if there is already a door beside it, or another two
+    along the same corridor with nothing but floor between - an airlock
+    nobody built on purpose.
+    """
+    candidates = []
+    seen = set()
     for room in level.rooms:
         edges = []
         for x in range(room["x"] - 1, room["x"] + room["w"] + 1):
@@ -232,12 +245,25 @@ def _add_doors(level, rng):
             edges.append((room["x"] - 1, y))
             edges.append((room["x"] + room["w"], y))
         for x, y in edges:
-            if level.get(x, y) != T.FLOOR:
+            if (x, y) in seen or level.get(x, y) != T.FLOOR:
                 continue
+            seen.add((x, y))
             horiz = level.get(x - 1, y) == T.WALL and level.get(x + 1, y) == T.WALL
             vert = level.get(x, y - 1) == T.WALL and level.get(x, y + 1) == T.WALL
-            if (horiz or vert) and rng.random() < 0.72:
-                level.set(x, y, T.DOOR)
+            if horiz or vert:
+                candidates.append((x, y, (0, 1) if horiz else (1, 0)))
+
+    rng.shuffle(candidates)
+    placed = set()
+    for x, y, (ax, ay) in candidates:
+        if any((x + dx, y + dy) in placed
+               for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))):
+            continue                      # shoulder to shoulder with another
+        if any((x + ax * step, y + ay * step) in placed for step in (-2, 2)):
+            continue                      # one behind the other down a corridor
+        if rng.random() < 0.72:
+            level.set(x, y, T.DOOR)
+            placed.add((x, y))
 
 
 def _decorate(level, water, rubble, rng):

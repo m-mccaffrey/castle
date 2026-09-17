@@ -1,0 +1,141 @@
+"""If it changes what you carry, the client has to be told.
+
+Reported from play: "I just picked up a bunch of items and there's nothing
+in my inventory." The items were picked up. The window was showing the last
+pack the server had described, and picking things up never described one -
+so what you carried and what you could see drifted apart and stayed apart
+until something unrelated, like walking into a shop, happened to refresh it.
+
+That is not a bug in the Get command; it is a bug in a rule nobody had
+written down. This file writes it down: perform each action, fingerprint
+what the character carries before and after, and require an inventory event
+whenever the fingerprint moves. Every handler that touches the pack is in
+the list, so a new one that forgets goes red here rather than in the game.
+"""
+
+import os
+import sys
+import unittest
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+
+from stormhold.game.items import Item                             # noqa: E402
+from stormhold.game.world import World                            # noqa: E402
+
+
+def fingerprint(p):
+    """Everything about what this character is carrying, as one value."""
+    def one(item):
+        return (item.id, item.key, item.qty, getattr(item, "known", None),
+                item.enchant,
+                tuple((c.id, c.qty) for c in (getattr(item, "contents", None) or [])))
+    return (tuple(one(i) for i in p.inventory),
+            tuple((slot, one(i) if i else None)
+                  for slot, i in sorted(p.equipment.items())),
+            p.copper, p.bank)
+
+
+def belt_with(p, key):
+    belt = Item("belt3")
+    thing = Item(key)
+    thing.known = True
+    p.equipment["waist"] = belt
+    belt.contents.append(thing)
+    return thing
+
+
+# (name, set the scene, the action to perform)
+CASES = [
+    ("pickup", lambda w, p, l: l.add_ground_item(p.x, p.y, Item("shortsword")),
+     lambda w, p, l: {"a": "pickup"}),
+    ("pick up coins", lambda w, p, l: l.add_ground_item(p.x, p.y, w._gold_item(600, 1)),
+     lambda w, p, l: {"a": "pickup"}),
+    ("drop", lambda w, p, l: p.add_item(Item("shortsword")),
+     lambda w, p, l: {"a": "drop", "id": p.inventory[-1].id}),
+    ("equip", lambda w, p, l: p.add_item(Item("helm")),
+     lambda w, p, l: {"a": "equip", "id": p.inventory[-1].id, "slot": "head"}),
+    ("unequip", lambda w, p, l: p.equipment.__setitem__("head", Item("helm")),
+     lambda w, p, l: {"a": "unequip", "slot": "head"}),
+    ("free hand", lambda w, p, l: p.equipment.__setitem__("weapon", Item("dagger")),
+     lambda w, p, l: {"a": "freehand"}),
+    ("stow", lambda w, p, l: (p.equipment.__setitem__("waist", Item("belt3")),
+                              p.add_item(Item("potion_heal"))),
+     lambda w, p, l: {"a": "stow", "id": p.inventory[-1].id, "slot": "waist"}),
+    ("unstow", lambda w, p, l: belt_with(p, "potion_heal"),
+     lambda w, p, l: {"a": "unstow", "id": p.equipment["waist"].contents[0].id}),
+    ("drink a potion", lambda w, p, l: (belt_with(p, "potion_heal"),
+                                        setattr(p, "hp", 1)),
+     lambda w, p, l: {"a": "use", "id": p.equipment["waist"].contents[0].id}),
+    ("read a scroll", lambda w, p, l: belt_with(p, "scroll_map"),
+     lambda w, p, l: {"a": "use", "id": p.equipment["waist"].contents[0].id}),
+    ("sort the pack",
+     lambda w, p, l: [p.add_item(Item(k)) for k in ("gem", "shortsword", "potion_heal")],
+     lambda w, p, l: {"a": "sort"}),
+    ("name an object", lambda w, p, l: p.add_item(Item("shortsword")),
+     lambda w, p, l: {"a": "rename", "id": p.inventory[-1].id, "name": "Biter"}),
+    ("buy", lambda w, p, l: setattr(p, "copper", 99999),
+     lambda w, p, l: {"a": "buy", "shop": "general",
+                      "id": w.stock_for("general")[0].id}),
+    ("sell", lambda w, p, l: p.add_item(Item("longsword")),
+     lambda w, p, l: {"a": "sell", "shop": "weaponsmith", "id": p.inventory[-1].id}),
+    ("deposit", lambda w, p, l: setattr(p, "copper", 500),
+     lambda w, p, l: {"a": "service", "what": "deposit", "amount": 100,
+                      "shop": "bank"}),
+    ("withdraw", lambda w, p, l: setattr(p, "bank", 500),
+     lambda w, p, l: {"a": "service", "what": "withdraw", "amount": 100,
+                      "shop": "bank"}),
+]
+
+
+class TestWhatYouCarryAndWhatYouSeeAgree(unittest.TestCase):
+
+    def test_no_action_changes_the_pack_in_silence(self):
+        for name, setup, action in CASES:
+            with self.subTest(action=name):
+                world = World(seed=5)
+                p = world.add_player("Carrier")
+                level = world.levels[p.depth]
+                setup(world, p, level)
+                world.events.clear()
+                before = fingerprint(p)
+                world.do_player_action(level, p, action(world, p, level))
+                moved = fingerprint(p) != before
+                told = any(e["t"] == "inv" for e in world.events)
+                if moved:
+                    self.assertTrue(
+                        told, f"{name} changed what you carry and the window "
+                              f"was never told, so it goes on showing the old pack")
+
+    def test_the_list_covers_every_handler_that_touches_the_pack(self):
+        """A new verb that moves things about must be added above.
+
+        Without this the file rots quietly: the rule stays true of the twelve
+        actions somebody thought of in 2026 and says nothing about the
+        thirteenth.
+        """
+        import inspect
+        from stormhold.game import world as world_module
+        source = inspect.getsource(world_module)
+        verbs = set()
+        for line in source.splitlines():
+            line = line.strip()
+            if line.startswith("def _act_"):
+                verbs.add(line[len("def _act_"):].split("(")[0])
+        # Verbs that cannot change what you carry, and why.
+        harmless = {
+            "move", "run", "wait", "stairs", "examine", "search", "disarm",
+            "open", "close", "rest", "sleep", "attack", "cast", "shoot",
+            "callme", "fountain", "throne",
+        }
+        covered = {"pickup", "drop", "equip", "unequip", "freehand", "stow",
+                   "unstow", "use", "sort", "rename", "buy", "sell", "service"}
+        missing = verbs - harmless - covered
+        self.assertFalse(
+            missing,
+            f"these verbs are neither covered here nor listed as harmless: "
+            f"{sorted(missing)}")
+
+
+if __name__ == "__main__":
+    unittest.main()

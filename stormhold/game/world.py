@@ -1089,6 +1089,11 @@ class World:
         dropped = p.remove_item(item, int(action.get("qty", item.qty)))
         level.add_ground_item(p.x, p.y, dropped)
         self.msg(f"You drop {dropped.name(self.appearances)}.", "info", to=p)
+        # Without this the thing stayed in the window after it hit the floor,
+        # which is the same fault picking things up had: the pack you are
+        # looking at is the last one the server described, not the one you
+        # are carrying.
+        self.events.append({"t": "inv", "to": p.id})
         return p.action_cost(DROP_COST) or DROP_COST
 
     def _act_equip(self, level, p, action):

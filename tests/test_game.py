@@ -843,7 +843,7 @@ class TestDifficultyCurve(unittest.TestCase):
 
         def goblins_per_floor(depth):
             total = []
-            for seed in range(10):
+            for seed in range(60):
                 w = World(seed=seed, difficulty="Intermediate")
                 p = w.add_player("H", spell="Spark")
                 w.move_player_to(p, depth)
@@ -853,15 +853,20 @@ class TestDifficultyCurve(unittest.TestCase):
 
         first = goblins_per_floor(2)          # goblins live from floor 2
         settled = goblins_per_floor(6)
-        self.assertLess(first, settled,
-                        "a goblin pack on floor 2 should be smaller than a "
-                        "goblin pack on floor 6")
+        # Ten seeds put these two within a tenth of a goblin of each other,
+        # so the test passed or failed on which way the generator's dice
+        # happened to fall. Sixty seeds, and a margin, measure the curve
+        # rather than the noise.
+        self.assertLess(first, settled - 0.25,
+                        f"a goblin pack on floor 2 ({first:.2f} per floor) "
+                        f"should be clearly smaller than one on floor 6 "
+                        f"({settled:.2f})")
 
     def test_nothing_hires_a_guard_from_below_its_own_floor(self):
         from stormhold.game.world import World
         from stormhold.game.monsters import MONSTERS
         for depth in (2, 3, 4):
-            for seed in range(10):
+            for seed in range(60):
                 w = World(seed=seed, difficulty="Intermediate")
                 p = w.add_player("H", spell="Spark")
                 w.move_player_to(p, depth)
