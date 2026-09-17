@@ -633,8 +633,12 @@ class TestStatusReadouts(unittest.TestCase):
                          "intelligence": 8, "constitution": 10})
         bare = p.action_cost(ATTACK_COST, attacking=True)
         rest = p.action_cost(REST_COST)
-        p.equipment["weapon"] = Item("crossbow")      # speed 140
-        self.assertGreater(p.action_cost(ATTACK_COST, attacking=True), bare)
+        # The crossbow used to be here at speed 140. There are no missile
+        # weapons any more - the original has none - so the property is
+        # shown the other way about, with the dagger's 80: a weapon changes
+        # what a swing costs and changes nothing else.
+        p.equipment["weapon"] = Item("dagger")        # speed 80
+        self.assertLess(p.action_cost(ATTACK_COST, attacking=True), bare)
         self.assertEqual(p.action_cost(REST_COST), rest)
 
         laden = Player("L", {"strength": 10, "dexterity": 12,
@@ -996,7 +1000,11 @@ class TestReachAndUpkeep(unittest.TestCase):
         world = World(seed=12)
         rich = Item("platemail")
         self.assertEqual(world.junk_price(rich), world.JUNK_FLAT)
-        cheap = Item("arrow")
+        # Arrows used to be the cheap thing here. With no missile weapons
+        # nothing in the game is worth less than 25 outright, so the cheap
+        # side of the rule is shown with a ruined dagger, which is the only
+        # way to be worth less than the flat rate now.
+        cheap = Item("dagger", enchant=-3)
         self.assertLess(cheap.value(), world.JUNK_FLAT, "a test that needs a cheap thing")
         self.assertEqual(world.junk_price(cheap), cheap.value(),
                          "market price, while market price is under 25")
@@ -1383,7 +1391,7 @@ class TestArticles(unittest.TestCase):
 
     def test_a_counted_stack_does_not(self):
         from stormhold.game.items import Item, with_article
-        text = with_article(Item("arrow", qty=12).name(None))
+        text = with_article(Item("potion_heal", qty=12).name(None))
         self.assertTrue(text.startswith("12 "), text)
 
 
@@ -1548,7 +1556,7 @@ class TestNobodyIsCalledIt(unittest.TestCase):
         from stormhold.game.items import Item
         lines = set()
         for _ in range(n):
-            for key in (None, "dagger", "longbow", "mace", "axe", "shortsword"):
+            for key in (None, "dagger", "halberd", "mace", "axe", "shortsword"):
                 self.p.equipment["weapon"] = Item(key) if key else None
                 for dmg, killed in ((1, False), (8, False), (99, True)):
                     lines.add(blow_message(self.rng, self.p, self.m, dmg, killed))
@@ -1807,7 +1815,7 @@ class TestQualityPrefixes(unittest.TestCase):
     def test_a_battered_thing_is_named_for_what_it_is_made_of(self):
         self.assertTrue(self.named("leather", -2).startswith("Ripped"))
         self.assertTrue(self.named("chainmail", -1).startswith("Rusty"))
-        self.assertTrue(self.named("shortbow", -1).startswith("Broken"))
+        self.assertTrue(self.named("quarterstaff", -1).startswith("Broken"))
         self.assertTrue(self.named("dagger", -1).startswith("Rusty"))
 
     def test_a_good_thing_keeps_its_plus(self):
@@ -2107,18 +2115,16 @@ class TestEveryBlowIsNarrated(unittest.TestCase):
     def said(self):
         return [e["text"] for e in self.world.events if e["t"] == "msg"]
 
-    def test_your_own_shot_does_not_print_a_number(self):
-        from stormhold.game.items import Item
+    def test_your_own_spell_does_not_print_a_number(self):
+        """This used to fire a bow. There are no bows; a spell is now the
+        only thing you can reach across a room with, which is the point."""
         target = self.a_target()
-        bow = Item("longbow")
-        bow.known = True
-        self.p.equipment["weapon"] = bow
-        self.p.add_item(Item("arrow", qty=40))
         for _ in range(12):
             self.world.events.clear()
+            self.p.mana = 999
             self.world.do_player_action(self.level, self.p,
-                                        {"a": "shoot", "x": target.x,
-                                         "y": target.y})
+                                        {"a": "cast", "spell": "Spark",
+                                         "x": target.x, "y": target.y})
             for line in self.said():
                 self.assertNotRegex(line, r"for \d+\.", line)
 
@@ -2320,7 +2326,7 @@ class TestWhatAShopWillTake(unittest.TestCase):
         self.assertIn("worthless", " ".join(said))
 
     def test_the_junk_dealer_takes_anything(self):
-        for key in ("bolt", "sabre", "potion_heal", "gem"):
+        for key in ("dagger", "sabre", "potion_heal", "gem"):
             with self.subTest(item=key):
                 self.assertIn("Nan takes", " ".join(self.offer("junk", key)))
 

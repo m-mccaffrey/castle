@@ -200,8 +200,7 @@ WEAPON_CLASS = {
     "mace": "crush", "warhammer": "crush", "quarterstaff": "crush",
     "runestaff": "crush", "club": "crush",
     "axe": "chop", "halberd": "chop",
-    "spear": "pierce", "shortbow": "shoot", "longbow": "shoot",
-    "crossbow": "shoot", "wand": "blast",
+    "spear": "pierce", "wand": "blast",
 }
 
 PLACES = ("in the arm", "in the chest", "in the head", "in the leg",

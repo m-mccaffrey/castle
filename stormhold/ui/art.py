@@ -970,65 +970,6 @@ def icon_halberd():
     return _haft_weapon(head)
 
 
-def icon_bow():
-    """A stave, a string, a nocked arrow.
-
-    Returned without the shading pass. Every line in it is a thin diagonal,
-    and shading works on horizontal edges - on a three-pixel diagonal almost
-    every pixel is an edge, so the pass speckles the whole limb.
-    """
-    ic = Icon()
-    for dx, colour in ((0, MAROON), (1, OLIVE), (2, OLIVE)):
-        ic.line(8 + dx, 3, 4 + dx, 16, colour)
-        ic.line(4 + dx, 16, 8 + dx, 29, colour)
-    ic.rect(7, 2, 3, 2, MAROON)                    # nocks
-    ic.rect(7, 28, 3, 2, MAROON)
-    ic.line(10, 3, 10, 29, SILVER)                 # the string
-    ic.rect(11, 15, 14, 2, OLIVE)                  # nocked arrow
-    ic.rect(11, 15, 14, 1, (OLIVE, YELLOW, 0.5))
-    ic.tri([(24, 12), (30, 16), (24, 20)], SILVER)
-    ic.rect(11, 13, 3, 6, MAROON)                  # fletching
-    return ic.outline()
-
-
-def icon_crossbow():
-    """A steel prod across a wooden stock.
-
-    The shape that works is a narrow stock under a wide prod. Giving the
-    stock real mass and a flared butt made it read as a mallet: at this size
-    the eye takes the widest bright thing as the head of whatever it is.
-    """
-    ic = Icon()
-    # The same three flat tones every other shaft in the set uses, because
-    # they are the ones that read: olive body, yellow catching the light,
-    # maroon in shadow. A dither pair five pixels wide came out maroon.
-    ic.rect(14, 3, 5, 27, OLIVE)                 # stock, narrow
-    ic.rect(14, 3, 1, 27, YELLOW)
-    ic.rect(18, 3, 1, 27, MAROON)
-    ic.rect(3, 12, 26, 4, GRAY)                  # the prod
-    ic.rect(3, 12, 26, 1, SILVER)
-    ic.rect(3, 15, 26, 1, DARK_STONE)
-    ic.rect(2, 11, 3, 6, DARK_STONE)             # horn tips
-    ic.rect(27, 11, 3, 6, DARK_STONE)
-    ic.line(4, 10, 16, 7, SILVER)                # string, drawn to the nut
-    ic.line(16, 7, 28, 10, SILVER)
-    ic.rect(14, 6, 5, 3, GRAY)                   # the nut holding it
-    ic.rect(11, 19, 11, 2, DARK_STONE)           # trigger bar
-    ic.rect(15, 21, 3, 5, GRAY)                  # and the grip below it
-    return ic.outline().shade()
-
-
-def icon_arrows():
-    ic = Icon()
-    for x in (8, 15, 22):
-        ic.rect(x, 8, 2, 20, OLIVE)                # flat: two pixels is thin
-        ic.rect(x, 8, 1, 20, YELLOW)
-        ic.tri([(x + 1, 2), (x - 2, 9), (x + 4, 9)], SILVER)
-        ic.rect(x - 2, 23, 6, 2, MAROON)           # fletching
-        ic.rect(x - 2, 25, 6, 1, RED)
-    return ic.outline().shade()
-
-
 def _armour(body=SILVER, skirt=None, studs=False, scales=False, rings=False):
     ic = Icon()
     ic.rect(9, 4, 14, 6, body)                     # shoulders

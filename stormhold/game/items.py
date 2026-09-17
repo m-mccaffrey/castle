@@ -48,12 +48,12 @@ BASES = {
     "axe":         dict(name="Battle Axe", slot="weapon", icon="axe", bulk=6000, wt=3000, value=230, dmg=(1, 10), depth=7, str_req=12),
     "halberd":     dict(name="Halberd", slot="weapon", icon="halberd", bulk=36000, wt=4950, value=420, dmg=(2, 8), depth=12, str_req=15, two_handed=True),
     "spear":       dict(name="Spear", slot="weapon", icon="spear", bulk=5000, wt=1500, value=85, dmg=(1, 8), depth=2),
-    # ---- missile --------------------------------------------------------
-    "shortbow":    dict(name="Short Bow", slot="weapon", icon="bow", bulk=18000, wt=1125, value=90, dmg=(1, 6), depth=1, missile="arrow", rng=7),
-    "longbow":     dict(name="Long Bow", slot="weapon", icon="bow", bulk=27000, wt=1800, value=260, dmg=(1, 9), depth=6, missile="arrow", rng=9, str_req=12, two_handed=True),
-    "crossbow":    dict(name="Crossbow", slot="weapon", icon="crossbow", bulk=23400, wt=3150, value=380, dmg=(2, 6), depth=9, missile="bolt", rng=8, speed=140, two_handed=True),
-    "arrow":       dict(name="Arrow", icon="arrows", bulk=900, wt=45, value=2, depth=0, stack=True, ammo="arrow"),
-    "bolt":        dict(name="Quarrel", icon="arrows", bulk=900, wt=90, value=3, depth=6, stack=True, ammo="bolt"),
+    # No bows, and no arrows. The original has no missile weapon for the
+    # player at all: you fight by walking into things, and everything that
+    # reaches across a room is a spell. Monsters still shoot - the help file
+    # has jotuns hurling boulders and a manticore flinging quills "with the
+    # accuracy and effect of a company of crossbowmen" - and that is on the
+    # monster side, where it belongs.
     # ---- staves and wands ------------------------------------------------
     "quarterstaff": dict(name="Quarterstaff", slot="weapon", icon="staff", bulk=25200, wt=1800, value=60, dmg=(1, 6), depth=0, mana_bonus=4),
     "runestaff":   dict(name="Rune Staff", slot="weapon", icon="staff", bulk=25200, wt=2025, value=400, dmg=(1, 7), depth=10, mana_bonus=15),
@@ -226,8 +226,7 @@ MATERIAL = {
     "gloves": "leather", "boots": "leather", "leggings": "leather",
     "belt": "leather", "belt3": "leather", "beltutil": "leather",
     "buckler": "wood", "shield": "wood", "quarterstaff": "wood",
-    "runestaff": "wood", "shortbow": "wood", "longbow": "wood",
-    "crossbow": "wood", "wand": "wood",
+    "runestaff": "wood", "wand": "wood",
 }
 
 

@@ -346,7 +346,7 @@ class TestAShopPaysWhatItOffered(unittest.TestCase):
 
     def test_every_shop_pays_exactly_what_its_window_said(self):
         for shop in ("weaponsmith", "armourer", "general", "magic", "junk"):
-            for key in ("longsword", "platemail", "potion_heal", "arrow", "gem"):
+            for key in ("longsword", "platemail", "potion_heal", "dagger", "gem"):
                 with self.subTest(shop=shop, item=key):
                     row, paid = self.offer_and_sell(shop, key)
                     self.assertEqual(paid, row["price"],

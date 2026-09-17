@@ -234,12 +234,12 @@ def best_attack_spell(s, reach=None):
 # --------------------------------------------------------------------------
 
 def worth_wearing(candidate, current, ammo=()):
-    """Is this better than what is on? Armour by AV, weapons by average hit."""
+    """Is this better than what is on? Armour by AV, weapons by average hit.
+
+    `ammo` is vestigial: it used to keep the bot from wielding a bow it had
+    no arrows for. There are no bows now.
+    """
     if candidate.slot == "weapon":
-        # A bow with no arrows is a stick. The bot used to see a Short Bow's
-        # 1d6 against a Dagger's 1d4, wield it, and then punch things.
-        if candidate.base.get("missile") and candidate.base["missile"] not in ammo:
-            return False
         def swing(it):
             if it is None:
                 return 2

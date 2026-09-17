@@ -165,7 +165,9 @@ def check_junk():
     """"It will buy anything, for market price (if it's less than 25 C.P.)
     or for 25 C.P. if it's cursed or worthless."""
     w, _ = fresh()
-    cheap, dear = Item("arrow"), Item("platemail")
+    # Nothing is worth under 25 outright since the bows and arrows came out,
+    # so the cheap side of the rule needs a ruined thing to show it.
+    cheap, dear = Item("dagger", enchant=-3), Item("platemail")
     cursed = Item("ring_burden")
     cursed.cursed = True
     note("junk", "market price while that is under 25",

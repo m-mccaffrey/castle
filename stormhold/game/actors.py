@@ -550,15 +550,6 @@ class Player(Actor):
         self.recalc()
         return True, f"You put away {item.name()}."
 
-    def ammo_for(self, weapon):
-        want = weapon.base.get("missile")
-        if not want:
-            return None
-        for it in self.inventory:
-            if it.base.get("ammo") == want and it.qty > 0:
-                return it
-        return None
-
     # ---------------------------------------------------------------- save --
     def to_save(self):
         return {

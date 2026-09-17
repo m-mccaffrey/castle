@@ -368,7 +368,6 @@ class HelpScene(Scene):
         ("G or comma", "Pick up what is under you."),
         ("I", "Open your pack: wear, wield, drink, read, drop."),
         ("Z", "Cast a spell from your book."),
-        ("F", "Fire a bow or crossbow at the nearest enemy."),
         ("> and <", "Go down or up a staircase you are standing on."),
         ("C", "Character sheet."),
         ("Enter", "Talk to the rest of the party."),
@@ -723,8 +722,6 @@ class PlayScene(Scene):
             # The original opens this from the Character! menu and binds no
             # letter to it; `c` itself belongs to Close Door.
             self.app.push(SheetScene(self.app))
-        elif key == pygame.K_t:
-            self.fire_at_nearest()     # ours: the original has no missile key
         elif key == pygame.K_RETURN:
             self.chatting = True
             self.chat_text = ""
@@ -752,22 +749,6 @@ class PlayScene(Scene):
 
     def send_action(self, action):
         self.app.client.send(P.C_ACTION, action)
-
-    def fire_at_nearest(self):
-        me = self.me()
-        if not me:
-            return
-        best, best_d = None, 99
-        for a in self.actors:
-            if a["k"] != "monster":
-                continue
-            d = chebyshev(a["x"], a["y"], me["x"], me["y"])
-            if d < best_d:
-                best, best_d = a, d
-        if best is None:
-            self.add_message("Nothing in sight to shoot at.", "info")
-            return
-        self.send_action({"a": "shoot", "x": best["x"], "y": best["y"]})
 
     def click_map(self, pos):
         cell = self.screen_to_tile(pos)

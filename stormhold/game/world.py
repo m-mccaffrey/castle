@@ -975,58 +975,6 @@ class World:
             self.msg("You swing at nothing.", "info", to=p)
         return p.action_cost(ATTACK_COST, attacking=True) or ATTACK_COST
 
-    def _act_shoot(self, level, p, action):
-        weapon = p.equipment.get("weapon")
-        if not weapon or not weapon.base.get("missile"):
-            self.msg("You have nothing to shoot with.", "warn", to=p)
-            return FREE_COST
-        ammo = p.ammo_for(weapon)
-        if ammo is None:
-            self.msg(f"You are out of {weapon.base['missile']}s.", "warn", to=p)
-            return FREE_COST
-
-        tx, ty = int(action.get("x", p.x)), int(action.get("y", p.y))
-        rng_limit = weapon.base.get("rng", 7)
-        if chebyshev(p.x, p.y, tx, ty) > rng_limit:
-            self.msg("That is out of range.", "warn", to=p)
-            return FREE_COST
-
-        ammo.qty -= 1
-        if ammo.qty <= 0:
-            p.inventory.remove(ammo)
-        self.sound("shoot", p.x, p.y, level.depth)
-
-        hit_actor = None
-        path = line_between(p.x, p.y, tx, ty)
-        for (cx, cy) in path:
-            if is_solid(level.get(cx, cy)):
-                break
-            occupant = level.actor_at(cx, cy)
-            if occupant is not None and occupant.kind == "monster" and not occupant.dead:
-                hit_actor = occupant
-                break
-            self.fx("bolt", cx, cy, level.depth)
-
-        if hit_actor is not None:
-            n, s = weapon.damage()
-            dmg = sum(self.rng.randint(1, s) for _ in range(n)) + weapon.enchant
-            dmg += stat_bonus(p.stat("dexterity")) // 2
-            hit, crit = combat.attack_roll(self.rng, p.to_hit, hit_actor.armour_class)
-            if hit:
-                dealt = dmg * (2 if crit else 1)
-                self.msg(combat.blow_message(self.rng, p, hit_actor, dealt,
-                                             dealt >= hit_actor.hp,
-                                             style="shoot"),
-                         "combat", to=p)
-                combat.apply_damage(self, hit_actor, dealt, p, crit=crit,
-                                    killed_by_a_blow=True)
-            else:
-                self.msg(combat.ranged_miss_message(self.rng, p, hit_actor),
-                         "combat", to=p)
-        else:
-            self.msg("Your shot clatters away into the dark.", "info", to=p)
-        return p.action_cost(ATTACK_COST, attacking=True) or ATTACK_COST
-
     # ---- objects ---------------------------------------------------------
     # "This command generally puts everything on the floor into the player's
     # pack. The special case is if the object is a pack, purse, or belt, and
@@ -2253,8 +2201,6 @@ class World:
                 it = Item(key, enchant=1 if rng.random() < 0.25 else 0)
                 it.known = True
                 items.append(it)
-            items.append(Item("arrow", qty=20))
-            items.append(Item("bolt", qty=20))
         elif shop == "armourer":
             pool = [k for k, b in BASES.items()
                     if b.get("slot") in ("torso", "head", "shield", "arms", "feet", "legs", "back", "waist")
@@ -2320,7 +2266,7 @@ class World:
     # What each trade will take off your hands. "Shops refuse junk:
     # 'We don't buy those...', 'We don't buy worthless items!'"
     SHOP_TAKES = {
-        "weaponsmith": ("weapon", "ammo"),
+        "weaponsmith": ("weapon",),
         "armourer": ("armour",),
         "general": ("container", "armour"),
         "magic": ("potion", "scroll", "book", "ring", "amulet", "wand"),
@@ -2332,8 +2278,6 @@ class World:
     def trade_of(item):
         """Which trade an object belongs to."""
         base = item.base
-        if base.get("ammo"):
-            return "ammo"
         if base.get("slot") == "weapon":
             return "wand" if base.get("charges") else "weapon"
         if base.get("kind") == "container":

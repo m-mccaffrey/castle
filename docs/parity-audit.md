@@ -180,6 +180,8 @@ is simply a death sentence.
 | Sort Pack sorts by type and within type, unknowns last | done |
 | Name Object | done |
 
+| No missile weapon for the player: the weapon table is name, damage, weight, price, and carries no bow | done - bows, crossbows, arrows and quarrels are gone, with the `shoot` verb and the key that fired it. Monsters still shoot, which the help is explicit about: jotuns hurl boulders and a manticore flings quills "with the accuracy and effect of a company of crossbowmen" |
+
 ## Things we had that the original does not
 
 | Ours | Status |
