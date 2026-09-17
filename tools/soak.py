@@ -222,7 +222,12 @@ class Soak:
         if type(scene).__name__ != "PackScene":
             return "tried to open the pack and got somewhere else"
         scene.draw(self.s.app.screen)
-        cells = list(scene.cell_rects)
+        # Everything the window will let you select: loose in the pack, on
+        # the belt, and worn. Only looking at the pack is how a Drop button
+        # that was broken for the belt and for the body went unnoticed.
+        cells = list(scene.cell_rects) + list(scene.stow_rects)
+        cells += [(rect, worn) for slot, rect in scene.slot_rects.items()
+                  if (worn := scene.equipment().get(slot))]
         if not cells:
             self.s.key(pygame.K_ESCAPE)
             return "opened an empty pack"
@@ -232,12 +237,37 @@ class Soak:
         what = self.rng.choice(("drop", "use", "sort"))
         for button in scene.buttons:
             if button.action == what and button.enabled:
+                before = self.fingerprint()
+                said = len(self.s.app.play.messages)
                 self.s.click(button.rect.center)
                 self.s.settle(0.4)
+                # An enabled button must do something or say why not. Both
+                # of the last two bugs reported from play were this: Drop
+                # was offered for a potion on your belt, did nothing, and
+                # said nothing, which reads as a broken game rather than a
+                # rule. Nothing about the pack window can tell you which.
+                if (self.fingerprint() == before
+                        and len(self.s.app.play.messages) == said):
+                    self.s.key(pygame.K_ESCAPE)
+                    raise Drift(f"the pack's {what.title()} button was enabled "
+                                f"for {item['name']}, and pressing it changed "
+                                f"nothing and said nothing")
                 self.s.key(pygame.K_ESCAPE)
                 return f"{what} {item['name']} from the pack"
         self.s.key(pygame.K_ESCAPE)
         return f"opened the pack and could not {what}"
+
+    def fingerprint(self):
+        """Everything the character is carrying, as one comparable value."""
+        p = self.s.me()
+
+        def one(item):
+            return (item.id, item.key, item.qty, item.enchant,
+                    tuple((c.id, c.qty) for c in (getattr(item, "contents", None) or [])))
+        return (tuple(one(i) for i in p.inventory),
+                tuple((slot, one(i) if i else None)
+                      for slot, i in sorted(p.equipment.items())),
+                p.copper, p.bank, int(p.hp), int(p.mana), p.x, p.y, p.depth)
 
     def walk_to_something(self):
         """Head for the nearest thing the window is actually showing.
@@ -279,6 +309,9 @@ class Soak:
             try:
                 what = self.step()
                 self.s.settle(0.25)
+            except Drift as drift:
+                self.note(n, "a control", str(drift))
+                continue
             except Exception:                                 # noqa: BLE001
                 self.note(n, what, "the game raised:\n" + traceback.format_exc())
                 break
