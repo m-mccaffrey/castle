@@ -1083,9 +1083,42 @@ class World:
         return p.action_cost(PICKUP_COST) or PICKUP_COST
 
     def _act_drop(self, level, p, action):
+        """Put something on the floor, from wherever it is.
+
+        This used to insist the thing was loose in the pack. Select a potion
+        off your belt, or the sword in your hand, press Drop - which the
+        window offers, enabled - and nothing happened and nothing was said.
+        """
         item = p.find_item(int(action.get("id", 0)))
-        if item is None or item not in p.inventory:
+        if item is None:
+            self.msg("You are not carrying that.", "warn", to=p)
             return FREE_COST
+
+        if item not in p.inventory:
+            worn_slot = next((slot for slot, w in p.equipment.items() if w is item),
+                             None)
+            if worn_slot is not None:
+                ok, why = p.unequip(worn_slot)
+                if not ok:
+                    self.msg(why, "warn", to=p)     # cursed things stay on
+                    return FREE_COST
+                # unequip puts it in the pack; take it straight back out so
+                # a full pack cannot swallow the drop.
+                if item in p.inventory:
+                    p.inventory.remove(item)
+            else:
+                holder = next((w for w in p.equipment.values()
+                               if w and item in (w.contents or [])), None)
+                if holder is None:
+                    self.msg("You are not carrying that.", "warn", to=p)
+                    return FREE_COST
+                holder.contents.remove(item)
+            p.recalc()
+            level.add_ground_item(p.x, p.y, item)
+            self.msg(f"You drop {item.name(self.appearances)}.", "info", to=p)
+            self.events.append({"t": "inv", "to": p.id})
+            return p.action_cost(DROP_COST) or DROP_COST
+
         dropped = p.remove_item(item, int(action.get("qty", item.qty)))
         level.add_ground_item(p.x, p.y, dropped)
         self.msg(f"You drop {dropped.name(self.appearances)}.", "info", to=p)
@@ -2378,6 +2411,20 @@ class World:
         self.appearances.identify(take.key)
         self.msg(f"You buy {with_article(take.name(self.appearances))} "
                  f"for {price} copper.", "loot", to=p)
+        # Bought straight onto the body: wear it, or stow it if the slot it
+        # was dropped on is a belt or a quiver.
+        wear = action.get("wear")
+        if wear:
+            # Hand it to the verbs that already know the rules, rather than
+            # writing a second, slightly different set of them here.
+            if take.slot == wear or (take.slot in ("ring_left", "ring_right")
+                                     and wear in ("ring_left", "ring_right")):
+                self._act_equip(level, p, {"id": take.id, "slot": wear})
+            elif p.equipment.get(wear) is not None:
+                self._act_stow(level, p, {"id": take.id, "slot": wear})
+            else:
+                self.msg(f"You have nothing on your {wear} to put that in, "
+                         f"so it is in your pack.", "info", to=p)
         self.sound("buy", p.x, p.y, level.depth)
         self.events.append({"t": "inv", "to": p.id})
         self.events.append({"t": "shop", "to": p.id, "npc": action.get("npc"),

@@ -155,6 +155,7 @@ class Bench:
         self.check_buy()
         self.check_poor()
         self.check_sell()
+        self.check_buy_and_wear()
         self.check_every_shop_quotes_what_it_pays()
         self.check_refusal()
         self.check_identify()
@@ -275,6 +276,26 @@ class Bench:
             self.note("quote", f"{shop} pays what it offered for a sword",
                       quoted is not None and paid == quoted,
                       f"offered {quoted}, paid {paid}")
+
+    def check_buy_and_wear(self):
+        """Dragging out of the shop onto the body buys it and puts it on."""
+        p = self.s.me()
+        p.copper = 9000
+        sc = self.open_shop("general")
+        if sc is None:
+            return self.note("buy", "general store", False, "not in town")
+        sc.draw(self.s.app.screen)
+        wearable = next((i for i in sc.stock() if i.get("slot")), None)
+        if wearable is None:
+            return self.note("buy", "something wearable on the shelf", False)
+        src = self.cell_for(sc, wearable["id"], "store")
+        self.drag(src, self.s.app.scene.slot_rects[wearable["slot"]].center)
+        self.say_yes()
+        worn = p.equipment.get(wearable["slot"])
+        self.note("buy", f"{wearable['name']} dragged to the body is worn, "
+                         f"not shelved in the pack",
+                  getattr(worn, "id", None) == wearable["id"],
+                  f"{wearable['slot']} holds {getattr(worn, 'key', None)}")
 
     def check_refusal(self):
         (potion,) = self.give("potion_heal")

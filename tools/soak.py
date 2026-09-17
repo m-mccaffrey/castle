@@ -18,6 +18,12 @@ numbers were wrong."
     python3 tools/soak.py --seeds 5 --actions 1500
     python3 tools/soak.py --seed 12 --verbose
 
+It plays at about a second an action once a character starts dying and
+walking back down, so a few hundred actions is a coffee and a few thousand
+is a lunch. `tests/test_sync.py` runs the first sixty of it on every test
+run; the long version is for before a release, or after touching anything
+that both sides of the wire care about.
+
 It plays through the real client: keys and clicks go through App.dispatch,
 and every reading it checks comes from the window rather than the engine.
 """
@@ -149,6 +155,13 @@ class Soak:
         # Start underground. Wandering at random almost never finds the
         # stairs out of town, and the floor the bugs turn up on is the first
         # one down.
+        # A character with an empty pack cannot exercise a pack check, and
+        # a fresh one is nearly empty, so kit out first the way the crawl
+        # bot does - it is what a player does before going down anyway.
+        try:
+            C.kit_out(self.s)
+        except Exception:                                     # noqa: BLE001
+            pass
         C.dive_back(self.s, 1)
         self.s.settle(1.0)
         self.faults = []
@@ -156,12 +169,25 @@ class Soak:
 
     def step(self):
         """One thing a player might do."""
+        # Walking at random almost never lands on a thing, and a soak that
+        # never picks anything up never exercises the pack - which is where
+        # every drift reported from play has been so far.
+        here = self.s.world.levels[self.s.me().depth].items_at(
+            self.s.me().x, self.s.me().y)
+        if here:
+            self.s.key(pygame.K_g)
+            return "get what is underfoot"
+        if self.rng.random() < 0.10:
+            found = self.walk_to_something()
+            if found:
+                return found
         # Dying sends you back to the temple, and a character wandering the
         # town square is not exercising anything. Go back down.
         if self.s.me().depth == 0 and self.rng.random() < 0.25:
-            C.dive_back(self.s, 1)
-            self.s.settle(0.8)
-            return "go back down to the first floor"
+            # Walk to the stairs rather than calling the crawl bot's
+            # dive_back, which rests to nine tenths of full first and turns
+            # one action into a minute of wall clock.
+            return self.find_the_stairs()
         roll = self.rng.random()
         if roll < 0.62:
             key = self.rng.choice(MOVES)
@@ -172,6 +198,8 @@ class Soak:
             key = self.rng.choice(VERBS)
             self.s.key(key)
             return f"press {pygame.key.name(key)}"
+        if roll < 0.93:
+            return self.fiddle_with_the_pack()
         if roll < 0.95:
             # Click somewhere on the map, the way a mouse player moves.
             view = self.s.app.play.viewport(self.s.app.screen)
@@ -180,6 +208,54 @@ class Soak:
             self.s.click(pos)
             return f"click the map at {pos}"
         return self.find_the_stairs()
+
+    def fiddle_with_the_pack(self):
+        """Open the pack and move something about.
+
+        Dropping and picking back up is the exact motion that showed the
+        window and the game disagreeing, so the soak has to do it rather
+        than wait to stumble over loot.
+        """
+        self.s.key(pygame.K_i)
+        self.s.settle(0.3)
+        scene = self.s.app.scene
+        if type(scene).__name__ != "PackScene":
+            return "tried to open the pack and got somewhere else"
+        scene.draw(self.s.app.screen)
+        cells = list(scene.cell_rects)
+        if not cells:
+            self.s.key(pygame.K_ESCAPE)
+            return "opened an empty pack"
+        rect, item = self.rng.choice(cells)
+        scene.selected = item
+        scene.draw(self.s.app.screen)
+        what = self.rng.choice(("drop", "use", "sort"))
+        for button in scene.buttons:
+            if button.action == what and button.enabled:
+                self.s.click(button.rect.center)
+                self.s.settle(0.4)
+                self.s.key(pygame.K_ESCAPE)
+                return f"{what} {item['name']} from the pack"
+        self.s.key(pygame.K_ESCAPE)
+        return f"opened the pack and could not {what}"
+
+    def walk_to_something(self):
+        """Head for the nearest thing the window is actually showing.
+
+        Not the nearest thing on the floor: the client can only route over
+        squares it has seen, so aiming at an item in unexplored ground fails
+        every time and the soak never picks anything up.
+        """
+        play = self.s.app.play
+        me = play.me()
+        if not me or not play.items:
+            return None
+        spot = min(((i["x"], i["y"]) for i in play.items),
+                   key=lambda xy: max(abs(xy[0] - me["x"]), abs(xy[1] - me["y"])))
+        if not self.s.walk_to(*spot, limit=40):
+            return None
+        self.s.key(pygame.K_g)
+        return f"walk to the things at {spot} and get them"
 
     def find_the_stairs(self):
         """Walk to the way down and take it, so the soak sees more than one

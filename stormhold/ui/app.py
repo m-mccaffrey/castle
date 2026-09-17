@@ -2798,6 +2798,19 @@ class StoreScene(PackScene):
                 return row.get("price", 0)
         return 0
 
+    def slot_under(self, pos):
+        """Which part of the paper doll a drag ended on, if any."""
+        for slot, rect in self.slot_rects.items():
+            if rect.collidepoint(pos):
+                return slot
+        for cell, slot in getattr(self, "empty_stow_rects", []):
+            if cell.collidepoint(pos):
+                return slot
+        for cell, stowed in getattr(self, "stow_rects", []):
+            if cell.collidepoint(pos):
+                return "waist"
+        return None
+
     def sell_refusal(self, item):
         """Why this shop will not take it, if it will not."""
         for row in self.data.get("sell", []):
@@ -2855,9 +2868,16 @@ class StoreScene(PackScene):
             if not drag["moved"] or self.store_rect.collidepoint(pos):
                 return
             price = item.get("price", 0)
-            self.ask(f"It'll cost you {price} C.P. for that. Take it?",
-                     {"a": "buy", "shop": self.shop, "id": item["id"],
-                      "npc": npc, "name": self.data.get("name")})
+            buy = {"a": "buy", "shop": self.shop, "id": item["id"],
+                   "npc": npc, "name": self.data.get("name")}
+            # Dropped onto the body rather than the pack: buy it and put it
+            # on in one motion. Having to buy a helmet into the pack, close
+            # the shop and open the pack again to wear it is a step nobody
+            # wants and the original never asked for.
+            wear = self.slot_under(pos)
+            if wear:
+                buy["wear"] = wear
+            self.ask(f"It'll cost you {price} C.P. for that. Take it?", buy)
             return
 
         # dragging into the store window sells - or asks the sage to identify

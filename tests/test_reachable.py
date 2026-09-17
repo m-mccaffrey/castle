@@ -364,3 +364,105 @@ class TestAShopPaysWhatItOffered(unittest.TestCase):
                 row, paid = self.offer_and_sell("junk", key)
                 self.assertIsNone(row["refusal"])
                 self.assertEqual(paid, self.world.JUNK_FLAT)
+
+
+class TestDropWorksFromWhereverTheThingIs(unittest.TestCase):
+    """Reported from play. The Drop button is offered, and enabled, for
+    anything you can select - but the handler insisted the thing was loose
+    in the pack, so dropping a potion off your belt or the sword in your
+    hand did nothing at all and said nothing at all.
+    """
+
+    def setUp(self):
+        self.world = World(seed=5)
+        self.p = self.world.add_player("Dropper")
+        self.level = self.world.levels[self.p.depth]
+        self.said = []
+        self.world.msg = lambda text, kind="info", **kw: self.said.append(text)
+
+    def floor(self):
+        return [i.key for i in self.level.items_at(self.p.x, self.p.y)]
+
+    def test_dropping_out_of_the_pack(self):
+        sword = Item("shortsword")
+        self.p.add_item(sword)
+        self.world.do_player_action(self.level, self.p,
+                                    {"a": "drop", "id": sword.id})
+        self.assertIn("shortsword", self.floor())
+        self.assertNotIn(sword, self.p.inventory)
+
+    def test_dropping_off_the_belt(self):
+        belt = Item("belt3")
+        potion = Item("potion_heal")
+        self.p.equipment["waist"] = belt
+        belt.contents.append(potion)
+        self.world.do_player_action(self.level, self.p,
+                                    {"a": "drop", "id": potion.id})
+        self.assertIn("potion_heal", self.floor())
+        self.assertEqual(belt.contents, [])
+
+    def test_dropping_what_you_are_wearing(self):
+        helm = Item("helm")
+        self.p.equipment["head"] = helm
+        self.world.do_player_action(self.level, self.p,
+                                    {"a": "drop", "id": helm.id})
+        self.assertIn("helm", self.floor())
+        self.assertIsNone(self.p.equipment["head"])
+        self.assertNotIn(helm, self.p.inventory, "it must not also be in the pack")
+
+    def test_a_cursed_thing_stays_on_and_says_why(self):
+        ring = Item("ring_burden")
+        ring.cursed = True
+        self.p.equipment["ring_left"] = ring
+        self.world.do_player_action(self.level, self.p,
+                                    {"a": "drop", "id": ring.id})
+        self.assertIs(self.p.equipment["ring_left"], ring)
+        self.assertNotIn("ring_burden", self.floor())
+        self.assertTrue(self.said, "it refused in silence")
+
+    def test_dropping_something_you_do_not_have_says_so(self):
+        self.world.do_player_action(self.level, self.p,
+                                    {"a": "drop", "id": 999999})
+        self.assertTrue(self.said, "a drop that cannot happen must say so")
+
+
+class TestBuyingStraightOntoTheBody(unittest.TestCase):
+    """Reported from play: "the stores force you to put something in the
+    pack before you put it on your person". Dragging out of the shop onto
+    the paper doll now buys and wears in one motion.
+    """
+
+    def setUp(self):
+        self.world = World(seed=5)
+        self.p = self.world.add_player("Shopper")
+        self.level = self.world.levels[self.p.depth]
+        self.p.copper = 9000
+
+    def buy(self, shop, item, **extra):
+        return self.world.do_player_action(
+            self.level, self.p,
+            dict({"a": "buy", "shop": shop, "id": item.id}, **extra))
+
+    def first_stock(self, shop, slot=None):
+        return next(i for i in self.world.stock_for(shop)
+                    if (slot is None and i.slot) or i.slot == slot)
+
+    def test_dropping_a_helmet_on_the_head_slot_wears_it(self):
+        item = self.first_stock("general")
+        self.buy("general", item, wear=item.slot)
+        self.assertIs(self.p.equipment.get(item.slot), item)
+
+    def test_without_a_slot_it_still_lands_in_the_pack(self):
+        item = self.first_stock("general")
+        self.buy("general", item)
+        self.assertIn(item, self.p.inventory)
+        self.assertIsNot(self.p.equipment.get(item.slot), item,
+                         "without a slot named it must stay in the pack")
+
+    def test_a_slot_it_does_not_fit_leaves_it_in_the_pack_and_says_so(self):
+        item = self.first_stock("general")
+        said = []
+        self.world.msg = lambda text, kind="info", **kw: said.append(text)
+        self.buy("general", item, wear="head" if item.slot != "head" else "feet")
+        self.assertIn(item, self.p.inventory)
+        self.assertTrue(said)
