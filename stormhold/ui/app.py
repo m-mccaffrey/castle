@@ -528,7 +528,18 @@ class PlayScene(Scene):
             if self.map is not None and data.get("depth") != self.map.depth:
                 # We have changed floor but the new map has not arrived yet.
                 # Drawing this against the old map would mix two levels together.
+                #
+                # If it keeps not arriving, though, this window is finished:
+                # every packet after it is dropped for the same reason, so the
+                # game goes on playing behind a picture that never changes
+                # again. Ask for the floor rather than wait forever.
+                self.stale_states = getattr(self, "stale_states", 0) + 1
+                if self.stale_states == 3:
+                    self.app.client.send(P.C_RESYNC, {})
+                elif self.stale_states > 60 and self.stale_states % 60 == 0:
+                    self.app.client.send(P.C_RESYNC, {})
                 return
+            self.stale_states = 0
             self.actors = data["actors"]
             self.items = data["items"]
             self.you = data["you"]

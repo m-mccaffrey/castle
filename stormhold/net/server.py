@@ -242,6 +242,17 @@ class GameServer:
         if kind == P.C_HELLO:
             self.handle_hello(session, data)
             return
+        if kind == P.C_RESYNC:
+            # The client has decided its map is not the floor the server is
+            # describing. Left alone that never repairs: the client drops
+            # every state packet for a depth it has no map for, so the
+            # window freezes while the game plays on behind it.
+            with self.lock:
+                if session.player:
+                    self.send_level(session)
+                    self.send_inventory(session)
+                    self.push_state()
+            return
 
         with self.lock:
             player = session.player

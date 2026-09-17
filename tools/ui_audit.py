@@ -226,6 +226,31 @@ class Audit:
             print("   ", rows[-1], flush=True)
         return rows
 
+    def world_state(self):
+        """What the character and the floor look like, as one value.
+
+        A control that sends an action is not thereby working: the sage's
+        Identify sent one for months, matched no branch on the far side, and
+        returned in silence. So "sent something" is now checked against
+        "something happened".
+        """
+        try:
+            p = self.s.me()
+        except Exception:                                     # noqa: BLE001
+            return None
+
+        def one(item):
+            return (item.id, item.key, item.qty, getattr(item, "known", None),
+                    item.enchant,
+                    tuple((c.id, c.qty) for c in (getattr(item, "contents", None) or [])))
+        level = self.s.world.levels.get(p.depth)
+        return (tuple(one(i) for i in p.inventory),
+                tuple((slot, one(i) if i else None)
+                      for slot, i in sorted(p.equipment.items())),
+                p.copper, p.bank, int(p.hp), int(p.mana), p.level, p.xp,
+                p.x, p.y, p.depth, len(p.spells),
+                bytes(level.tiles) if level is not None else b"")
+
     @staticmethod
     def snapshot(scene):
         """The scene's own switches, so a toggle is not mistaken for a dud.
@@ -278,6 +303,7 @@ class Audit:
             before_acts = len(self.acts)
             before_log = len(self.s.log(200))
             before_state = self.snapshot(self.s.app.scene)
+            before_world = self.world_state()
             label = f"{b.label!r}({b.action})"
             try:
                 self.press(b.rect)
@@ -289,7 +315,13 @@ class Audit:
             acts = self.acts[before_acts:]
             grew = len(self.s.log(200)) - before_log
             if acts:
-                rows.append((where, label, "ok", f"sent {acts[0].get('a')}"))
+                moved = self.world_state() != before_world
+                if moved or grew > 0 or after_scene != before_scene:
+                    rows.append((where, label, "ok", f"sent {acts[0].get('a')}"))
+                else:
+                    rows.append((where, label, "SILENT",
+                                 f"sent {acts[0]} and nothing happened, "
+                                 f"and nothing was said"))
             elif after_scene != before_scene:
                 rows.append((where, label, "ok", f"-> {after_scene}"))
             elif grew > 0:
@@ -329,7 +361,7 @@ def main():
     bad = 0
     for place, label, verdict, note in rows:
         mark = {"ok": "  ", "off": "  ", "none": "  "}.get(verdict, "**")
-        if verdict in ("DEAD", "CRASH"):
+        if verdict in ("DEAD", "CRASH", "SILENT"):
             bad += 1
         print(f"{mark}{place:<18} {label:<34} {verdict:<6} {note}")
     print(f"\n{bad} broken of {len(rows)} controls")

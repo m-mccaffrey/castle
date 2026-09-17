@@ -51,6 +51,7 @@ C_ACTION = "act"
 C_CHAT = "chat"
 C_PING = "ping"
 C_SAVE = "save"
+C_RESYNC = "resync"    # "my map and your world disagree; send me the floor"
 
 # server -> client
 S_WELCOME = "welcome"
