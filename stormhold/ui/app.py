@@ -549,6 +549,7 @@ class PlayScene(Scene):
             pass
         elif kind == P.S_INV:
             self.app.inventory = data
+            self.menubar = None        # the Activate menu lists what you carry
         elif kind == P.S_SHOP:
             shop = data.get("shop", "general")
             # "Stores operate as an extension of the inventory. When you enter
@@ -952,6 +953,22 @@ class PlayScene(Scene):
             return int(tx), int(ty)
         return None
 
+    def to_hand(self):
+        """What the Activate menu can offer: things not buried in the pack.
+
+        "Objects in your pack cannot be activated" - so this is what is on
+        the belt, in the quiver, and worn.
+        """
+        inv = self.app.inventory or {}
+        rows = []
+        for slot in ("waist", "quiver"):
+            for item in (inv.get("stowed") or {}).get(slot, []):
+                rows.append(item)
+        for item in (inv.get("equipment") or {}).values():
+            if item and (item.get("spell") or item.get("kind") == "wand"):
+                rows.append(item)
+        return rows
+
     def build_chrome(self):
         """The menu and toolbar, built once and reused."""
         if getattr(self, "menubar", None) is not None:
@@ -965,6 +982,11 @@ class PlayScene(Scene):
             ("Map!", []),
             ("Spells", [("Spellbook...", "spellbook", True),
                         ("Customize Spell Menu...", "customize", True)]),
+            # The original's own menu, and the only way to drink a potion
+            # without opening a window: everything you have to hand, listed.
+            ("Activate", [(item["name"], f"use:{item['id']}", True)
+                          for item in self.to_hand()]
+                         or [("Nothing to hand", None, False)]),
             ("Verbs", [("Get", "pickup", True),
                        ("Examine", "examine", True),
                        ("Free Hand", "freehand", True),
@@ -1010,6 +1032,8 @@ class PlayScene(Scene):
             self.add_message("Options are kept in the launcher for now.", "info")
         elif action == "examine":
             self.begin_look()
+        elif action.startswith("use:"):
+            self.send_action({"a": "use", "id": int(action.split(":", 1)[1])})
         elif action == "save":
             # It used to say the server handled it, which was only true when
             # somebody disconnected.

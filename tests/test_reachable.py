@@ -266,3 +266,53 @@ class TestTheTwoRestCommandsAreTwoCommands(unittest.TestCase):
         self.p.mana = 0
         self.world.do_player_action(self.level, self.p, {"a": "sleep"})
         self.assertEqual(self.p.resting, "mana")
+
+
+class TestTheActivateMenuExists(unittest.TestCase):
+    """The original's menu bar reads File, Character!, Inventory!, Map!,
+    Spells, Activate, Verbs, Window - read off the running program. Ours had
+    no Activate, so the only way to drink a potion was to open the pack.
+    """
+
+    def setUp(self):
+        from stormhold.ui.app import PlayScene
+        from tests.test_ui import make_app
+        pygame.display.init()
+        self.app = make_app()
+        self.app.screen = pygame.display.set_mode((1280, 800))
+        self.world = World(seed=5)
+        self.player = self.world.add_player("Drinker")
+        self.play = PlayScene(self.app)
+        self.app.play = self.play
+
+    def menu(self):
+        self.play.menubar = None
+        self.app.inventory = self.world.inventory_view(self.player)
+        self.play.build_chrome()
+        return dict(self.play.menubar.menus)["Activate"]
+
+    def test_it_lists_what_is_to_hand_and_nothing_else(self):
+        buried = Item("potion_heal")
+        buried.known = True
+        self.player.add_item(buried)
+        self.assertEqual([row[0] for row in self.menu()], ["Nothing to hand"],
+                         "a potion in the pack cannot be activated")
+
+        belt = Item("belt3")
+        self.player.equipment["waist"] = belt
+        self.player.inventory.remove(buried)
+        belt.contents.append(buried)
+        rows = self.menu()
+        self.assertEqual([row[0] for row in rows], ["Potion of Healing"])
+        self.assertEqual(rows[0][1], f"use:{buried.id}")
+
+    def test_choosing_one_sends_the_use_action(self):
+        belt = Item("belt3")
+        potion = Item("potion_heal")
+        potion.known = True
+        self.player.equipment["waist"] = belt
+        belt.contents.append(potion)
+        sent = []
+        self.play.send_action = sent.append
+        self.play.menu_command(self.menu()[0][1])
+        self.assertEqual(sent, [{"a": "use", "id": potion.id}])

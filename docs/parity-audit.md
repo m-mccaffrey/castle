@@ -142,6 +142,9 @@ is simply a death sentence.
 | Get lifts everything on the floor, not one thing at a time | done - it took the top of the pile and left the rest |
 | A pack, purse or belt you are not wearing is worn when picked up | done - it used to go into the pack you did not have |
 
+| Menu bar: File, Character!, Inventory!, Map!, Spells, Activate, Verbs, Window, Help | partial - Activate was missing and is now built from what you have to hand; Window is not there, because our three panes do not resize |
+| Activate menu lists what is to hand, so a potion needs no window | done |
+
 ## Interface
 
 | Rule | Status |
