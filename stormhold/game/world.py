@@ -1153,6 +1153,14 @@ class World:
 
     def read_scroll(self, level, p, item, action):
         use = item.base.get("use")
+        if use == "identify" and self.needs_a_target(
+                p, action, "Choose something for the scroll to name."):
+            return FREE_COST
+        if use == "enchant" and self.needs_a_target(
+                p, action, "Choose a weapon or a piece of armour to enchant.",
+                want="worn"):
+            return FREE_COST
+
         now = level.clock
         self.appearances.identify(item.key)
         self.sound("magic", p.x, p.y, level.depth)
@@ -1266,20 +1274,38 @@ class World:
         m.add_effect("slowed", now + 6000)        # ten minutes of game time
         m.slow_divisor = step + 1
 
+    # Things that cannot happen until you have named an object. Asking first
+    # costs nothing; the alternative is what Revelation used to do, which was
+    # to take the mana, say "Choose something in your pack first" and leave
+    # you no way to choose anything.
+    def needs_a_target(self, p, action, prompt, want=None):
+        if action.get("target"):
+            return False
+        self.events.append({"t": "pick", "to": p.id, "prompt": prompt,
+                            "want": want, "action": dict(action)})
+        return True
+
     def _act_cast(self, level, p, action):
         name = action.get("spell")
         spell = SPELLS.get(name)
         if spell is None or name not in p.spells:
             self.msg("You do not know that spell.", "warn", to=p)
             return FREE_COST
+        if spell.get("identify") and self.needs_a_target(
+                p, action, f"{name}: choose something to learn about."):
+            return FREE_COST
+
         # The original lets you overdraw: "You don't have enough mana. Casting
         # this spell may damage your health. Continue?" - you pay the shortfall
         # in hit points instead of being refused.
         cost = mana_cost(spell["mana"], p.level, spell.get("level", 1))
         shortfall = max(0, cost - int(p.mana))
         if shortfall and not action.get("confirm_overdraw"):
-            self.msg(f"You have not the mana for that. Casting it will cost "
-                     f"you {shortfall} hit points instead.", "warn", to=p)
+            self.events.append({
+                "t": "ask", "to": p.id, "key": "confirm_overdraw",
+                "text": f"You have not the mana for {name}. Casting it will "
+                        f"cost you {shortfall} hit points instead. Go on?",
+                "action": dict(action)})
             return FREE_COST
 
         tx = int(action.get("x", p.x))

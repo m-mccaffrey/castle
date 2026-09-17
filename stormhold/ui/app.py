@@ -1394,6 +1394,57 @@ class OverlayScene(Scene):
         return W.window(surf, rect, self.title), rect
 
 
+class AskScene(OverlayScene):
+    """A yes-or-no the server wants answered before it does something.
+
+    Built for overdrawing mana. The original asks - "You don't have enough
+    mana. Casting this spell may damage your health. Continue?" - and ours
+    said the same thing and then had nowhere to say yes: the handler wanted a
+    confirm_overdraw key that no window in the game could send, so the
+    warning read as a prompt and behaved as a refusal.
+    """
+
+    title = "One moment"
+    size = (470, 190)
+
+    def __init__(self, app, text, action, key="confirm"):
+        super().__init__(app)
+        self.text, self.action, self.key = text, action, key
+
+    def draw(self, surf):
+        below = self.app.under(self)
+        if below is not None:
+            below.draw(surf)
+        client, _ = self.frame(surf)
+        y = client.y + 16
+        for line in W.wrap(self.text, client.width - 32, 14):
+            W.text(surf, line, (client.x + 16, y), 14, bold=True)
+            y += 20
+        self.buttons = [
+            W.Button(pygame.Rect(client.x + 40, client.bottom - 48, 110, 32),
+                     "Yes", "yes"),
+            W.Button(pygame.Rect(client.right - 150, client.bottom - 48, 110, 32),
+                     "No", "no"),
+        ]
+        for b in self.buttons:
+            b.draw(surf)
+
+    def handle(self, event):
+        if event.type == pygame.KEYDOWN:
+            if event.key in (pygame.K_y, pygame.K_RETURN):
+                return self.on_action("yes")
+            if event.key in (pygame.K_n, pygame.K_ESCAPE):
+                return self.on_action("no")
+        super().handle(event)
+
+    def on_action(self, action):
+        self.close()
+        if action == "yes":
+            self.app.act(dict(self.action, **{self.key: True}))
+        else:
+            self.app.play.add_message("You think better of it.", "info")
+
+
 class PackScene(OverlayScene):
     """The paper doll.
 
@@ -1409,8 +1460,11 @@ class PackScene(OverlayScene):
     SLOT_H = 46
     DOLL_H = 430
 
-    def __init__(self, app):
+    def __init__(self, app, picking=None):
         super().__init__(app)
+        # {"prompt", "want", "action"}: the window is open because something
+        # is waiting to be told which object it should work on.
+        self.picking = picking
         self.slot_rects = {}
         self.cell_rects = []
         self.selected = None
@@ -1449,6 +1503,24 @@ class PackScene(OverlayScene):
             if rect.collidepoint(pos):
                 return item, ("pack", None)
         return None, (None, None)
+
+    def answer_pick(self, item):
+        """Name the object the pending action was waiting for."""
+        want = (self.picking or {}).get("want")
+        if want == "worn" and not item.get("slot"):
+            self.app.play.add_message(
+                f"{item['name']} is not something you can wear or wield.", "warn")
+            return
+        action = dict(self.picking["action"])
+        action["target"] = item["id"]
+        self.picking = None
+        self.close()
+        self.app.act(action)
+
+    def cancel_pick(self):
+        self.picking = None
+        self.app.play.add_message("Never mind.", "info")
+        self.close()
 
     STOW_SLOTS = ("waist", "quiver")
 
@@ -1495,6 +1567,11 @@ class PackScene(OverlayScene):
                 if b.rect.collidepoint(event.pos):
                     b.handle(event)
                     return
+            if self.picking is not None:
+                item, _ = self.item_at(event.pos)
+                if item is not None:
+                    self.answer_pick(item)
+                return
             item, (source, slot) = self.item_at(event.pos)
             if item is not None:
                 self.selected = item
@@ -1521,7 +1598,10 @@ class PackScene(OverlayScene):
             if action:
                 self.on_action(action)
         if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-            self.close()
+            if self.picking is not None:
+                self.cancel_pick()
+            else:
+                self.close()
 
     def finish_drag(self, pos):
         drag = self.drag
@@ -1602,7 +1682,17 @@ class PackScene(OverlayScene):
         self.title = (f"{self.app.play.you.get('name', 'Pack')}"
                       f"   Cp: {cp}   Weight: {wt} ({wt_max})"
                       f"   Bulk: {bk} ({bk_max})")
+        if self.picking is not None:
+            self.title = self.picking["prompt"]
         client, _ = self.frame(surf)
+        if self.picking is not None:
+            bar = pygame.Rect(client.x, client.y, client.width, 22)
+            pygame.draw.rect(surf, (244, 232, 170), bar)
+            pygame.draw.rect(surf, (140, 120, 40), bar, 1)
+            W.text(surf, self.picking["prompt"] + "   (Esc to think better of it)",
+                   (bar.x + 8, bar.y + 4), 12, bold=True)
+            client = pygame.Rect(client.x, bar.bottom + 4, client.width,
+                                 client.height - bar.height - 4)
 
         # A store splits the lower half in two, so the doll gives some height
         # back - otherwise neither grid is tall enough to show a whole cell.
@@ -2994,7 +3084,15 @@ class App:
                         f"Others on your network can join at {self.hosting_note}:"
                         f"{self.settings.get('port', 7777)}", "good")
             elif self.play is not None:
-                if kind == P.S_SHOP and isinstance(self.scene, (ServiceScene, StoreScene)):
+                if kind == P.S_ASK:
+                    self.push(AskScene(self, data.get("text", "Are you sure?"),
+                                       data.get("action", {}),
+                                       data.get("key", "confirm")))
+                elif kind == P.S_PICK:
+                    self.play.add_message(data.get("prompt", "Choose something."),
+                                          "info")
+                    self.push(PackScene(self, picking=data))
+                elif kind == P.S_SHOP and isinstance(self.scene, (ServiceScene, StoreScene)):
                     self.scene.refresh(data)
                 else:
                     self.play.on_message(kind, data)

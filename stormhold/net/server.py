@@ -355,6 +355,17 @@ class GameServer:
                 if s and s.player:
                     s.send(P.S_SHOP, world.shop_view(s.player, event["shop"],
                                                      event["npc"], event["name"]))
+            elif etype == "ask":
+                s = self.session_for(event["to"])
+                if s:
+                    s.send(P.S_ASK, {"text": event["text"], "key": event["key"],
+                                     "action": event["action"]})
+            elif etype == "pick":
+                s = self.session_for(event["to"])
+                if s:
+                    s.send(P.S_PICK, {"prompt": event["prompt"],
+                                      "want": event.get("want"),
+                                      "action": event["action"]})
             elif etype == "level":
                 s = self.session_for(event["to"])
                 if s:

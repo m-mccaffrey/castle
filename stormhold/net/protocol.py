@@ -65,5 +65,7 @@ S_INV = "inv"
 S_SHOP = "shop"
 S_DIED = "died"
 S_CHAT = "chat"
+S_ASK = "ask"          # a yes or no, with the action to repeat on yes
+S_PICK = "pick"        # "name something in your pack, then I will do this"
 S_ROSTER = "roster"
 S_PONG = "pong"
