@@ -40,7 +40,7 @@ to agree, and every test we had asked one question about one function.
 | Load affects movement only, never casting or combat | done |
 | Status line shows overall speed then movement speed | done |
 | Containers have both weight and bulk limits | done |
-| Magical containers report a fixed weight, not their contents | done |
+| Magical containers report a fixed weight, not their contents | done - and this row was wrong for a long time. The fixed figure was applied to the container and the contents were counted in full anyway, because what is "in the pack" is the character's inventory list and not the pack item. A Pack of Holding was heavier than the backpack it replaced. |
 | Bags' bulk varies with contents, chests' is fixed | done - a Chest was added with a fixed bulk beside the sack that swells |
 | Copper weighs 1 g and displaces 1 cc per coin | done |
 | Four coinages: copper, silver 10, gold 100, platinum 1000 | done |

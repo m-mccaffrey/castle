@@ -466,3 +466,53 @@ class TestBuyingStraightOntoTheBody(unittest.TestCase):
         self.buy("general", item, wear="head" if item.slot != "head" else "feet")
         self.assertIn(item, self.p.inventory)
         self.assertTrue(said)
+
+
+class TestAMagicalPackActuallyLightensTheLoad(unittest.TestCase):
+    """The original: "If non-zero, the Wt. Fx and Bulk Fx columns are used
+    instead of the sum of the contents (plus whatever intrinsic weight and
+    bulk the container has)". Instead of, not as well as.
+
+    What is "in the pack" is the character's inventory list; the pack item
+    does not hold it. So the fixed figure was applied to the pack and the
+    contents were then counted in full anyway - which made a Pack of Holding,
+    the reward for getting deep, *heavier* than the ordinary pack it
+    replaced. The parity table called this done.
+    """
+
+    def setUp(self):
+        self.world = World(seed=5)
+        self.p = self.world.add_player("Mule")
+
+    def load(self, pack_key, suits):
+        self.p.equipment["pack"] = Item(pack_key)
+        self.p.inventory = [Item("platemail") for _ in range(suits)]
+        self.p.recalc()
+        return self.p.carried_weight, self.p.carried_bulk
+
+    def test_a_pack_of_holding_weighs_the_same_full_as_empty(self):
+        empty = self.load("holdpack", 0)
+        full = self.load("holdpack", 8)
+        self.assertEqual(empty, full)
+
+    def test_an_ordinary_pack_does_not(self):
+        empty = self.load("pack", 0)
+        full = self.load("pack", 8)
+        self.assertGreater(full[0], empty[0])
+        self.assertGreater(full[1], empty[1])
+
+    def test_it_is_worth_carrying(self):
+        """It cost 900 and lives nine floors down; it has to beat a backpack."""
+        plain = self.load("pack", 4)
+        magic = self.load("holdpack", 4)
+        self.assertLess(magic[0], plain[0],
+                        "a Pack of Holding must be lighter than a backpack "
+                        "with the same load in it")
+
+    def test_you_can_still_be_stopped_by_what_you_wear(self):
+        """The fixed figure covers the pack's contents, not your armour."""
+        self.load("holdpack", 2)
+        light = self.p.carried_weight
+        self.p.equipment["torso"] = Item("platemail")
+        self.p.recalc()
+        self.assertGreater(self.p.carried_weight, light)

@@ -208,9 +208,23 @@ class Player(Actor):
         return left == 0
 
     # -------------------------------------------------------- encumbrance ---
+    #
+    # What is "in the pack" is `self.inventory`; the pack item itself does not
+    # hold it. So a magical pack's fixed figure has to be applied here, where
+    # the two are added up, and not only on the item. Without this a Pack of
+    # Holding reported its own flat five kilos *and* every gram of what you
+    # were carrying - which made the deepest reward in the game heavier than
+    # the ordinary pack it replaced, and the parity table called it done.
+    #
+    # The original: "If non-zero, the Wt. Fx and Bulk Fx columns are used
+    # instead of the sum of the contents (plus whatever intrinsic weight and
+    # bulk the container has) in calculating the value reported to the
+    # parent." Instead of, not as well as.
     @property
     def carried_weight(self):
-        w = sum(i.weight for i in self.inventory)
+        pack = self.equipment.get("pack")
+        fixed = pack.base.get("wt_fixed") if pack else None
+        w = 0 if fixed else sum(i.weight for i in self.inventory)
         w += sum(i.weight for i in self.equipment.values() if i)
         w += self.coin_count * COPPER_GRAMS   # every coin weighs a gram
         return w
@@ -222,13 +236,16 @@ class Player(Actor):
         Armour conforms to the body and does not count; a pack, a purse and
         anything carried loose in your hands does.
         """
+        pack = self.equipment.get("pack")
+        fixed = pack.base.get("bulk_fixed") if pack else None
         # Things stowed in a pack press down against each other, so what is
         # inside counts for half. The pack and purse themselves count in full.
-        b = sum(i.bulk for i in self.inventory) // 2
+        b = 0 if fixed else sum(i.bulk for i in self.inventory) // 2
         for slot in ("pack", "purse"):
             worn = self.equipment.get(slot)
             if worn:
-                b += worn.base.get("bulk", 0)
+                b += (worn.base.get("bulk_fixed") if slot == "pack" and fixed
+                      else worn.base.get("bulk", 0))
         b += self.coin_count * COPPER_CC
         return b
 
