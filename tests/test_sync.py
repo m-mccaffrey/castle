@@ -139,3 +139,24 @@ class TestWhatYouCarryAndWhatYouSeeAgree(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestAShortGameStaysConsistent(unittest.TestCase):
+    """A few dozen real actions, with the soak's checks after each one.
+
+    The long version of this is `tools/soak.py`, which plays for hundreds of
+    actions across several characters and is too slow to live here. This is
+    the first minute of it, so that a change which makes the window and the
+    game disagree fails on the way in rather than in somebody's evening.
+    """
+
+    def test_playing_for_a_while_never_breaks_the_invariants(self):
+        from tools.soak import Soak
+        soak = Soak(seed=3, actions=60, port=9899)
+        try:
+            faults = soak.run()
+        finally:
+            soak.close()
+        self.assertEqual(
+            [f[3] for f in faults], [],
+            "playing the game made the window and the game disagree")

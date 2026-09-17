@@ -15,9 +15,20 @@ marked **done** while neither the vi keys nor shift-to-run had ever been
 written. Two UI bugs were reported, marked fixed, and reported again, because
 the tests that were supposed to cover them clicked in a way no player clicks.
 So: prefer a test to a row in this table, and where a row cannot be tested,
-say how it was checked. `tools/ui_audit.py` opens every screen in the game,
-clicks every control on it, and reports which ones do nothing - that kind of
-thing is worth more than a hundred lines of this.
+say how it was checked. The tools that are worth more than a hundred lines of
+this:
+
+| tool | what it does |
+|---|---|
+| `tools/ui_audit.py` | opens every screen, presses every control, reports the dead ones |
+| `tools/key_audit.py` | presses every key the original's help file documents and prints what ours did beside what the help says |
+| `tools/interaction_audit.py` | drags things about and trades at every shop, checking the money that moves is the money that was named |
+| `tools/rule_audit.py` | the arithmetic the help files state outright - the load curve, heal amounts, teleport ranges, shop prices |
+| `tools/soak.py` | plays for hundreds of actions and checks after **every one** that the window and the game still agree about the pack, the doll, the vitals, the map and the prices |
+
+The last one exists because of what the others kept missing. Every bug a
+person has reported from play was a drift between two things that are meant
+to agree, and every test we had asked one question about one function.
 
 ## Units, carrying and speed
 
