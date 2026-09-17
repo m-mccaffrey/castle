@@ -195,3 +195,43 @@ class TestTheSitesHaveAVerb(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestTheGetCommandDoesWhatTheHelpSays(unittest.TestCase):
+    """"This command generally puts everything on the floor into the
+    player's pack. The special case is if the object is a pack, purse, or
+    belt, and the player isn't wearing one, the object goes in the
+    appropriate inventory slot."
+
+    Ours took the top item of the pile and nothing else, and a found pack
+    went into the pack you did not have.
+    """
+
+    def setUp(self):
+        self.world = World(seed=5)
+        self.p = self.world.add_player("Magpie")
+        self.level = self.world.levels[self.p.depth]
+
+    def test_one_press_lifts_the_whole_pile(self):
+        for key in ("shortsword", "potion_heal", "leather"):
+            self.level.add_ground_item(self.p.x, self.p.y, Item(key))
+        held = len(self.p.inventory)
+        self.world.do_player_action(self.level, self.p, {"a": "pickup"})
+        self.assertEqual(len(self.p.inventory), held + 3)
+        self.assertFalse(self.level.items_at(self.p.x, self.p.y))
+
+    def test_a_pack_purse_or_belt_goes_on_rather_than_in(self):
+        for key, slot in (("pack", "pack"), ("purse", "purse"), ("belt3", "waist")):
+            with self.subTest(item=key):
+                self.p.equipment[slot] = None
+                thing = Item(key)
+                self.level.add_ground_item(self.p.x, self.p.y, thing)
+                self.world.do_player_action(self.level, self.p, {"a": "pickup"})
+                self.assertIs(self.p.equipment.get(slot), thing)
+
+    def test_but_a_second_one_goes_in_the_pack_as_usual(self):
+        self.p.equipment["purse"] = Item("purse")
+        spare = Item("purse")
+        self.level.add_ground_item(self.p.x, self.p.y, spare)
+        self.world.do_player_action(self.level, self.p, {"a": "pickup"})
+        self.assertIn(spare, self.p.inventory)

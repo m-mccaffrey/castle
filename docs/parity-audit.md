@@ -90,7 +90,7 @@ thing is worth more than a hundred lines of this.
 | Class identify: one of a type identifies all of that type | done |
 | Identify on use, identify on wield | done |
 | The Sage identifies for a fee | done |
-| Junk store buys anything, 25 CP for cursed or worthless | done |
+| Junk store buys anything, market price under 25 CP, else a flat 25 | done - and this row was wrong for a while: the code paid a tenth of the value with the flat rate as a floor, on the grounds that the same 25 for a quarrel and a suit of plate was insulting. It is meant to be. Checked by `tools/rule_audit.py`. |
 | Cursed items cannot be removed until uncursed | done |
 | Cursed items may summon monsters or lower attributes | partial |
 | Two-handed weapons conflict with shields | done - there were no two-handed weapons at all. Halberds, broad swords and bows need both hands: taking one up puts the shield in your pack and says so, and a shield is refused while you hold one |
@@ -138,6 +138,9 @@ is simply a death sentence.
 | Dragon breath by colour: white cold, red fire, blue lightning, green poison | partial |
 | A poison that is slow to take hold | done - the crypt ghoul's bite numbs first and burns later, which is what makes a cure worth carrying |
 | A tribe may hire something larger as a guard | done - a goblin pack turns up with a shambler behind it about a quarter of the time |
+
+| Get lifts everything on the floor, not one thing at a time | done - it took the top of the pile and left the rest |
+| A pack, purse or belt you are not wearing is worn when picked up | done - it used to go into the pack you did not have |
 
 ## Interface
 

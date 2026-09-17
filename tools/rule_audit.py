@@ -21,7 +21,7 @@ os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 
 import random                                                     # noqa: E402
 
-from stormhold.game.actors import Player, movement_speed          # noqa: E402
+from stormhold.game.actors import make_monster, movement_speed     # noqa: E402
 from stormhold.game.items import Item                             # noqa: E402
 from stormhold.game.world import World                            # noqa: E402
 
@@ -71,26 +71,43 @@ def check_load():
 
 
 # --------------------------------------------------------------- heals ----
+# Our spells have their own names - the remake's prose is its own - so the
+# rule is matched to the spell that does the original's job.
+HEALS = (("Mend Wounds", 8, 0.20),         # Heal Minor Wounds
+         ("Greater Mending", 16, 0.40),    # Heal Medium Wounds
+         ("Circle of Mending", 24, 0.60))  # Heal Major Wounds
+
+
 def check_heals():
     """"The greater of 8 hit points or 20% ... 16 or 40% ... 24 or 60%,
     but not exceeding the character's maximum."""
-    for spell, flat, share in (("Heal Minor Wounds", 8, 0.20),
-                               ("Heal Medium Wounds", 16, 0.40),
-                               ("Heal Major Wounds", 24, 0.60)):
-        for max_hp in (20, 200):
+    for spell, flat, share in HEALS:
+        for con, lvl in ((8, 1), (30, 12)):
             w, p = fresh()
-            p.max_hp = max_hp
-            p.hp = 1
-            p.mana = 99
-            w.do_player_action(w.levels[p.depth], p, {"a": "cast", "spell": spell})
+            p.spells.add(spell)
+            # max_hp is rebuilt from constitution and level whenever the
+            # character is recalculated, including during a cast, so it is
+            # raised the way the game raises it and then read back.
+            p.stats["constitution"] = con
+            p.level = lvl
+            p.recalc()
+            p.hp, p.mana = 1, 999
+            max_hp = p.max_hp
+            w.do_player_action(w.levels[p.depth], p,
+                               {"a": "cast", "spell": spell, "x": p.x, "y": p.y})
             want = min(max_hp, 1 + max(flat, int(max_hp * share)))
-            note("heal", f"{spell} at {max_hp} max is the greater of "
+            note("heal", f"{spell} at {max_hp} max: the greater of "
                          f"{flat} and {int(share * 100)}%",
                  p.hp == want, f"gave {p.hp - 1}, wanted {want - 1}")
     w, p = fresh()
-    p.max_hp, p.hp, p.mana = 30, 28, 99
-    w.do_player_action(w.levels[p.depth], p, {"a": "cast", "spell": "Heal Major Wounds"})
-    note("heal", "healing never goes past your maximum", p.hp == 30, f"hp {p.hp}/30")
+    p.spells.add("Circle of Mending")
+    p.recalc()
+    p.hp, p.mana = p.max_hp - 2, 999
+    w.do_player_action(w.levels[p.depth], p,
+                       {"a": "cast", "spell": "Circle of Mending",
+                        "x": p.x, "y": p.y})
+    note("heal", "healing never goes past your maximum", p.hp == p.max_hp,
+         f"hp {p.hp}/{p.max_hp}")
 
 
 # ---------------------------------------------------------- slow monster --
@@ -99,13 +116,16 @@ def check_slow():
     normal speed"."""
     w, p = fresh()
     level = w.levels[p.depth]
-    mon = next((m for m in level.actors if getattr(m, "kind", "") == "monster"), None)
-    if mon is None:
-        return note("slow", "a monster to slow", False, "none on the floor")
+    from stormhold.game.monsters import MONSTERS
+    key = next(iter(MONSTERS))
+    mon = make_monster(key, p.x + 2, p.y, p.depth, w.rng)
+    level.place(mon)
     base = mon.action_cost(100)
     seen = []
     for _ in range(4):
-        mon.add_effect("slowed", 600)
+        # Through the world's own path: add_effect alone sets the flag
+        # without the step count, which is a way of measuring nothing.
+        w.apply_slow(mon, level.clock)
         seen.append(round(mon.action_cost(100) / base, 3))
     note("slow", "slowing stacks 1/2, 1/3, 1/4, 1/5 - not 1/2 each time",
          seen == [2.0, 3.0, 4.0, 5.0], f"costs went {seen}")
@@ -113,18 +133,29 @@ def check_slow():
 
 # ----------------------------------------------------------- teleporting --
 def check_teleports():
-    """"a random location from 5 to 10 squares" and "at least 10 squares"."""
-    for spell, lo, hi in (("Phase Door", 5, 10), ("Teleport", 10, 9999)):
+    """"a random location from 5 to 10 squares" and "at least 10 squares".
+
+    Ours are Blink and Farstep; the spread is sampled rather than reasoned
+    about, because both pick a square and then fall back to the nearest one
+    that is safe to stand on.
+    """
+    for spell, lo, hi in (("Blink", 5, 10), ("Farstep", 10, 9999)):
         w, p = fresh(depth=2)
         level = w.levels[p.depth]
         spread = []
         for _ in range(40):
             x, y = p.x, p.y
-            p.mana = 99
+            p.spells.add(spell)
+            p.mana = 999
             w.do_player_action(level, p, {"a": "cast", "spell": spell})
-            spread.append(max(abs(p.x - x), abs(p.y - y)))
+            gap = max(abs(p.x - x), abs(p.y - y))
+            if gap:
+                spread.append(gap)
+        if not spread:
+            note("teleport", f"{spell} moves you at all", False, "never moved")
+            continue
         worst, best = min(spread), max(spread)
-        note("teleport", f"{spell} lands {lo}..{'' if hi > 999 else hi} squares away",
+        note("teleport", f"{spell} lands {lo}..{'' if hi > 999 else hi} squares off",
              worst >= lo and best <= hi,
              f"{worst}..{best} over {len(spread)} casts")
 
@@ -133,35 +164,40 @@ def check_teleports():
 def check_junk():
     """"It will buy anything, for market price (if it's less than 25 C.P.)
     or for 25 C.P. if it's cursed or worthless."""
-    w, p = fresh()
-    cheap = Item("arrow")
-    dear = Item("platemail")
+    w, _ = fresh()
+    cheap, dear = Item("arrow"), Item("platemail")
     cursed = Item("ring_burden")
     cursed.cursed = True
-    got = {}
-    for label, item in (("a cheap thing", cheap), ("a dear thing", dear),
-                        ("a cursed thing", cursed)):
-        got[label] = (w.junk_price(item), item.value())
-    note("junk", "pays market for anything under 25 C.P.",
-         got["a cheap thing"][0] == min(25, got["a cheap thing"][1]),
-         f"paid {got['a cheap thing'][0]} for a {got['a cheap thing'][1]} item")
-    note("junk", "pays a flat 25 for anything dearer",
-         got["a dear thing"][0] == 25,
-         f"paid {got['a dear thing'][0]} for a {got['a dear thing'][1]} item")
-    note("junk", "pays 25 for a cursed thing",
-         got["a cursed thing"][0] == 25, f"paid {got['a cursed thing'][0]}")
+    note("junk", "market price while that is under 25",
+         w.junk_price(cheap) == cheap.value() and cheap.value() < 25,
+         f"paid {w.junk_price(cheap)} for a {cheap.value()} thing")
+    note("junk", "a flat 25 for anything dearer",
+         w.junk_price(dear) == 25, f"paid {w.junk_price(dear)} for a {dear.value()} thing")
+    note("junk", "a flat 25 for a cursed thing",
+         w.junk_price(cursed) == 25, f"paid {w.junk_price(cursed)}")
 
 
 # ------------------------------------------------------------------ get --
 def check_get():
     """"The special case is if the object is a pack, purse, or belt, and the
     player isn't wearing one, the object goes in the appropriate slot."""
+    w, p = fresh()
+    level = w.levels[p.depth]
+    for key in ("shortsword", "potion_heal", "leather"):
+        level.add_ground_item(p.x, p.y, Item(key))
+    held = len(p.inventory)
+    w.do_player_action(level, p, {"a": "pickup"})
+    note("get", "Get takes everything on the floor, not one thing",
+         len(p.inventory) == held + 3 and not level.items_at(p.x, p.y),
+         f"{len(p.inventory) - held} of 3 taken, "
+         f"{len(level.items_at(p.x, p.y))} left lying there")
+
     for key, slot in (("pack", "pack"), ("purse", "purse"), ("belt3", "waist")):
         w, p = fresh()
         level = w.levels[p.depth]
         p.equipment[slot] = None
         thing = Item(key)
-        level.drop_item(thing, p.x, p.y)
+        level.add_ground_item(p.x, p.y, thing)
         w.do_player_action(level, p, {"a": "pickup"})
         note("get", f"a {key} off the floor goes straight to the {slot} slot",
              p.equipment.get(slot) is thing,
@@ -170,21 +206,29 @@ def check_get():
 
 # ----------------------------------------------------------------- sort --
 def check_sort():
-    """"all unknown objects of a type are at the end"."""
+    """"all unknown objects of a type are at the end".
+
+    A potion is unknown by its *appearance*, which is a fact about the world
+    and not about the bottle, so the check has to find a kind this character
+    has not met rather than just clearing a flag on one item.
+    """
     w, p = fresh()
+    unknown_key = next((k for k in ("potion_mana", "potion_speed", "potion_might")
+                        if not w.appearances.is_known(k)), None)
+    if unknown_key is None:
+        return note("sort", "a potion this character has not met", False,
+                    "everything was already identified")
     known = Item("potion_heal")
-    known.known = True
-    unknown = Item("potion_mana")
-    unknown.known = False
-    second = Item("potion_speed")
-    second.known = True
-    for it in (unknown, second, known):
+    w.appearances.identify("potion_heal")
+    unknown = Item(unknown_key)
+    for it in (unknown, known):
         p.add_item(it)
     w.do_player_action(w.levels[p.depth], p, {"a": "sort"})
     potions = [i for i in p.inventory if i.kind == "potion"]
     note("sort", "unknown things sort to the end of their own type",
-         potions and potions[-1] is unknown,
-         " then ".join(("?" if not i.known else i.key) for i in potions))
+         bool(potions) and potions[-1] is unknown,
+         " then ".join(("?" if not w.appearances.is_known(i.key) else i.key)
+                       for i in potions))
 
 
 def main():

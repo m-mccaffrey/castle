@@ -980,14 +980,21 @@ class TestReachAndUpkeep(unittest.TestCase):
                            "reaching beyond your level costs extra")
 
     def test_the_junk_store_pays_a_flat_pittance(self):
+        """"It will buy anything, for market price (if it's less than 25
+        C.P.) or for 25 C.P. if it's cursed or worthless."
+
+        Which does mean the same twenty-five for a suit of plate as for a
+        cursed ring. This paid a tenth of the value for a while, on the
+        grounds that the flat rate was insulting; it is meant to be.
+        """
         from stormhold.game.items import Item
         world = World(seed=12)
         rich = Item("platemail")
-        # She pays a tenth, floored at the flat rate - always a bad deal,
-        # but no longer the same 25 for a quarrel and a suit of plate.
-        self.assertLessEqual(world.junk_price(rich),
-                             world.shop_price(rich, selling=True) // 5)
-        self.assertGreaterEqual(world.junk_price(rich), world.JUNK_FLAT)
+        self.assertEqual(world.junk_price(rich), world.JUNK_FLAT)
+        cheap = Item("arrow")
+        self.assertLess(cheap.value(), world.JUNK_FLAT, "a test that needs a cheap thing")
+        self.assertEqual(world.junk_price(cheap), cheap.value(),
+                         "market price, while market price is under 25")
         cursed = Item("leather")
         cursed.cursed = True
         self.assertEqual(world.junk_price(cursed), world.JUNK_FLAT)
@@ -2312,16 +2319,13 @@ class TestWhatAShopWillTake(unittest.TestCase):
             with self.subTest(item=key):
                 self.assertIn("Nan takes", " ".join(self.offer("junk", key)))
 
-    def test_but_always_badly_and_never_insultingly(self):
-        """A flat rate meant the same 25 for a quarrel and a suit of plate."""
+    def test_but_always_badly(self):
+        """She is a dump, not a dealer: a trade pays many times better."""
         from stormhold.game.items import Item
-        cheap, dear = Item("bolt"), Item("platemail")
+        dear = Item("platemail")
         self.assertLess(self.world.junk_price(dear),
                         self.world.shop_price(dear, selling=True) // 2,
                         "Nan is paying too well")
-        self.assertGreater(self.world.junk_price(dear),
-                           self.world.junk_price(cheap),
-                           "she offers the same for plate as for a quarrel")
 
     def test_a_sale_that_cannot_happen_says_so(self):
         self.world.events.clear()

@@ -1020,33 +1020,58 @@ class World:
         return p.action_cost(ATTACK_COST, attacking=True) or ATTACK_COST
 
     # ---- objects ---------------------------------------------------------
+    # "This command generally puts everything on the floor into the player's
+    # pack. The special case is if the object is a pack, purse, or belt, and
+    # the player isn't wearing one, the object goes in the appropriate
+    # inventory slot."
+    WEARS_ITSELF = {"pack": "pack", "purse": "purse", "waist": "waist"}
+
     def _act_pickup(self, level, p, action):
-        pile = level.items_at(p.x, p.y)
+        pile = list(level.items_at(p.x, p.y))
         if not pile:
             self.msg("There is nothing here to pick up.", "info", to=p)
             return FREE_COST
-        item = pile[0]
-        if item.kind == "coins":
-            worth = dict(COINS)[getattr(item, "metal", "copper")]
-            p.gain_coins(item.metal, max(1, item.gold_amount // worth))
+
+        took = 0
+        for item in pile:
+            if item.kind == "coins":
+                metal = getattr(item, "metal", "copper")
+                worth = dict(COINS)[metal]
+                n = max(1, item.gold_amount // worth)
+                p.gain_coins(metal, n)
+                level.take_ground_item(p.x, p.y, item)
+                self.msg(f"You pick up {n} {metal} pieces "
+                         f"(worth {item.gold_amount} copper).", "loot", to=p)
+                self.sound("gold", p.x, p.y, level.depth)
+                took += 1
+                continue
+
+            # A pack you are not wearing goes on rather than in - there is
+            # nothing to put it in, which is the whole point of finding one.
+            slot = self.WEARS_ITSELF.get(item.slot)
+            if slot and p.equipment.get(slot) is None:
+                level.take_ground_item(p.x, p.y, item)
+                p.equipment[slot] = item
+                p.recalc()
+                self.msg(f"You put on {with_article(item.name(self.appearances))}.",
+                         "loot", to=p)
+                self.sound("pickup", p.x, p.y, level.depth)
+                took += 1
+                continue
+
+            ok, why = p.room_for(item)
+            if not ok or not p.add_item(item):
+                self.msg(why if not ok else "Your pack is full.", "warn", to=p)
+                break                       # and leave the rest where it lies
             level.take_ground_item(p.x, p.y, item)
-            metal = getattr(item, "metal", "copper")
-            n = max(1, item.gold_amount // dict(COINS)[metal])
-            self.msg(f"You pick up {n} {metal} pieces "
-                     f"(worth {item.gold_amount} copper).", "loot", to=p)
-            self.sound("gold", p.x, p.y, level.depth)
-            return p.action_cost(PICKUP_COST) or PICKUP_COST
-        ok, why = p.room_for(item)
-        if not ok:
-            self.msg(why, "warn", to=p)
+            self.msg(f"You pick up {with_article(item.name(self.appearances))}.",
+                     "loot", to=p)
+            self.sound("pickup", p.x, p.y, level.depth)
+            took += 1
+
+        if not took:
             return FREE_COST
-        if not p.add_item(item):
-            self.msg("Your pack is full.", "warn", to=p)
-            return FREE_COST
-        level.take_ground_item(p.x, p.y, item)
-        self.msg(f"You pick up {with_article(item.name(self.appearances))}.",
-                 "loot", to=p)
-        self.sound("pickup", p.x, p.y, level.depth)
+        self.events.append({"t": "inv", "to": p.id})
         return p.action_cost(PICKUP_COST) or PICKUP_COST
 
     def _act_drop(self, level, p, action):
@@ -2233,14 +2258,18 @@ class World:
     def junk_price(self, item):
         """Nan buys anything, and always badly.
 
-        A flat 25 for everything meant she offered the same for a rusty
-        quarrel and a suit of plate: a tenth of the value, floored at the
-        flat rate, is still a terrible deal and no longer an insulting one.
+        The original's rule exactly: market price when that is under 25, and
+        a flat 25 otherwise - so she pays the same twenty-five for a suit of
+        plate as for a cursed ring. This once paid a tenth of the value on
+        the grounds that offering the same for a quarrel and a breastplate
+        was insulting. It is meant to be: she is where you dump what no
+        trade will take, and the armourer at four fifths is where a
+        breastplate goes.
         """
         value = item.value()
         if item.cursed or value <= 0:
             return self.JUNK_FLAT
-        return max(self.JUNK_FLAT, value // 10)
+        return value if value < self.JUNK_FLAT else self.JUNK_FLAT
 
     # What each trade will take off your hands. "Shops refuse junk:
     # 'We don't buy those...', 'We don't buy worthless items!'"
