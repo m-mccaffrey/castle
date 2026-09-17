@@ -101,3 +101,34 @@ class TestTheFloorPlansAreSane(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestEverySpellHasAGlyph(unittest.TestCase):
+    """The quick-cast slots used to draw the numbers 1 to 10, which told you
+    how many spells you knew and nothing about which was which."""
+
+    def test_no_spell_is_left_without_one(self):
+        from stormhold.ui import art
+        from stormhold.game.spells import SPELLS
+        missing = [name for name in SPELLS if name not in art.SPELL_BUILDERS]
+        self.assertEqual(missing, [], f"no icon for {missing}")
+
+    def test_no_glyph_is_left_without_a_spell(self):
+        from stormhold.ui import art
+        from stormhold.game.spells import SPELLS
+        extra = [name for name in art.SPELL_BUILDERS if name not in SPELLS]
+        self.assertEqual(extra, [], f"icons for spells that do not exist: {extra}")
+
+    def test_each_one_draws_something_at_the_size_the_slot_expects(self):
+        from stormhold.ui import art
+        from stormhold.game.spells import SPELLS
+        for name in SPELLS:
+            with self.subTest(spell=name):
+                icon = art.spell_icon(name)
+                self.assertEqual((icon.w, icon.h),
+                                 (art.SPELL_ICON, art.SPELL_ICON))
+                painted = sum(1 for row in icon.px for cell in row if cell is not None)
+                self.assertGreater(painted, 24,
+                                   f"{name} is nearly blank at {painted} pixels")
+                self.assertLess(painted, art.SPELL_ICON * art.SPELL_ICON - 8,
+                                f"{name} fills the whole square, so it has no silhouette")

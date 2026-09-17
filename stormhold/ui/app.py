@@ -2148,7 +2148,7 @@ class SpellScene(OverlayScene):
                 self.klass = name
                 break
         self.selected = None
-        self.list = W.ListBox((0, 0, 10, 10), row_height=20)
+        self.list = W.ListBox((0, 0, 10, 10), row_height=22)
         self.class_rects = []
 
     @staticmethod
@@ -2265,7 +2265,10 @@ class SpellScene(OverlayScene):
             spell = SPELLS[name]
             affordable = you.get("mana", 0) >= spell["mana"]
             colour = WHITE if selected else (BLACK if affordable else GRAY)
-            W.text(target, name, (rect.x + 6, rect.y + 2), 13, colour=colour)
+            glyph = self.app.sheet.spell(name)
+            if glyph is not None:
+                target.blit(glyph, (rect.x + 4, rect.centery - glyph.get_height() // 2))
+            W.text(target, name, (rect.x + 26, rect.y + 2), 13, colour=colour)
             W.text_right(target, str(spell["mana"]), rect.right - 10, rect.y + 2, 13,
                          mono=True, colour=colour)
 

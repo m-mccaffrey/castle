@@ -1556,6 +1556,7 @@ class SpriteSheet:
         self.creatures = {}
         self.creatures_flipped = {}
         self.items = {}
+        self.spells = {}
         self._player_cache = {}
 
     def build(self):
@@ -1570,6 +1571,8 @@ class SpriteSheet:
         for name in dir(module):
             if name.startswith("icon_"):
                 self.items[name[5:]] = getattr(module, name)().surface(self.scale)
+        for name in SPELL_BUILDERS:
+            self.spells[name] = spell_icon(name).surface(self.scale)
         return self
 
     def player(self, colour_index=0, weapon=None, shield=False, helm=False, robe=False):
@@ -1585,3 +1588,366 @@ class SpriteSheet:
 
     def item(self, name):
         return self.items.get(name) or self.items.get("gold")
+
+    def spell(self, name):
+        """A spell's glyph. Built on demand for anything added since start-up."""
+        found = self.spells.get(name)
+        if found is None:
+            found = spell_icon(name).surface(self.scale)
+            self.spells[name] = found
+        return found
+
+
+# ===========================================================================
+#  Spell icons
+#
+#  The quick-cast slots under the menu used to draw the numbers 1 to 10, which
+#  told you how many spells you knew and nothing else. These are the same
+#  idiom as everything above, at half the size: sixteen pixels is enough for a
+#  silhouette and a colour, and a silhouette and a colour is what you read at
+#  a glance in a fight.
+#
+#  The shape says what family the spell belongs to - bolt, ball, ward, cross,
+#  eye, arrow - and the colour says which one it is within the family. Nothing
+#  here is dithered: at this size a pair comes out as beads, which is the
+#  first house rule above.
+# ===========================================================================
+
+SPELL_ICON = 16
+
+
+def _glyph():
+    return Icon(SPELL_ICON, SPELL_ICON)
+
+
+def _outline(ic, colour=BLACK):
+    """A black edge around whatever has been drawn, as the house style asks."""
+    filled = [[ic.px[y][x] is not None for x in range(ic.w)] for y in range(ic.h)]
+    for y in range(ic.h):
+        for x in range(ic.w):
+            if filled[y][x]:
+                continue
+            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                nx, ny = x + dx, y + dy
+                if 0 <= nx < ic.w and 0 <= ny < ic.h and filled[ny][nx]:
+                    ic.set(x, y, colour)
+                    break
+    return ic
+
+
+def _bolt(colour, hot=WHITE, big=False):
+    """A zigzag: the missile spells."""
+    ic = _glyph()
+    path = [(10, 1), (6, 7), (9, 7), (4, 14)] if not big else \
+           [(11, 0), (6, 7), (10, 7), (3, 15)]
+    for i in range(len(path) - 1):
+        (x0, y0), (x1, y1) = path[i], path[i + 1]
+        ic.line(x0, y0, x1, y1, colour)
+        ic.line(x0 + 1, y0, x1 + 1, y1, colour)
+        if big:
+            ic.line(x0 + 2, y0, x1 + 2, y1, colour)
+    ic.line(path[0][0], path[0][1], path[1][0], path[1][1], hot)
+    return _outline(ic)
+
+
+def _spark(colour=YELLOW):
+    """The first spell anyone learns: a small bright fleck, not a thunderbolt."""
+    ic = _glyph()
+    ic.line(10, 4, 7, 8, colour)
+    ic.line(11, 4, 8, 8, colour)
+    ic.line(7, 8, 9, 8, colour)
+    ic.line(9, 8, 6, 12, colour)
+    ic.set(10, 4, WHITE)
+    for x, y in ((4, 4), (13, 9), (5, 13)):
+        ic.set(x, y, WHITE)
+    return _outline(ic)
+
+
+def _forked(colour):
+    ic = _bolt(colour, big=True)
+    ic.line(9, 8, 13, 13, colour)
+    ic.line(10, 8, 14, 13, colour)
+    return _outline(ic)
+
+
+def _shard(colour, hot=WHITE):
+    """An icicle: the cold missiles."""
+    ic = _glyph()
+    ic.tri([(8, 1), (12, 10), (4, 10)], colour)
+    ic.tri([(8, 15), (12, 9), (4, 9)], colour)
+    ic.line(8, 2, 8, 13, hot)
+    return _outline(ic)
+
+
+def _ball(colour, hot, ring=None):
+    """A ball of something, thrown."""
+    ic = _glyph()
+    ic.oval(8, 8, 6, 6, colour)
+    ic.oval(6, 6, 3, 3, hot)
+    if ring:
+        for x, y in ((1, 8), (15, 8), (8, 1), (8, 15),
+                     (3, 3), (13, 3), (3, 13), (13, 13)):
+            ic.set(x, y, ring)
+    return _outline(ic)
+
+
+def _storm(colour, hot):
+    """A cloud with hail coming out of it.
+
+    Four one-pixel streaks got a black edge each and the bottom half came out
+    as a checkerboard - the same rule as thin dithered work, one line up in
+    the file. Three fat shards with space between them read as falling ice.
+    """
+    ic = _glyph()
+    ic.oval(6, 5, 5, 3, colour)
+    ic.oval(11, 6, 4, 3, colour)
+    ic.oval(8, 4, 4, 3, lighter(colour))
+    for x in (4, 9, 13):
+        ic.tri([(x, 10), (x + 2, 10), (x - 1, 15)], hot)
+        ic.set(x, 11, WHITE)
+    return _outline(ic)
+
+
+def _burst(colour, hot):
+    """Rays out of a centre: the spells that go off all around you."""
+    ic = _glyph()
+    ic.oval(8, 8, 4, 4, colour)
+    ic.oval(7, 7, 2, 2, hot)
+    for dx, dy in ((0, -1), (0, 1), (-1, 0), (1, 0),
+                   (-1, -1), (1, -1), (-1, 1), (1, 1)):
+        for step in (5, 6, 7):
+            ic.set(8 + dx * step, 8 + dy * step, hot if step < 7 else colour)
+    return _outline(ic)
+
+
+def _ward(face, trim=SILVER, mark=None):
+    """A shield: the defensive spells."""
+    ic = _glyph()
+    for y in range(2, 10):
+        half = 6
+        ic.rect(8 - half, y, half * 2, 1, face)
+    for i, y in enumerate(range(10, 15)):
+        half = max(1, 6 - i * 3 // 2)
+        ic.rect(8 - half, y, half * 2, 1, face)
+    ic.rect(2, 2, 12, 1, trim)
+    ic.line(2, 3, 2, 9, trim)
+    if mark:
+        ic.rect(7, 5, 2, 6, mark)
+        ic.rect(5, 7, 6, 2, mark)
+    return _outline(ic)
+
+
+def _ward_element(face, flame):
+    ic = _ward(face)
+    ic.oval(8, 7, 3, 3, flame)
+    ic.set(7, 5, WHITE)
+    return _outline(ic)
+
+
+def _cross(colour, hot=WHITE, doubled=False, ring=None):
+    """The healing family."""
+    ic = _glyph()
+    ic.rect(6, 2, 4, 12, colour)
+    ic.rect(2, 6, 12, 4, colour)
+    ic.rect(7, 3, 1, 10, hot)
+    if doubled:
+        ic.rect(6, 2, 4, 1, hot)
+        ic.rect(6, 13, 4, 1, hot)
+    if ring:
+        for x, y in ((0, 5), (0, 10), (15, 5), (15, 10),
+                     (5, 0), (10, 0), (5, 15), (10, 15)):
+            ic.set(x, y, ring)
+    return _outline(ic)
+
+
+def _flask(body, fluid):
+    ic = _glyph()
+    ic.rect(6, 1, 4, 3, SILVER)
+    ic.oval(8, 9, 5, 5, body)
+    ic.oval(8, 10, 3, 3, fluid)
+    return _outline(ic)
+
+
+def _eye(iris, rays=None):
+    """The divinations."""
+    ic = _glyph()
+    ic.oval(8, 8, 7, 4, WHITE)
+    ic.oval(8, 8, 3, 3, iris)
+    ic.oval(8, 8, 1, 1, BLACK)
+    ic.set(6, 6, WHITE)
+    if rays:
+        for x, y in ((1, 2), (8, 0), (15, 2), (1, 14), (8, 15), (15, 14)):
+            ic.set(x, y, rays)
+    return _outline(ic)
+
+
+def _arrow(colour, hot=WHITE, dashed=False, doubled=False):
+    """The movement spells: a coloured arrow with a light top edge.
+
+    The head used to be drawn in white, which swallowed the shaft and left
+    Blink, Farstep and Haste as three identical white wedges.
+    """
+    ic = _glyph()
+    spans = ((1, 5), (7, 11)) if dashed else ((1, 11),)
+    for x0, x1 in spans:
+        ic.rect(x0, 6, x1 - x0, 4, colour)
+        ic.rect(x0, 6, x1 - x0, 1, hot)
+    ic.tri([(9, 2), (15, 8), (9, 14)], colour)
+    ic.line(9, 3, 14, 8, hot)
+    if doubled:
+        ic.tri([(4, 3), (9, 8), (4, 13)], colour)
+        ic.line(4, 4, 8, 8, hot)
+    return _outline(ic)
+
+
+def _return_arrow(colour, hot=WHITE):
+    """Recall: a hook back to where you started."""
+    ic = _glyph()
+    ic.rect(5, 3, 8, 3, colour)
+    ic.rect(10, 3, 3, 9, colour)
+    ic.rect(5, 3, 8, 1, hot)
+    ic.tri([(11, 15), (15, 10), (7, 10)], colour)
+    ic.line(8, 10, 14, 10, hot)
+    ic.oval(4, 4, 2, 2, hot)
+    return _outline(ic)
+
+
+def _lamp():
+    ic = _glyph()
+    ic.rect(6, 1, 4, 2, GRAY)
+    ic.oval(8, 8, 5, 6, YELLOW)
+    ic.oval(8, 8, 3, 4, WHITE)
+    ic.rect(4, 13, 8, 2, GRAY)
+    return _outline(ic)
+
+
+def _feather():
+    ic = _glyph()
+    ic.line(11, 2, 4, 14, BONE)
+    for i in range(9):
+        ic.line(11 - i * 0.8, 2 + i * 1.3, 11 - i * 0.8 - 3, 2 + i * 1.3 + 1, WHITE)
+    return _outline(ic)
+
+
+def _scroll_map():
+    ic = _glyph()
+    ic.rect(2, 3, 12, 10, BONE)
+    ic.rect(2, 3, 12, 1, TAN)
+    ic.rect(2, 12, 12, 1, TAN)
+    ic.line(4, 6, 8, 6, MAROON)
+    ic.line(8, 6, 8, 10, MAROON)
+    ic.line(8, 10, 12, 10, MAROON)
+    ic.set(12, 10, RED)
+    return _outline(ic)
+
+
+def _wall_through():
+    """Passwall: a hole through stonework, and you going through it.
+
+    The courses are drawn as notches in the edges rather than lines across
+    the whole block, because a line across a six-pixel block plus its black
+    edge is a checkerboard, not masonry.
+    """
+    ic = _glyph()
+    # Flat GRAY, not the MID_STONE dither pair the wall tile uses: at sixteen
+    # pixels a pair samples the Bayer matrix at scattered points and comes out
+    # as television snow. That is the first house rule at the top of the file.
+    ic.rect(4, 0, 8, 16, GRAY)
+    ic.rect(4, 0, 1, 16, SILVER)
+    ic.rect(11, 0, 1, 16, darker(GRAY))
+    for y in (3, 12):
+        ic.set(4, y, darker(GRAY))
+        ic.set(11, y, darker(GRAY))
+    ic.oval(8, 8, 4, 3, BLACK)
+    ic.rect(0, 7, 13, 3, AQUA)
+    ic.tri([(11, 4), (15, 8), (11, 12)], AQUA)
+    ic.rect(0, 7, 12, 1, WHITE)
+    return _outline(ic)
+
+
+def _sleep():
+    ic = _glyph()
+    for i, (x, y, w) in enumerate(((7, 2, 6), (5, 7, 5), (3, 11, 4))):
+        ic.rect(x, y, w, 1, PURPLE)
+        ic.rect(x, y + w // 2 + 1, w, 1, PURPLE)
+        ic.line(x + w - 1, y, x, y + w // 2 + 1, PURPLE)
+    return _outline(ic)
+
+
+def _swap():
+    """Reshape: one thing becomes another. Two arrows, head to tail."""
+    ic = _glyph()
+    ic.rect(2, 3, 8, 3, LIME)
+    ic.tri([(9, 1), (14, 4), (9, 8)], LIME)
+    ic.line(2, 3, 9, 3, WHITE)
+    ic.rect(6, 10, 8, 3, GREEN)
+    ic.tri([(7, 8), (2, 11), (7, 15)], GREEN)
+    ic.line(7, 15, 12, 15, darker(GREEN))
+    return _outline(ic)
+
+
+def _coin_eye():
+    ic = _eye(OLIVE)
+    ic.oval(12, 12, 3, 3, YELLOW)
+    ic.oval(12, 12, 1, 1, GOLD_DITHER if not is_pair(GOLD_DITHER) else OLIVE)
+    return _outline(ic)
+
+
+def _spike_eye():
+    ic = _eye(RED)
+    ic.tri([(8, 11), (11, 15), (5, 15)], GRAY)
+    return _outline(ic)
+
+
+SPELL_BUILDERS = {
+    # attack
+    "Spark":            lambda: _spark(),
+    "Lightning":        lambda: _bolt(YELLOW, big=True),
+    "Chain Lightning":  lambda: _forked(YELLOW),
+    "Frost Shard":      lambda: _shard(AQUA),
+    "Ice Storm":        lambda: _storm(ICE if not is_pair(ICE) else AQUA, WHITE),
+    "Fire Bolt":        lambda: _bolt(RED, hot=YELLOW),
+    "Fireball":         lambda: _ball(RED, YELLOW, ring=EMBER if not is_pair(EMBER) else RED),
+    "Sunburst":         lambda: _burst(YELLOW, WHITE),
+    # defense
+    "Shield":           lambda: _ward(BLUE),
+    "Stoneskin":        lambda: _ward(GRAY, trim=SILVER),
+    "Sanctuary":        lambda: _ward(WHITE, trim=YELLOW, mark=BLUE),
+    "Bulwark":          lambda: _ward(NAVY, trim=SILVER, mark=SILVER),
+    "Ward Fire":        lambda: _ward_element(GRAY, RED),
+    "Ward Frost":       lambda: _ward_element(GRAY, AQUA),
+    "Ward Storm":       lambda: _ward_element(GRAY, YELLOW),
+    # healing
+    "Mend Wounds":      lambda: _cross(RED),
+    "Greater Mending":  lambda: _cross(RED, doubled=True),
+    "Circle of Mending": lambda: _cross(RED, doubled=True, ring=FUCHSIA),
+    "Cure Affliction":  lambda: _flask(GREEN, LIME),
+    "Restoration":      lambda: _cross(WHITE, hot=YELLOW, doubled=True, ring=YELLOW),
+    # divination
+    "Detect Life":      lambda: _eye(GREEN),
+    "True Sight":       lambda: _eye(YELLOW, rays=WHITE),
+    "Clairvoyance":     lambda: _eye(BLUE, rays=AQUA),
+    "Revelation":       lambda: _eye(PURPLE, rays=FUCHSIA),
+    "Detect Traps":     _spike_eye,
+    "Treasure Sense":   _coin_eye,
+    "Cartography":      _scroll_map,
+    # movement
+    "Blink":            lambda: _arrow(AQUA, dashed=True),
+    "Farstep":          lambda: _arrow(BLUE),
+    "Haste":            lambda: _arrow(LIME, doubled=True),
+    "Recall":           lambda: _return_arrow(PURPLE),
+    # miscellaneous
+    "Lantern":          _lamp,
+    "Featherweight":    _feather,
+    "Passwall":         _wall_through,
+    "Lull":             _sleep,
+    "Reshape":          _swap,
+}
+
+
+def spell_icon(name):
+    """A spell's glyph, falling back to a plain star for anything new."""
+    builder = SPELL_BUILDERS.get(name)
+    if builder is not None:
+        return builder()
+    return _burst(SILVER, WHITE)

@@ -426,9 +426,16 @@ class Toolbar:
         for i, name in enumerate(spells[:self.SPELL_SLOTS]):
             rect = pygame.Rect(x, bar.y + 3, 26, self.HEIGHT - 7)
             panel(surf, rect, raised=True)
-            img = font(11, bold=True).render(str(i + 1), True, (60, 60, 120))
-            surf.blit(img, (rect.centerx - img.get_width() // 2,
-                            rect.centery - img.get_height() // 2))
+            # The glyph, with the slot number tucked into the corner. These
+            # used to be the numbers alone, which told you how many spells
+            # you knew and nothing about which was which.
+            img = sheet.spell(name) if sheet is not None else None
+            if img is not None:
+                surf.blit(img, (rect.centerx - img.get_width() // 2,
+                                rect.centery - img.get_height() // 2))
+            number = font(9, bold=True).render(str((i + 1) % 10), True, (40, 40, 90))
+            surf.blit(number, (rect.right - number.get_width() - 2,
+                               rect.bottom - number.get_height() - 1))
             self.spell_rects.append((rect, name))
             x += 28
 
