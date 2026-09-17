@@ -38,6 +38,9 @@ class Bench:
 
     # ---- the mouse, the way the game receives it -------------------------
     def drag(self, src, dst):
+        if src is None or dst is None:
+            raise AssertionError("nothing to drag from - the window is not "
+                                 "showing what the check expected")
         app = self.s.app
         pygame.mouse.set_pos(src)
         app.dispatch(pygame.event.Event(pygame.MOUSEBUTTONDOWN, pos=src, button=1))
@@ -116,7 +119,12 @@ class Bench:
             for key in keys:
                 it = Item(key)
                 it.known = known
-                p.add_item(it)
+                if not p.add_item(it):
+                    # A full pack here means the checks that follow are
+                    # measuring nothing, so make room rather than fail
+                    # mysteriously three functions later.
+                    p.inventory = [x for x in p.inventory if x.key != key]
+                    p.add_item(it)
                 made.append(it)
             session = srv.session_for(p.id)
             if session:
@@ -147,6 +155,7 @@ class Bench:
         self.check_buy()
         self.check_poor()
         self.check_sell()
+        self.check_every_shop_quotes_what_it_pays()
         self.check_refusal()
         self.check_identify()
 
@@ -226,6 +235,47 @@ class Bench:
         self.note("sell", "the thing sold leaves the pack",
                   blade not in p.inventory)
 
+    def check_every_shop_quotes_what_it_pays(self):
+        """The number in the box, against the number in your purse.
+
+        This audit used to sell one sword to one weaponsmith, which is how
+        the junk store went on quoting four fifths of an item's value and
+        paying a flat twenty-five: two functions, one for the window and one
+        for the till, and nothing that compared them.
+        """
+        town = self.s.level()
+        shops = sorted({n["shop"] for n in town.npcs}
+                       - {"bank", "temple", "sage"})
+        for shop in shops:
+            (thing,) = self.give("longsword")
+            sc = self.open_shop(shop)
+            if sc is None:
+                self.note("quote", f"{shop}: open", False, "no such shop")
+                continue
+            p = self.s.me()
+            before = p.copper
+            src = self.cell_for(sc, thing.id)
+            if src is None:
+                self.note("quote", f"{shop}: the sword shows in the pack", False)
+                continue
+            self.drag(src, self.s.app.scene.store_rect.center)
+            text = self.say_yes()
+            paid = self.s.me().copper - before
+            if text is None:
+                # No box came up, so this shop does not deal in swords. Then
+                # it must say so and nothing may move: an offer it will not
+                # honour is the bug this check exists for.
+                self.note("quote", f"{shop} turns a sword down out loud",
+                          paid == 0 and thing in self.s.me().inventory
+                          and self.said("We don't buy"),
+                          f"paid {paid}, said {self.messages(2)}")
+                continue
+            quoted = next((int(w) for w in text.replace(".", " ").split()
+                           if w.isdigit()), None)
+            self.note("quote", f"{shop} pays what it offered for a sword",
+                      quoted is not None and paid == quoted,
+                      f"offered {quoted}, paid {paid}")
+
     def check_refusal(self):
         (potion,) = self.give("potion_heal")
         sc = self.open_shop("weaponsmith")
@@ -272,8 +322,22 @@ class Bench:
              ("ring_might", "ring_left"), ("longsword", "weapon"),
              ("bracers", "bracers")]
 
+    def empty_the_pack(self):
+        """Start the dressing half with room to put things.
+
+        The trade half leaves a pack full of swords, and a `give` that
+        quietly fails to fit makes every check after it report on an item
+        that is not there.
+        """
+        srv, p = self.s.app.server, self.s.me()
+        with srv.lock:
+            p.inventory = []
+            srv.send_inventory(srv.session_for(p.id))
+        self.s.settle(0.3)
+
     def check_drag(self):
         print("\n-- dressing ---------------------------------------------")
+        self.empty_the_pack()
         self.check_equip()
         self.check_wrong_slot()
         self.check_unequip()
@@ -328,6 +392,9 @@ class Bench:
         (belt,) = self.give("belt3")
         sc = self.open_pack()
         src = self.cell_for(sc, belt.id)
+        if src is None:
+            return self.note("belt", "the belt shows in the pack", False,
+                             "it never arrived")
         self.drag(src, sc.slot_rects["waist"].center)
         self.note("belt", "a belt dragged to the waist is worn",
                   self.worn("waist") is belt)

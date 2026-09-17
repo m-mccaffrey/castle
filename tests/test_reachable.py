@@ -316,3 +316,51 @@ class TestTheActivateMenuExists(unittest.TestCase):
         self.play.send_action = sent.append
         self.play.menu_command(self.menu()[0][1])
         self.assertEqual(sent, [{"a": "use", "id": potion.id}])
+
+
+class TestAShopPaysWhatItOffered(unittest.TestCase):
+    """The number in the box and the number in your purse are the same one.
+
+    They were two: the window quoted four fifths of an item's value for
+    every shop alike, while the sale paid Nan's flat twenty-five. She
+    offered 129 copper for a sword and handed over twenty-five. The
+    armourer was worse - it quoted 960 for a sword it would not take at
+    all, and paid nothing.
+    """
+
+    def setUp(self):
+        self.world = World(seed=5)
+        self.p = self.world.add_player("Hawker")
+        self.level = self.world.levels[self.p.depth]
+
+    def offer_and_sell(self, shop, key):
+        item = Item(key)
+        item.known = True
+        self.p.inventory = [item]
+        view = self.world.shop_view(self.p, shop, 1, shop)
+        row = next(r for r in view["sell"] if r["id"] == item.id)
+        before = self.p.copper
+        self.world.do_player_action(self.level, self.p,
+                                    {"a": "sell", "shop": shop, "id": item.id})
+        return row, self.p.copper - before
+
+    def test_every_shop_pays_exactly_what_its_window_said(self):
+        for shop in ("weaponsmith", "armourer", "general", "magic", "junk"):
+            for key in ("longsword", "platemail", "potion_heal", "arrow", "gem"):
+                with self.subTest(shop=shop, item=key):
+                    row, paid = self.offer_and_sell(shop, key)
+                    self.assertEqual(paid, row["price"],
+                                     f"{shop} offered {row['price']} and paid {paid}")
+
+    def test_a_shop_that_will_not_buy_offers_nothing_and_says_why(self):
+        row, paid = self.offer_and_sell("armourer", "longsword")
+        self.assertEqual(row["price"], 0, "it quoted a price it would not honour")
+        self.assertTrue(row["refusal"], "and gave the window no reason to show")
+        self.assertEqual(paid, 0)
+
+    def test_nan_still_takes_anything(self):
+        for key in ("longsword", "platemail", "potion_heal", "gem"):
+            with self.subTest(item=key):
+                row, paid = self.offer_and_sell("junk", key)
+                self.assertIsNone(row["refusal"])
+                self.assertEqual(paid, self.world.JUNK_FLAT)

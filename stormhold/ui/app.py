@@ -2795,6 +2795,13 @@ class StoreScene(PackScene):
                 return row.get("price", 0)
         return 0
 
+    def sell_refusal(self, item):
+        """Why this shop will not take it, if it will not."""
+        for row in self.data.get("sell", []):
+            if row["id"] == item["id"]:
+                return row.get("refusal")
+        return None
+
     def item_at(self, pos):
         for rect, item in self.store_cells:
             if rect.collidepoint(pos):
@@ -2862,6 +2869,10 @@ class StoreScene(PackScene):
                          {"a": "service", "shop": self.shop, "what": "identify",
                           "id": item["id"], "npc": npc})
             else:
+                refusal = self.sell_refusal(item)
+                if refusal:
+                    self.app.play.add_message(refusal, "warn")
+                    return
                 price = self.sell_price(item)
                 self.ask(f"I'll give you {price} C.P. for that. Take it?",
                          {"a": "sell", "shop": self.shop, "id": item["id"],

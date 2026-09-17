@@ -2320,6 +2320,20 @@ class World:
             return "We don't buy those..."
         return None
 
+    def sell_offer(self, shop, item):
+        """What a shop will actually hand over for something.
+
+        There is one of these because there used to be two: the window
+        quoted `shop_price(selling=True)` for every shop alike while the sale
+        paid `junk_price` at Nan's. She offered you 129 copper for a sword
+        and gave you twenty-five, and the only thing wrong with the sale was
+        that nobody had told the window.
+        """
+        if self.shop_refusal(shop, item):
+            return 0            # she will not take it; do not put a price on it
+        return (self.junk_price(item) if shop == "junk"
+                else self.shop_price(item, selling=True))
+
     def shop_price(self, item, selling=False):
         value = item.value()
         return (max(1, int(value * SHOP_SELL_RATE)) if selling
@@ -2377,8 +2391,7 @@ class World:
         if refusal:
             self.msg(refusal, "warn", to=p)
             return FREE_COST
-        price = (self.junk_price(item) if shop == "junk"
-                 else self.shop_price(item, selling=True))
+        price = self.sell_offer(shop, item)
         p.remove_item(item, item.qty)
         p.copper += price
         if shop == "junk":
@@ -2615,7 +2628,12 @@ class World:
         return {
             "shop": shop, "npc": npc_id, "name": name,
             "stock": [dict(self.item_view(i, shop=True), price=self.shop_price(i)) for i in stock],
-            "sell": [dict(self.item_view(i), price=self.shop_price(i, selling=True))
+            # Each row carries the refusal as well as the price, so the
+            # window can say "We don't buy those..." at the moment you drag
+            # the thing in, rather than offering you 960 copper for a sword
+            # the armourer was never going to take.
+            "sell": [dict(self.item_view(i), price=self.sell_offer(shop, i),
+                          refusal=self.shop_refusal(shop, i))
                      for i in p.inventory],
             "copper": p.copper, "bank": p.bank,
             "services": self.temple_services(p) if shop == "temple" else [],
