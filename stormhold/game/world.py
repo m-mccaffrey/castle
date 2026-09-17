@@ -382,8 +382,13 @@ class World:
         if actor.kind == "player" and actor.resting and actor.pending is None:
             # Carry on resting without being asked, until healed or disturbed.
             for_mana = actor.resting == "mana"
+            # "Rest until player is fully healed" and "Rest until player's
+            # mana is restored" are two commands with two conditions. Resting
+            # used to wait for both, so `r` sat you in the open long after
+            # you were healed, waiting on mana it recovers at half the rate
+            # the other command does.
             done = (actor.mana >= actor.max_mana if for_mana
-                    else actor.hp >= actor.max_hp and actor.mana >= actor.max_mana)
+                    else actor.hp >= actor.max_hp)
             if done:
                 actor.resting = False
                 self.msg("You wake, clear-headed." if for_mana else "You feel rested.",
@@ -807,8 +812,11 @@ class World:
         if combat.enemies_in_sight(self, level, p, 8):
             self.msg("Not with something watching you.", "warn", to=p)
             return FREE_COST
-        if p.hp >= p.max_hp and p.mana >= p.max_mana:
-            self.msg("You are already rested.", "info", to=p)
+        if p.hp >= p.max_hp:
+            # Rest is for wounds; mana is what the other command is for.
+            self.msg("You are already rested." if p.mana >= p.max_mana else
+                     "You are unhurt. Sleep if it is mana you want.",
+                     "info", to=p)
             return FREE_COST
         p.resting = True
         self.msg("You sit down to rest.", "info", to=p)

@@ -235,3 +235,34 @@ class TestTheGetCommandDoesWhatTheHelpSays(unittest.TestCase):
         self.level.add_ground_item(self.p.x, self.p.y, spare)
         self.world.do_player_action(self.level, self.p, {"a": "pickup"})
         self.assertIn(spare, self.p.inventory)
+
+
+class TestTheTwoRestCommandsAreTwoCommands(unittest.TestCase):
+    """"Rest until player is fully healed" and "Rest until player's mana is
+    restored" have different conditions and different interrupts: the first
+    breaks "as soon as a monster comes in sight", the second "only ... when
+    a monster attacks you, not when they come into view."
+    """
+
+    def setUp(self):
+        self.world = World(seed=5)
+        self.p = self.world.add_player("Sleeper")
+        self.world.move_player_to(self.p, 1)
+        self.level = self.world.levels[self.p.depth]
+        for other in [a for a in list(self.level.actors.values())
+                      if getattr(a, "kind", "") == "monster"]:
+            self.level.remove(other)
+        self.p.recalc()
+
+    def test_rest_ends_when_the_wounds_are_closed_not_when_mana_is_back(self):
+        self.p.hp = self.p.max_hp
+        self.p.mana = 0
+        self.world.do_player_action(self.level, self.p, {"a": "rest"})
+        self.assertFalse(self.p.resting,
+                         "r kept you sitting in the open waiting on mana")
+
+    def test_sleep_still_waits_for_mana(self):
+        self.p.hp = self.p.max_hp
+        self.p.mana = 0
+        self.world.do_player_action(self.level, self.p, {"a": "sleep"})
+        self.assertEqual(self.p.resting, "mana")

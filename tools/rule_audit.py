@@ -118,7 +118,7 @@ def check_slow():
     level = w.levels[p.depth]
     from stormhold.game.monsters import MONSTERS
     key = next(iter(MONSTERS))
-    mon = make_monster(key, p.x + 2, p.y, p.depth, w.rng)
+    mon = make_monster(key, p.x + 1, p.y, p.depth, w.rng)
     level.place(mon)
     base = mon.action_cost(100)
     seen = []
@@ -231,11 +231,72 @@ def check_sort():
                        for i in potions))
 
 
+# ------------------------------------------------------- resting & rites --
+def check_resting():
+    """Two commands, two conditions, two ways of being interrupted.
+
+    "[r] is interrupted as soon as a monster comes in sight" ... "[R] is
+    only interrupted when a monster attacks you, not when they come into
+    view", and during it "you regenerate mana at twice the normal rate".
+    """
+    from stormhold.game.monsters import MONSTERS
+    w, p = fresh(depth=2)
+    level = w.levels[p.depth]
+    p.recalc()
+    p.hp = p.max_hp
+    p.mana = 0
+    w.do_player_action(level, p, {"a": "rest"})
+    note("rest", "r stops once you are healed, without waiting on mana",
+         not p.resting, f"resting={p.resting!r} at {p.hp}/{p.max_hp} hp, "
+                        f"{p.mana}/{p.max_mana} mana")
+
+    w, p = fresh(depth=2)
+    level = w.levels[p.depth]
+    for other in [a for a in list(level.actors.values()) if getattr(a, "kind", "") == "monster"]:
+        level.remove(other)          # rest refuses outright with one in sight
+    p.recalc()
+    p.hp = 1
+    w.do_player_action(level, p, {"a": "rest"})
+    resting_was = bool(p.resting)
+    mon = make_monster(next(iter(MONSTERS)), p.x + 1, p.y, p.depth, w.rng)
+    level.place(mon)
+    w.act(level, p)
+    note("rest", "a monster coming into view breaks a rest",
+         resting_was and not p.resting, f"was {resting_was}, now {bool(p.resting)}")
+
+    w, p = fresh(depth=2)
+    level = w.levels[p.depth]
+    for other in [a for a in list(level.actors.values()) if getattr(a, "kind", "") == "monster"]:
+        level.remove(other)
+    p.recalc()
+    p.mana = 0
+    w.do_player_action(level, p, {"a": "sleep"})
+    sleeping_was = bool(p.resting)
+    mon = make_monster(next(iter(MONSTERS)), p.x + 1, p.y, p.depth, w.rng)
+    level.place(mon)
+    w.act(level, p)
+    note("rest", "a monster merely in view does not break a sleep",
+         sleeping_was and bool(p.resting),
+         f"was {sleeping_was}, now {bool(p.resting)}")
+
+
+def check_temple():
+    """"Remove Curse ... is always available since it would give the player
+    hints about unidentified objects to gray it."""
+    w, p = fresh()
+    p.copper = 999999
+    rows = {r["key"]: r for r in w.temple_services(p)}
+    row = rows.get("uncurse")
+    note("temple", "Remove Curse is offered whether or not you are cursed",
+         bool(row and row["useful"]), str(row))
+
+
 def main():
     random.seed(4)
     print("\n-- the original's arithmetic ------------------------------")
     for check in (check_load, check_heals, check_slow, check_teleports,
-                  check_junk, check_get, check_sort):
+                  check_junk, check_get, check_sort, check_resting,
+                  check_temple):
         try:
             check()
         except Exception as exc:                      # noqa: BLE001
