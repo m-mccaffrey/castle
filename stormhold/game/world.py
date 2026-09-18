@@ -15,7 +15,7 @@ import random
 import time
 
 from ..common.constants import (
-    SHOP_BUY_MARKUP, SHOP_SELL_RATE, condition_for, COINS, mana_cost,
+    SHOP_BUY_MARKUP, SHOP_SELL_RATE, JUNK_FLAT, condition_for, COINS, mana_cost,
     TICKS_PER_SECOND,
     T, DIRS, TOWN_DEPTH, MAX_DEPTH, DEEP_LIMIT, GRACE_TICKS, MOVE_COST, ATTACK_COST,
     CAST_COST, PICKUP_COST, DROP_COST, EQUIP_COST, QUAFF_COST, READ_COST,
@@ -2245,7 +2245,7 @@ class World:
     # "The Junk Store ... will buy anything, for market price (if it's less
     # than 25 C.P.), or for 25 C.P. if it's cursed or worthless. Anything sold
     # to this store is gone for good."
-    JUNK_FLAT = 25
+    JUNK_FLAT = JUNK_FLAT
 
     def junk_price(self, item):
         """Nan buys anything, and always badly.

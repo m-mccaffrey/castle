@@ -17,6 +17,7 @@ from ..common.constants import (
     TILE_NAMES, T, SIGHT_DUNGEON, SIGHT_TOWN, chebyshev, xp_for_level,
     condition_for,
 )
+from ..common.constants import JUNK_FLAT
 from ..common.fov import compute_fov
 from ..game.spells import SPELLS, STARTING_SPELLS
 from ..net import protocol as P
@@ -2961,6 +2962,16 @@ class StoreScene(PackScene):
             W.text(surf, "Nothing for sale today.",
                    (self.store_rect.x + 10, self.store_rect.y + 10), 12,
                    colour=(120, 120, 120))
+        # Nan pays the same twenty-five for a sword as for a cursed ring, on
+        # purpose. Without saying so, an offer of 25 for something worth a
+        # thousand reads as a broken game rather than as a rule - and a
+        # reader of this window has no other way to find it out.
+        if self.shop == "junk":
+            W.text(surf, f"Nan takes anything, and pays what it is worth up "
+                         f"to {JUNK_FLAT} C.P. - and {JUNK_FLAT} for anything "
+                         f"dearer. It is a tip, not a trade.",
+                   (self.store_rect.x + 10, self.store_rect.bottom - 16), 11,
+                   colour=(110, 90, 60))
 
     def draw_confirm(self, surf):
         w, h = 430, 120

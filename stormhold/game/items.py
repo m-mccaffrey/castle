@@ -38,15 +38,15 @@ def _new_id():
 BASES = {
     # ---- blades ---------------------------------------------------------
     "dagger":      dict(name="Dagger", slot="weapon", icon="dagger", bulk=500, wt=500, value=20, dmg=(1, 4), depth=0, speed=80),
-    "shortsword":  dict(name="Short Sword", slot="weapon", icon="shortsword", bulk=5000, wt=1000, value=50, dmg=(1, 6), depth=0),
+    "shortsword":  dict(name="Short Sword", slot="weapon", icon="shortsword", bulk=5000, wt=1000, value=50, dmg=(1, 6), depth=0, speed=90),
     "sabre":       dict(name="Sabre", slot="weapon", icon="sabre", bulk=5000, wt=1000, value=95, dmg=(1, 8), depth=3, speed=90),
     "longsword":   dict(name="Long Sword", slot="weapon", icon="longsword", bulk=8000, wt=1500, value=150, dmg=(2, 4), depth=4),
-    "broadsword":  dict(name="Broad Sword", slot="weapon", icon="broadsword", bulk=9000, wt=1600, value=320, dmg=(2, 6), depth=8, str_req=13, two_handed=True),
+    "broadsword":  dict(name="Broad Sword", slot="weapon", icon="broadsword", bulk=9000, wt=1600, value=320, dmg=(2, 6), depth=8, str_req=13, two_handed=True, speed=110),
     # ---- hafted ---------------------------------------------------------
-    "mace":        dict(name="Mace", slot="weapon", icon="mace", bulk=4375, wt=2500, value=70, dmg=(1, 7), depth=1),
-    "warhammer":   dict(name="War Hammer", slot="weapon", icon="hammer", bulk=7500, wt=1400, value=190, dmg=(2, 5), depth=6, str_req=12),
-    "axe":         dict(name="Battle Axe", slot="weapon", icon="axe", bulk=6000, wt=3000, value=230, dmg=(1, 10), depth=7, str_req=12),
-    "halberd":     dict(name="Halberd", slot="weapon", icon="halberd", bulk=36000, wt=4950, value=420, dmg=(2, 8), depth=12, str_req=15, two_handed=True),
+    "mace":        dict(name="Mace", slot="weapon", icon="mace", bulk=4375, wt=2500, value=70, dmg=(1, 7), depth=1, speed=105),
+    "warhammer":   dict(name="War Hammer", slot="weapon", icon="hammer", bulk=7500, wt=1400, value=190, dmg=(2, 5), depth=6, str_req=12, speed=105),
+    "axe":         dict(name="Battle Axe", slot="weapon", icon="axe", bulk=6000, wt=3000, value=230, dmg=(1, 10), depth=7, str_req=12, speed=125),
+    "halberd":     dict(name="Halberd", slot="weapon", icon="halberd", bulk=36000, wt=4950, value=420, dmg=(2, 8), depth=12, str_req=15, two_handed=True, speed=140),
     "spear":       dict(name="Spear", slot="weapon", icon="spear", bulk=5000, wt=1500, value=85, dmg=(1, 8), depth=2),
     # No bows, and no arrows. The original has no missile weapon for the
     # player at all: you fight by walking into things, and everything that
@@ -56,8 +56,8 @@ BASES = {
     # monster side, where it belongs.
     # ---- staves and wands ------------------------------------------------
     "quarterstaff": dict(name="Quarterstaff", slot="weapon", icon="staff", bulk=25200, wt=1800, value=60, dmg=(1, 6), depth=0, mana_bonus=4),
-    "runestaff":   dict(name="Rune Staff", slot="weapon", icon="staff", bulk=25200, wt=2025, value=400, dmg=(1, 7), depth=10, mana_bonus=15),
-    "wand":        dict(name="Wand", slot="weapon", icon="wand", bulk=2700, wt=360, value=300, dmg=(1, 3), depth=5, charges=(4, 9), recharge_hours=6),
+    "runestaff":   dict(name="Rune Staff", slot="weapon", icon="staff", bulk=25200, wt=2025, value=400, dmg=(1, 7), depth=10, mana_bonus=15, speed=105),
+    "wand":        dict(name="Wand", slot="weapon", icon="wand", bulk=2700, wt=360, value=300, dmg=(1, 3), depth=5, charges=(4, 9), recharge_hours=6, speed=80),
 
     # ---- body armour -----------------------------------------------------
     "robe":        dict(name="Robe", slot="torso", icon="robe", bulk=12600, wt=900, value=25, ac=3, depth=0, mana_bonus=6),
@@ -445,8 +445,12 @@ class Item:
             bits.append(f"+{b['hp_bonus']} max health")
         if b.get("mana_bonus"):
             bits.append(f"+{b['mana_bonus']} max mana")
-        if b.get("missile"):
-            bits.append(f"fires {b['missile']}s, range {b.get('rng', 7)}")
+        speed = b.get("speed")
+        if b.get("dmg") and speed and speed != 100:
+            # Otherwise the heaviest weapon in the game looks like a pure
+            # upgrade on the label and is a third slower in the hand.
+            bits.append(f"{'slow' if speed > 100 else 'quick'} to swing "
+                        f"({speed}%)")
         if b.get("str_req"):
             bits.append(f"needs Strength {b['str_req']}")
         if b.get("capacity"):

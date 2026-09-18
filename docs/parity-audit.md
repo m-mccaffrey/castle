@@ -101,7 +101,7 @@ to agree, and every test we had asked one question about one function.
 | Class identify: one of a type identifies all of that type | done |
 | Identify on use, identify on wield | done |
 | The Sage identifies for a fee | done |
-| Junk store buys anything, market price under 25 CP, else a flat 25 | done - and this row was wrong for a while: the code paid a tenth of the value with the flat rate as a floor, on the grounds that the same 25 for a quarrel and a suit of plate was insulting. It is meant to be. Checked by `tools/rule_audit.py`. |
+| Junk store buys anything, market price under 25 CP, else a flat 25, and her window says so | done - and this row was wrong for a while: the code paid a tenth of the value with the flat rate as a floor, on the grounds that the same 25 for a quarrel and a suit of plate was insulting. It is meant to be. Checked by `tools/rule_audit.py`. |
 | Cursed items cannot be removed until uncursed | done |
 | Cursed items may summon monsters or lower attributes | partial |
 | Two-handed weapons conflict with shields | done - there were no two-handed weapons at all. Halberds, broad swords and bows need both hands: taking one up puts the shield in your pack and says so, and a shield is refused while you hold one |
@@ -181,6 +181,8 @@ is simply a death sentence.
 | Name Object | done |
 
 | No missile weapon for the player: the weapon table is name, damage, weight, price, and carries no bow | done - bows, crossbows, arrows and quarrels are gone, with the `shoot` verb and the key that fired it. Monsters still shoot, which the help is explicit about: jotuns hurl boulders and a manticore flings quills "with the accuracy and effect of a company of crossbowmen" |
+
+| A heavy weapon is slow to swing | ours - the original's weapon table is name, damage, weight and price with no speed column, so this is our own rule. It was true of nothing once the crossbow came out; the heavy end of the rack now carries a penalty scaled to weight, from the dagger's 80% to the halberd's 140%, and the item label says which way it cuts. |
 
 ## Things we had that the original does not
 

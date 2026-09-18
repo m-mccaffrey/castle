@@ -516,3 +516,103 @@ class TestAMagicalPackActuallyLightensTheLoad(unittest.TestCase):
         self.p.equipment["torso"] = Item("platemail")
         self.p.recalc()
         self.assertGreater(self.p.carried_weight, light)
+
+
+class TestAHeavyWeaponIsSlowToSwing(unittest.TestCase):
+    """Taking the bows out left this true of nothing: the crossbow was the
+    only weapon slower than the base swing. The heavy end of the rack now
+    carries a penalty scaled to what the thing weighs, and the label says so.
+    """
+
+    def setUp(self):
+        from stormhold.game.actors import Player
+        self.p = Player("Swinger", {"strength": 14, "dexterity": 10,
+                                    "intelligence": 8, "constitution": 10})
+
+    def swing(self, key):
+        from stormhold.common.constants import ATTACK_COST
+        self.p.equipment["weapon"] = Item(key) if key else None
+        return self.p.action_cost(ATTACK_COST, attacking=True)
+
+    def test_the_heavier_the_weapon_the_slower_the_swing(self):
+        from stormhold.game.items import BASES
+        weapons = sorted(((v["wt"], k) for k, v in BASES.items()
+                          if v.get("slot") == "weapon" and v.get("dmg")))
+        speeds = [(BASES[k].get("speed", 100), k, wt) for wt, k in weapons]
+        # Not a strict ordering - a mace is compact for its weight - but the
+        # lightest must be quicker than the heaviest by a clear margin.
+        self.assertLess(speeds[0][0], speeds[-1][0] - 30,
+                        f"{speeds[0][1]} and {speeds[-1][1]} swing alike")
+
+    def test_something_is_actually_slower_than_bare_hands(self):
+        bare = self.swing(None)
+        self.assertGreater(self.swing("halberd"), bare)
+        self.assertGreater(self.swing("axe"), bare)
+
+    def test_a_dagger_is_still_quicker(self):
+        self.assertLess(self.swing("dagger"), self.swing(None))
+
+    def test_it_changes_the_swing_and_nothing_else(self):
+        from stormhold.common.constants import REST_COST, MOVE_COST
+        self.p.equipment["weapon"] = None
+        rest, walk = (self.p.action_cost(REST_COST),
+                      self.p.action_cost(MOVE_COST, moving=True))
+        self.p.equipment["weapon"] = Item("halberd")
+        self.p.recalc()
+        self.assertEqual(self.p.action_cost(REST_COST), rest)
+        self.assertEqual(self.p.action_cost(MOVE_COST, moving=True), walk)
+
+    def test_the_label_says_which_way_it_cuts(self):
+        self.assertIn("slow to swing", Item("halberd").describe())
+        self.assertIn("quick to swing", Item("dagger").describe())
+        self.assertNotIn("to swing", Item("longsword").describe())
+
+
+class TestNanSaysWhatSheWillPay(unittest.TestCase):
+    """The junk store pays a flat rate above 25 copper, which is the
+    original's rule and looks like a bug unless the window admits it.
+    """
+
+    def test_the_window_explains_the_flat_rate(self):
+        from stormhold.ui.app import StoreScene
+        from tests.test_ui import make_app
+        from stormhold.common.constants import JUNK_FLAT
+        pygame.display.init()
+        app = make_app()
+        app.screen = pygame.display.set_mode((1280, 800))
+        world = World(seed=5)
+        player = world.add_player("Tipper")
+        app.inventory = world.inventory_view(player)
+
+        class _Play:
+            you = {"name": "Tipper"}
+
+            def add_message(self, *a, **k):
+                pass
+        app.play = _Play()
+        drawn = []
+        import stormhold.ui.widgets as W
+        real = W.text
+        W.text = lambda surf, value, *a, **k: (drawn.append(str(value)),
+                                               real(surf, value, *a, **k))[1]
+        try:
+            scene = StoreScene(app, world.shop_view(player, "junk", 1, "Nan"))
+            app.push(scene)
+            scene.draw(app.screen)
+        finally:
+            W.text = real
+        said = " ".join(drawn)
+        self.assertIn(str(JUNK_FLAT), said)
+        self.assertIn("anything", said.lower())
+
+    def test_and_pays_exactly_that(self):
+        world = World(seed=5)
+        p = world.add_player("Tipper")
+        sword = Item("longsword")
+        p.inventory = [sword]
+        row = next(r for r in world.shop_view(p, "junk", 1, "Nan")["sell"]
+                   if r["id"] == sword.id)
+        before = p.copper
+        world.do_player_action(world.levels[p.depth], p,
+                               {"a": "sell", "shop": "junk", "id": sword.id})
+        self.assertEqual(p.copper - before, row["price"])

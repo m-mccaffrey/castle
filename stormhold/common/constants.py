@@ -180,6 +180,11 @@ def coin_purse(value):
 # sells back for 840; a club costs 105 and sells back for 60. Both are the same
 # pair of multipliers on one base value (1050 and 75), and the 4/7 ratio holds
 # exactly, so the markup is not per-item haggling.
+# "It will buy anything, for market price (if it's less than 25 C.P.) or for
+# 25 C.P. if it's cursed or worthless." The window has to know it too, so it
+# can say so rather than leave a 25 copper offer for a sword looking broken.
+JUNK_FLAT = 25
+
 SHOP_BUY_MARKUP = 1.4
 SHOP_SELL_RATE = 0.8
 
