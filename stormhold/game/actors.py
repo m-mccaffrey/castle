@@ -488,13 +488,26 @@ class Player(Actor):
         return item
 
     def equip(self, item, prefer_slot=None):
-        """Put something on. Returns (ok, message).
+        """Put something on - or, for an item with nothing to wear it as,
+        hold it in your free hand instead. Returns (ok, message).
 
-        prefer_slot lets the player drop a ring onto the hand they meant.
+        The original's own inventory window has a Free Hand box beside the
+        weapon slot, separate from Shield, and a verb to match: "Free Hand
+        Command (put one item into free hand)". It is a slot like any
+        other - it holds exactly one thing - except that what it holds
+        does not have to be wearable, and nothing has to be bought to
+        unlock it first, the way a belt does.
+
+        prefer_slot lets the player drop a ring onto the hand they meant,
+        or something unwearable onto the free hand rather than have it
+        refused outright.
         """
         slot = item.slot
-        if not slot:
-            return False, f"You cannot wear {item.name()}."
+        held = slot is None
+        if held:
+            if prefer_slot != "free_hand":
+                return False, f"You cannot wear {item.name()}."
+            slot = "free_hand"
         req = item.base.get("str_req")
         if req and self.stat("strength") < req:
             return False, f"You are not strong enough to use that (needs Strength {req})."
@@ -549,6 +562,8 @@ class Player(Actor):
         # saying it here too printed the discovery twice.
         if two_handed_note:
             return True, f"{two_handed_note}"
+        if held:
+            return True, f"You keep {item.name()} in your free hand, ready to use."
         return True, f"You are now using {item.name()}."
 
     def unequip(self, slot):

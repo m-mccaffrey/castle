@@ -950,7 +950,9 @@ class PlayScene(Scene):
         """What the Activate menu can offer: things not buried in the pack.
 
         "Objects in your pack cannot be activated" - so this is what is on
-        the belt, in the quiver, and worn.
+        the belt, in the quiver, worn, or held in the free hand. A potion
+        or a scroll dropped there shows up here exactly like one stowed on
+        a belt, which is the point of having a free hand at all.
         """
         inv = self.app.inventory or {}
         rows = []
@@ -958,7 +960,8 @@ class PlayScene(Scene):
             for item in (inv.get("stowed") or {}).get(slot, []):
                 rows.append(item)
         for item in (inv.get("equipment") or {}).values():
-            if item and (item.get("spell") or item.get("kind") == "wand"):
+            if item and (item.get("spell") or item.get("kind")
+                         in ("wand", "potion", "scroll")):
                 rows.append(item)
         return rows
 
@@ -1551,7 +1554,10 @@ class PackScene(OverlayScene):
             worn = self.equipment().get(slot)
             return bool(worn)
         if want is None:
-            return False
+            # Nothing wearable has anywhere on the doll to go - except the
+            # free hand, which is exactly for holding the one thing you
+            # want to use in a hurry without owning a belt yet.
+            return slot == "free_hand"
         if want in ("ring_left", "ring_right"):
             return slot in ("ring_left", "ring_right")
         return slot == want

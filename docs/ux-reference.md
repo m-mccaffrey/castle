@@ -20,7 +20,7 @@ cover them:
 | --- | --- |
 | Get | Pick up what is underfoot. |
 | Examine | Look at something without touching it. |
-| Free Hand | Put your weapon away so a hand is free. |
+| Free Hand | Read as "(put one item into free hand)" in the manual - our own gloss below it, "put your weapon away so a hand is free", was a guess made before the inventory window was measured and is likely wrong; see the Free Hand slot below. The verb's own trigger (what it acts on, and from where) is still unconfirmed, so we have not changed what the `f` key and the Free Hand button currently do. |
 | Search | Take a turn looking for traps and hidden doors. |
 | Disarm Trap | Defuse a trap you have already found. |
 | Rest Until Healed | Sit until health is restored or something interrupts. |
@@ -31,6 +31,23 @@ cover them:
 Top-level menus: File, Character!, Inventory!, Map!, Spells, Activate, Verbs,
 Window, Help. The `!` items open their window immediately rather than dropping
 a menu.
+
+## Verified: the inventory window's Free Hand slot
+
+`reference-run.md`'s scrape of the running inventory window lists, among the
+labelled slot boxes: "Armor Neckwear Overgarment Helmet Shield" on one side and
+"Bracers Gauntlets Right Ring Left Ring Belt Boots" on the other, then
+"(weapon slot, showing 'Normal Dagger') Free Hand" - a box next to the
+weapon slot, separate from Shield. The manual's Free Hand verb, "put one item
+into free hand", is what fills it.
+
+We had a Shield slot and no Free Hand - so a fresh character with a full
+pack and no belt could not so much as drink a potion without first buying
+and wearing a belt, which the original never asks for. Free Hand is now its
+own slot on the doll, next to Weapon: drag anything unwearable there (a
+potion, a scroll, a book) and it is exactly as reachable as something on a
+belt, with nothing to buy first. A real shield still equips to its own
+Shield slot, unaffected.
 
 ## Verified: the Cast Spell dialog
 

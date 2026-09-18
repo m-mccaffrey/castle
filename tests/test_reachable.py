@@ -697,3 +697,153 @@ class TestAStackCanBeReachedForOneAtATime(unittest.TestCase):
                                    {"a": "stow", "id": stack.id, "slot": "waist"})
         self.assertEqual(len(belt.contents), belt.base["belt_slots"])
         self.assertTrue(all(i.qty == 1 for i in belt.contents))
+
+
+class TestTheFreeHandSlotNeedsNoBelt(unittest.TestCase):
+    """Read off the running original's inventory window, in reference-run.md:
+    a labelled Free Hand box beside the weapon slot, separate from Shield.
+    We had Shield and nothing else, so a fresh character with a full pack
+    and no belt could not drink a single potion - buying and wearing a belt
+    was never something the original asked for just to use one.
+    """
+
+    def setUp(self):
+        self.world = World(seed=5)
+        self.p = self.world.add_player("Handler")
+        self.level = self.world.levels[self.p.depth]
+        self.p.equipment["waist"] = None      # no belt, on purpose
+
+    def test_a_potion_cannot_be_worn_without_naming_the_free_hand(self):
+        potion = Item("potion_heal")
+        ok, why = self.p.equip(potion)
+        self.assertFalse(ok)
+
+    def test_but_aimed_at_the_free_hand_it_is_held_there(self):
+        potion = Item("potion_heal")
+        ok, why = self.p.equip(potion, prefer_slot="free_hand")
+        self.assertTrue(ok, why)
+        self.assertIs(self.p.equipment["free_hand"], potion)
+        self.assertNotIn(potion, self.p.inventory)
+
+    def test_holding_something_adds_no_armour(self):
+        before = self.p.armour_class
+        potion = Item("potion_heal")
+        self.p.equip(potion, prefer_slot="free_hand")
+        self.assertEqual(self.p.armour_class, before)
+
+    def test_a_real_shield_still_goes_on_the_shield_slot_independently(self):
+        potion = Item("potion_heal")
+        shield = Item("shield")
+        self.p.equip(potion, prefer_slot="free_hand")
+        ok, why = self.p.equip(shield)
+        self.assertTrue(ok, why)
+        self.assertIs(self.p.equipment["shield"], shield)
+        self.assertIs(self.p.equipment["free_hand"], potion,
+                      "holding something must not disturb the shield slot")
+
+    def test_something_held_there_is_within_reach_with_no_belt_worn(self):
+        potion = Item("potion_heal")
+        self.p.equip(potion, prefer_slot="free_hand")
+        self.assertIsNone(self.p.equipment["waist"])
+        self.assertTrue(self.world.within_reach(self.p, potion))
+
+    def test_and_can_actually_be_drunk_from_there(self):
+        potion = Item("potion_heal")
+        potion.known = True
+        self.p.equip(potion, prefer_slot="free_hand")
+        self.p.hp = 1
+        self.world.do_player_action(self.level, self.p,
+                                    {"a": "use", "id": potion.id})
+        self.assertGreater(self.p.hp, 1)
+
+    def test_dropping_it_works_like_anything_else_worn(self):
+        potion = Item("potion_heal")
+        self.p.equip(potion, prefer_slot="free_hand")
+        self.world.do_player_action(self.level, self.p,
+                                    {"a": "drop", "id": potion.id})
+        self.assertIn("potion_heal",
+                      [i.key for i in self.level.items_at(self.p.x, self.p.y)])
+        self.assertIsNone(self.p.equipment["free_hand"])
+
+
+class TestTheClientOffersTheFreeHandSlot(unittest.TestCase):
+    """The doll, the drag, and the Activate menu, through the real window."""
+
+    def setUp(self):
+        from stormhold.ui.app import PlayScene, PackScene
+        from tests.test_ui import make_app
+        pygame.display.init()
+        self.app = make_app()
+        self.app.screen = pygame.display.set_mode((1280, 800))
+        self.world = World(seed=5)
+        self.player = self.world.add_player("Dragger")
+        self.player.equipment["waist"] = None
+        self.play = PlayScene(self.app)
+        self.app.play = self.play
+        self.app.inventory = self.world.inventory_view(self.player)
+        self.pack = PackScene(self.app)
+        self.app.push(self.pack)
+
+    def test_the_doll_offers_a_free_hand_box(self):
+        self.pack.draw(self.app.screen)
+        self.assertIn("free_hand", self.pack.slot_rects)
+
+    def test_it_accepts_an_unwearable_item_and_only_that_slot_does(self):
+        potion = {"id": 1, "slot": None, "name": "Potion", "icon": "potion_red"}
+        self.assertTrue(self.pack.slot_accepts("free_hand", potion))
+        self.assertFalse(self.pack.slot_accepts("shield", potion))
+        self.assertFalse(self.pack.slot_accepts("weapon", potion))
+
+    def test_a_shield_still_only_fits_the_shield_slot(self):
+        shield_item = {"id": 2, "slot": "shield", "name": "Shield", "icon": "shield"}
+        self.assertTrue(self.pack.slot_accepts("shield", shield_item))
+        self.assertFalse(self.pack.slot_accepts("free_hand", shield_item))
+
+    def test_dragging_a_potion_onto_the_doll_sends_equip_to_free_hand(self):
+        potion = Item("potion_heal")
+        potion.known = True
+        self.player.add_item(potion)
+        self.app.inventory = self.world.inventory_view(self.player)
+        self.pack.draw(self.app.screen)
+        rect = next(r for r, it in self.pack.cell_rects if it["id"] == potion.id)
+        sent = []
+        self.app.act = sent.append
+        self.pack.drag = {"item": {"id": potion.id, "slot": None, "name": "Potion"},
+                          "from": "pack", "slot": None, "pos": rect.center,
+                          "moved": True}
+        self.pack.finish_drag(self.pack.slot_rects["free_hand"].center)
+        self.assertEqual(sent, [{"a": "equip", "id": potion.id, "slot": "free_hand"}])
+
+    def test_a_held_item_shows_up_for_the_activate_menu(self):
+        self.app.inventory = {
+            "items": [], "equipment": {"free_hand": {
+                "id": 9, "key": "potion_heal", "name": "Potion of Healing",
+                "kind": "potion", "slot": None, "spell": None}},
+            "stowed": {"waist": [], "quiver": []},
+        }
+        hand = self.play.to_hand()
+        self.assertEqual([i["id"] for i in hand], [9])
+
+
+class TestBuyingStraightIntoTheFreeHand(unittest.TestCase):
+    """Dragging a shop potion onto the free hand buys and holds it in one
+    motion, exactly like the doll's other slots - and unlike them, needs
+    nothing worn there first.
+    """
+
+    def setUp(self):
+        self.world = World(seed=5)
+        self.p = self.world.add_player("Shopper")
+        self.p.equipment["waist"] = None
+        self.level = self.world.levels[self.p.depth]
+        self.p.copper = 9999
+
+    def test_a_potion_bought_and_aimed_at_the_free_hand_lands_there(self):
+        item = next(i for i in self.world.stock_for("magic")
+                    if i.kind == "potion")
+        self.world.do_player_action(
+            self.level, self.p,
+            {"a": "buy", "shop": "magic", "id": item.id, "wear": "free_hand"})
+        held = self.p.equipment["free_hand"]
+        self.assertIsNotNone(held)
+        self.assertEqual(held.key, item.key)

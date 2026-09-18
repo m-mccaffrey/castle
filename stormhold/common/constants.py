@@ -243,8 +243,8 @@ def encumbrance_for(weight, capacity):
 # Worn slots, in the order the character sheet lists them.
 SLOTS = (
     "head", "neck", "back", "torso", "bracers", "arms", "waist",
-    "legs", "feet", "shield", "weapon", "ring_left", "ring_right",
-    "pack", "purse", "quiver",
+    "legs", "feet", "shield", "free_hand", "weapon", "ring_left",
+    "ring_right", "pack", "purse", "quiver",
 )
 
 SLOT_LABELS = {
@@ -252,6 +252,13 @@ SLOT_LABELS = {
     "torso": "Armour", "bracers": "Bracers", "arms": "Gauntlets",
     "waist": "Belt", "legs": "Leggings", "feet": "Boots",
     "shield": "Shield", "weapon": "Weapon",
+    # Read off the original's own inventory window: a labelled box beside
+    # the weapon slot, separate from Shield - "Free Hand". Its verb, from
+    # the same source, is "Free Hand Command (put one item into free
+    # hand)". A potion or a scroll held here can be activated on the spot,
+    # which is otherwise only true of the belt and the quiver - and
+    # unlike those, nothing has to be bought and worn first to unlock it.
+    "free_hand": "Free Hand",
     "ring_left": "Right ring", "ring_right": "Left ring",
     "pack": "Pack", "purse": "Purse", "quiver": "Wand Quiver",
 }
@@ -267,6 +274,8 @@ SLOT_ANCHORS = {
     "arms":       (0.76, 0.50),
     "weapon":     (0.20, 0.52),
     "shield":     (0.82, 0.40),
+    # Across from the weapon, at the same height: the other hand.
+    "free_hand":  (0.80, 0.52),
     "waist":      (0.50, 0.53),
     "ring_left":  (0.19, 0.56),
     "ring_right": (0.81, 0.56),
@@ -280,7 +289,8 @@ SLOT_ANCHORS = {
 # Slots laid out around the figure: which column, and in what order.
 DOLL_TOP = ("head", "neck", "back")
 DOLL_LEFT = ("torso", "bracers", "weapon", "ring_left", "waist", "pack")
-DOLL_RIGHT = ("shield", "arms", "legs", "ring_right", "feet", "quiver", "purse")
+DOLL_RIGHT = ("shield", "free_hand", "arms", "legs", "ring_right", "feet",
+             "quiver", "purse")
 
 # How a creature's condition reads when you examine it. The original never
 # shows a number here - six words, read from its own strings.

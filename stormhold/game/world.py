@@ -2428,6 +2428,11 @@ class World:
             if take.slot == wear or (take.slot in ("ring_left", "ring_right")
                                      and wear in ("ring_left", "ring_right")):
                 self._act_equip(level, p, {"id": take.id, "slot": wear})
+            elif wear == "free_hand" and take.slot is None:
+                # Nothing has to be worn to unlock the free hand - that is
+                # the whole point of it - so this needs no "is something
+                # already there to hold it" check the belt and quiver do.
+                self._act_equip(level, p, {"id": take.id, "slot": wear})
             elif p.equipment.get(wear) is not None:
                 self._act_stow(level, p, {"id": take.id, "slot": wear})
             else:

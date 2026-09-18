@@ -107,6 +107,7 @@ to agree, and every test we had asked one question about one function.
 | Two-handed weapons conflict with shields | done - there were no two-handed weapons at all. Halberds, broad swords and bows need both hands: taking one up puts the shield in your pack and says so, and a shield is refused while you hold one |
 | Charged items recharge on a timer | done |
 | Only worn slots and belt slots can be activated | done |
+| Free Hand: a doll slot beside the weapon, separate from Shield, for one unwearable thing | done - read off the running inventory window in `reference-run.md`. We had Shield and no Free Hand, so a character with a full pack and no belt could not drink a potion at all; buying and wearing a belt is not something the original ever requires just to use one. Drag anything unwearable onto it and it is reachable exactly like something on a belt. |
 | Belts are containers sized in slots; a 10-slot belt is rare | done |
 | Wand Quiver slot | done - a slot on the doll that takes wands and nothing else, and a wand in it is within reach. A spent wand reads as a Dead Wand. |
 
