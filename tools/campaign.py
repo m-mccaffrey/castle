@@ -443,13 +443,42 @@ def decide(world, level, p, looting=True):
             if len(p.inventory) == carried and len(level.items_at(p.x, p.y)) >= before:
                 skip.add((p.x, p.y))
             return {"a": "wait"}
-        piles = [xy for xy, pile in level.ground.items()
-                 if pile and xy not in skip]
-        piles.sort(key=lambda q: max(abs(q[0] - p.x), abs(q[1] - p.y)))
-        for spot in piles[:12]:
-            steps = path(level, (p.x, p.y), spot)
+        # Walk to the pile you set out for. Choosing the nearest afresh
+        # every step makes two piles either side of you into a trap: you
+        # step towards one, that makes the other nearer, you step back, and
+        # a party of two spent nine thousand actions on floor four doing
+        # exactly this at full health with nothing hunting them.
+        goal = getattr(p, "_goal", None)
+        if goal is not None and (not level.items_at(*goal) or goal in skip):
+            goal = None
+        if goal is None:
+            piles = [xy for xy, pile in level.ground.items()
+                     if pile and xy not in skip]
+            piles.sort(key=lambda q: max(abs(q[0] - p.x), abs(q[1] - p.y)))
+            for spot in piles[:12]:
+                if path(level, (p.x, p.y), spot):
+                    goal = spot
+                    break
+        if goal is not None:
+            steps = path(level, (p.x, p.y), goal)
             if steps:
+                # ...and give up on it if we stop getting closer. The other
+                # half of the party standing on the pile is a path the
+                # pathfinder is happy with and a step that never lands.
+                here = (p.x, p.y)
+                if getattr(p, "_goal", None) == goal and getattr(p, "_was", None) == here:
+                    p._stalled = getattr(p, "_stalled", 0) + 1
+                else:
+                    p._stalled = 0
+                p._was = here
+                if p._stalled > 6:
+                    skip.add(goal)
+                    p._goal = None
+                    return {"a": "wait"}
+                p._goal = goal
                 return step_action(*steps[0])
+            skip.add(goal)
+        p._goal = None
 
     # --- down ---------------------------------------------------------------
     if level.down_at:
