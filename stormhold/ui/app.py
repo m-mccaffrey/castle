@@ -1505,6 +1505,8 @@ class PackScene(OverlayScene):
         self.floor_rects = []
         self.floor_grid_rect = pygame.Rect(0, 0, 10, 10)
         self.floor_scroll = 0
+        self.belt_grid_rect = pygame.Rect(0, 0, 10, 10)
+        self.belt_scroll = 0
 
     # ------------------------------------------------------------ helpers --
     @property
@@ -1588,6 +1590,9 @@ class PackScene(OverlayScene):
             return
         if event.type == pygame.MOUSEWHEEL and self.floor_grid_rect.collidepoint(pygame.mouse.get_pos()):
             self.floor_scroll = max(0, self.floor_scroll - event.y)
+            return
+        if event.type == pygame.MOUSEWHEEL and self.belt_grid_rect.collidepoint(pygame.mouse.get_pos()):
+            self.belt_scroll = max(0, self.belt_scroll - event.y)
             return
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
@@ -1767,11 +1772,17 @@ class PackScene(OverlayScene):
         self.draw_doll(surf, doll)
 
         grid_top = doll.bottom + 6
+        row_h = 92
+        row = pygame.Rect(client.x, grid_top, client.width, row_h)
         if self.SHOWS_FLOOR:
-            floor_h = 92
-            self.draw_floor(surf, pygame.Rect(client.x, grid_top,
-                                              client.width, floor_h))
-            grid_top += floor_h + 6
+            # Floor and Belt side by side rather than each claiming a full
+            # row of their own - there is no height in a 1024x700 window
+            # to give every container its own strip, and splitting this
+            # one sideways costs nothing the pack grid below was using.
+            half = (row.width - 8) // 2
+            self.draw_floor(surf, pygame.Rect(row.x, row.y, half, row.height))
+            belt_area = pygame.Rect(row.x + half + 8, row.y,
+                                    row.width - half - 8, row.height)
         else:
             # Nothing to show it here - a store takes this container over
             # for its own shelf instead - but the rect still needs to move
@@ -1779,6 +1790,9 @@ class PackScene(OverlayScene):
             # used here" rather than "forgotten".
             self.floor_grid_rect = pygame.Rect(0, 0, 0, 0)
             self.floor_rects = []
+            belt_area = row
+        self.draw_belt(surf, belt_area)
+        grid_top += row_h + 6
         self.draw_pack(surf, pygame.Rect(client.x, grid_top,
                                          client.width, client.bottom - grid_top - 40))
         self.draw_buttons(surf, client)
@@ -1797,8 +1811,6 @@ class PackScene(OverlayScene):
         from ..common.constants import (DOLL_TOP, DOLL_LEFT, DOLL_RIGHT,
                                         SLOT_LABELS, SLOT_ANCHORS)
         self.slot_rects = {}
-        self.stow_rects = []
-        self.empty_stow_rects = []
         sw, sh = self.SLOT_W, self.SLOT_H
 
         top_y = area.y
@@ -1850,55 +1862,6 @@ class PackScene(OverlayScene):
         self.draw_figure(surf, gap_area)
         for slot, rect in self.slot_rects.items():
             self.draw_slot(surf, rect, slot, SLOT_LABELS.get(slot, slot))
-        self.draw_to_hand(surf, gap_area)
-
-    def draw_to_hand(self, surf, area):
-        """The belt and the quiver, as a labelled strip under the figure.
-
-        These used to be drawn as a row of squares tucked under the belt's own
-        panel, where the next slot down covered them - and only for things
-        already stowed, so an empty belt showed nothing whatever. Since these
-        are the only things you can reach in a fight, and the question "where
-        are the belt slots" has a real answer, they get their own strip, with
-        every slot drawn whether or not there is anything in it.
-        """
-        cells = []
-        for slot in self.STOW_SLOTS:
-            worn = self.equipment().get(slot)
-            if not worn:
-                continue
-            held = self.stowed(slot)
-            cells.append((slot, worn, held,
-                          max(len(held), worn.get("slots") or 2)))
-        if not cells:
-            return
-
-        size, pad = 26, 4
-        total = sum(n for _s, _w, _h, n in cells)
-        label = "to hand:"
-        label_w = W.font(11, bold=True).size(label)[0] + 8
-        width = label_w + total * (size + pad) + (len(cells) - 1) * 14
-        x = area.centerx - width // 2
-        y = area.bottom - size - 2          # clear of the figure's feet
-        W.text(surf, label, (x, y + size // 2 - 7), 11, bold=True,
-               colour=(90, 90, 90))
-        x += label_w
-        for slot, worn, held, count in cells:
-            for i in range(count):
-                cell = pygame.Rect(x, y, size, size)
-                item = held[i] if i < len(held) else None
-                W.panel(surf, cell, raised=item is not None,
-                        fill=(226, 226, 220) if item else (198, 198, 192))
-                if item is not None:
-                    img = self.app.sheet.item(item["icon"])
-                    if img:
-                        surf.blit(pygame.transform.smoothscale(img, (20, 20)),
-                                  (cell.x + 3, cell.y + 3))
-                    self.stow_rects.append((cell, item))
-                else:
-                    self.empty_stow_rects.append((cell, slot))
-                x += size + pad
-            x += 14
 
     def dashed_line(self, surf, a, b, colour, dash=5):
         dx, dy = b[0] - a[0], b[1] - a[1]
@@ -2047,6 +2010,7 @@ class PackScene(OverlayScene):
     CELL_H = 84
     FLOOR_CELL = 64
     FLOOR_CELL_H = 66
+    BELT_CELL = 46
 
     @staticmethod
     def caption(label, width, size=10, lines=2):
@@ -2076,6 +2040,105 @@ class PackScene(OverlayScene):
                 tail = tail[:-1]
             out[-1] = tail + "..."
         return out
+
+    def draw_belt(self, surf, area):
+        """The belt, and the quiver if one is worn - its own titled panel
+        with exactly as many boxes as it has slots, empty ones included.
+
+        This used to be a bare, unlabelled strip of squares tucked under
+        the figure's feet, captioned only "to hand:" - which read as
+        decoration rather than as a container, and gave no sense of how
+        many slots there were until you had filled them all. It is now a
+        panel like Floor and Pack are: a name in its own title bar (the
+        belt's, same as the original shows) and a real boundary around a
+        fixed grid, so an empty belt still shows the belt.
+        """
+        groups = []
+        for slot in self.STOW_SLOTS:
+            worn = self.equipment().get(slot)
+            if not worn:
+                continue
+            held = self.stowed(slot)
+            count = max(len(held), worn.get("slots") or 2)
+            groups.append((slot, worn, held, count))
+
+        bar = pygame.Rect(area.x, area.y, area.width, 18)
+        pygame.draw.rect(surf, W.TITLE_B, bar)
+        if not groups:
+            title = "Belt"
+        elif len(groups) == 1:
+            title = groups[0][1]["name"]
+        else:
+            title = " & ".join(g[1]["name"] for g in groups)
+        W.text(surf, title, (bar.x + 6, bar.y + 2), 12, bold=True, colour=WHITE)
+
+        self.belt_grid_rect = pygame.Rect(area.x, bar.bottom, area.width,
+                                          area.height - bar.height)
+        W.panel(surf, self.belt_grid_rect, raised=False, fill=(236, 236, 232))
+
+        self.stow_rects = []
+        self.empty_stow_rects = []
+        if not groups:
+            W.text(surf, "Nothing to hand. Wear a belt to reach potions in a fight.",
+                   (self.belt_grid_rect.x + 8, self.belt_grid_rect.y + 8), 11,
+                   colour=(120, 120, 120))
+            return
+
+        cell = self.BELT_CELL
+        cols = max(1, (self.belt_grid_rect.width - 8) // cell)
+        rows = max(1, (self.belt_grid_rect.height - 8) // cell)
+
+        # Every slot from every worn group, flattened into one grid - with
+        # each group starting its own row, so the belt's slots and the
+        # quiver's do not run together in the middle of a row.
+        cells = []
+        for slot, worn, held, count in groups:
+            if cells:
+                while len(cells) % cols:
+                    cells.append(None)
+            for i in range(count):
+                cells.append((slot, held[i] if i < len(held) else None))
+
+        max_scroll = max(0, (len(cells) + cols - 1) // cols - rows)
+        self.belt_scroll = min(self.belt_scroll, max_scroll)
+
+        clip = surf.get_clip()
+        surf.set_clip(self.belt_grid_rect)
+        for index, entry in enumerate(cells):
+            if entry is None:
+                continue
+            row, col = divmod(index, cols)
+            row -= self.belt_scroll
+            if row < 0 or row >= rows:
+                continue
+            r = pygame.Rect(self.belt_grid_rect.x + 4 + col * cell,
+                            self.belt_grid_rect.y + 4 + row * cell,
+                            cell - 4, cell - 4)
+            slot, item = entry
+            selected = (item is not None and self.selected is not None
+                       and self.selected_from == "stowed"
+                       and item["id"] == self.selected["id"])
+            W.panel(surf, r, raised=item is not None,
+                    fill=(226, 226, 220) if item else (198, 198, 192))
+            if selected:
+                pygame.draw.rect(surf, W.TITLE_A, r, 2)
+            if item is not None:
+                img = self.app.sheet.item(item["icon"])
+                if img:
+                    inner = r.width - 6
+                    surf.blit(pygame.transform.smoothscale(img, (inner, inner)),
+                              (r.x + 3, r.y + 3))
+                qty = item.get("qty", 1)
+                if qty > 1:
+                    W.text(surf, f"x{qty}", (r.right - 17, r.y), 9, bold=True)
+                self.stow_rects.append((r, item))
+            else:
+                self.empty_stow_rects.append((r, slot))
+        surf.set_clip(clip)
+        if max_scroll:
+            W.text(surf, f"{self.belt_scroll + 1}/{max_scroll + 1}",
+                   (self.belt_grid_rect.right - 55, self.belt_grid_rect.bottom - 14),
+                   9, colour=(120, 120, 120))
 
     def draw_floor(self, surf, area):
         """What is on the ground underfoot - the fourth container, next to
