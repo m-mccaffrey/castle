@@ -9,3 +9,6 @@ data/*.sav
 build/
 dist/
 *.egg-info/
+tools/wp/
+tools/shots/
+tools/cotw.log
