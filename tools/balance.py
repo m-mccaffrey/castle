@@ -435,7 +435,7 @@ def main():
     ap = argparse.ArgumentParser()
 
     ap.add_argument("--difficulty", default=None,
-                    help="one setting, or every setting if left out")
+                    help="one setting, or every setting if left out", choices=[d[0] for d in DIFFICULTIES])
     ap.add_argument("--trials", type=int, default=300)
     ap.add_argument("--party", type=int, default=1,
                     help="how many of them there are")

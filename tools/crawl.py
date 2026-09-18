@@ -211,7 +211,7 @@ def best_attack_spell(s, reach=None):
     falls with caster level, so it turned down spells it could afford and
     tried ones it could not.
     """
-    from stormhold.common.constants import mana_cost
+    from stormhold.common.constants import DIFFICULTIES, mana_cost
     p = s.me()
     best, best_dmg = None, 0
     for name in p.spells:
@@ -620,7 +620,7 @@ def main():
     ap.add_argument("--depth", type=int, default=5)
     ap.add_argument("--turns", type=int, default=3000)
     ap.add_argument("--port", type=int, default=7801)
-    ap.add_argument("--difficulty", default=None)
+    ap.add_argument("--difficulty", default=None, choices=[d[0] for d in DIFFICULTIES])
     ap.add_argument("--spell", default="Spark")
     ap.add_argument("--mighty", action="store_true",
                     help="make the character absurdly strong, to test the "

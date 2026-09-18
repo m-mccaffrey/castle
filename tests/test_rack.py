@@ -86,3 +86,30 @@ class TestNothingIsATrap(unittest.TestCase):
             best = max(best, damage_per_turn(base))
         self.assertGreater(best, damage_per_turn(weapons[0]),
                            "paying more never buys a better swing")
+
+
+class TestTheDifficultySettingIsHonoured(unittest.TestCase):
+    """A name that is not one of the four used to pass silently as
+    Intermediate. An afternoon of measurements of "Hard" were measurements of
+    the default, because the setting is called Difficult.
+    """
+
+    def test_an_unknown_setting_is_refused_rather_than_ignored(self):
+        from stormhold.game.world import World
+        with self.assertRaises(ValueError):
+            World(seed=1, difficulty="Hard")
+
+    def test_each_setting_changes_what_you_meet(self):
+        from stormhold.game.world import World
+        from stormhold.common.constants import DIFFICULTIES
+        toughness = {}
+        for label, _sym, _t, _x in DIFFICULTIES:
+            world = World(seed=3, difficulty=label)
+            world.add_player("Gauge")
+            level = world.get_level(4)
+            hp = [m.max_hp for m in level.actors.values()
+                  if getattr(m, "kind", "") == "monster"]
+            toughness[label] = sum(hp) / max(1, len(hp))
+        self.assertLess(toughness["Easy"], toughness["Intermediate"])
+        self.assertLess(toughness["Intermediate"], toughness["Difficult"])
+        self.assertLess(toughness["Difficult"], toughness["Experts Only"])

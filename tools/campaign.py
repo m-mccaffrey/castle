@@ -556,7 +556,7 @@ def main():
     ap.add_argument("--party", type=int, default=1)
     ap.add_argument("--runs", type=int, default=1)
     ap.add_argument("--seed", type=int, default=1)
-    ap.add_argument("--difficulty", default="Intermediate")
+    ap.add_argument("--difficulty", default="Intermediate", choices=[d[0] for d in DIFFICULTIES])
     ap.add_argument("--depth", type=int, default=MAX_DEPTH)
     ap.add_argument("--budget", type=int, default=6000)
     ap.add_argument("--tries", type=int, default=3,

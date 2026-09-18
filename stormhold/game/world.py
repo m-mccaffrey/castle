@@ -20,7 +20,7 @@ from ..common.constants import (
     T, DIRS, TOWN_DEPTH, MAX_DEPTH, DEEP_LIMIT, GRACE_TICKS, MOVE_COST, ATTACK_COST,
     CAST_COST, PICKUP_COST, DROP_COST, EQUIP_COST, QUAFF_COST, READ_COST,
     STAIRS_COST, REST_COST, FREE_COST, SIGHT_DUNGEON, SIGHT_TOWN, REGEN_TICKS,
-    DEFAULT_DIFFICULTY, difficulty_factors,
+    DEFAULT_DIFFICULTY, DIFFICULTIES, difficulty_factors,
     DEATH_GOLD_PENALTY, DEATH_XP_PENALTY, RESURRECT_HP_FRACTION,
     chebyshev, clamp, is_solid, STATS,
 )
@@ -41,6 +41,16 @@ class World:
         # The original's four settings. Whoever opens the keep chooses it, and
         # it applies to everything living in it, because the party shares the
         # floors they are fighting on.
+        # A name that is not one of the four is a mistake in whatever built
+        # this world, and it used to pass silently as Intermediate: a whole
+        # afternoon's measurements of "Hard" were measurements of the
+        # default, because the setting is called Difficult. Anything
+        # arriving over the wire is sanitised by the server before it gets
+        # here, so this can afford to be blunt.
+        known = [label for label, _sym, _t, _x in DIFFICULTIES]
+        if difficulty not in known:
+            raise ValueError(f"no such difficulty {difficulty!r}; "
+                             f"it is one of {', '.join(known)}")
         self.difficulty = difficulty
         self.rng = random.Random(self.seed)
         self.appearances = Appearances(self.seed)
