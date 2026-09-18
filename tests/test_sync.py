@@ -51,6 +51,9 @@ CASES = [
      lambda w, p, l: {"a": "pickup"}),
     ("pick up coins", lambda w, p, l: l.add_ground_item(p.x, p.y, w._gold_item(600, 1)),
      lambda w, p, l: {"a": "pickup"}),
+    ("take one item off the floor",
+     lambda w, p, l: l.add_ground_item(p.x, p.y, Item("shortsword")),
+     lambda w, p, l: {"a": "take", "id": l.items_at(p.x, p.y)[-1].id}),
     ("drop", lambda w, p, l: p.add_item(Item("shortsword")),
      lambda w, p, l: {"a": "drop", "id": p.inventory[-1].id}),
     ("equip", lambda w, p, l: p.add_item(Item("helm")),
@@ -128,8 +131,9 @@ class TestWhatYouCarryAndWhatYouSeeAgree(unittest.TestCase):
             "open", "close", "rest", "sleep", "attack", "cast", "shoot",
             "callme", "fountain", "throne",
         }
-        covered = {"pickup", "drop", "equip", "unequip", "freehand", "stow",
-                   "unstow", "use", "sort", "rename", "buy", "sell", "service"}
+        covered = {"pickup", "take", "drop", "equip", "unequip", "freehand",
+                   "stow", "unstow", "use", "sort", "rename", "buy", "sell",
+                   "service"}
         missing = verbs - harmless - covered
         self.assertFalse(
             missing,

@@ -1478,7 +1478,12 @@ class PackScene(OverlayScene):
     size = (940, 690)
     SLOT_W = 196
     SLOT_H = 46
-    DOLL_H = 430
+    DOLL_H = 360
+    # Every container the original's inventory window shows at once - the
+    # body, the belt (drawn as the "to hand" strip under the figure), and
+    # the pack - plus what is on the ground underfoot. A store replaces
+    # this last one with its shelf instead, so StoreScene turns it off.
+    SHOWS_FLOOR = True
 
     def __init__(self, app, picking=None):
         super().__init__(app)
@@ -1488,6 +1493,7 @@ class PackScene(OverlayScene):
         self.slot_rects = {}
         self.cell_rects = []
         self.selected = None
+        self.selected_from = None
         self.drag = None            # {"item", "from", "icon", "pos"}
         self.hover_slot = None
         self.naming = None          # a TextField while renaming something
@@ -1496,6 +1502,9 @@ class PackScene(OverlayScene):
         self.empty_stow_rects = []  # ...and the ones with nothing in them yet
         self.grid_rect = pygame.Rect(0, 0, 10, 10)
         self.scroll = 0
+        self.floor_rects = []
+        self.floor_grid_rect = pygame.Rect(0, 0, 10, 10)
+        self.floor_scroll = 0
 
     # ------------------------------------------------------------ helpers --
     @property
@@ -1507,6 +1516,9 @@ class PackScene(OverlayScene):
 
     def equipment(self):
         return self.inv.get("equipment", {})
+
+    def floor_items(self):
+        return self.inv.get("floor", []) if self.SHOWS_FLOOR else []
 
     def item_at(self, pos):
         """Whatever is under the cursor: (item, source) or (None, None)."""
@@ -1522,6 +1534,9 @@ class PackScene(OverlayScene):
         for rect, item in self.cell_rects:
             if rect.collidepoint(pos):
                 return item, ("pack", None)
+        for rect, item in self.floor_rects:
+            if rect.collidepoint(pos):
+                return item, ("floor", None)
         return None, (None, None)
 
     def answer_pick(self, item):
@@ -1571,6 +1586,9 @@ class PackScene(OverlayScene):
         if event.type == pygame.MOUSEWHEEL and self.grid_rect.collidepoint(pygame.mouse.get_pos()):
             self.scroll = max(0, self.scroll - event.y)
             return
+        if event.type == pygame.MOUSEWHEEL and self.floor_grid_rect.collidepoint(pygame.mouse.get_pos()):
+            self.floor_scroll = max(0, self.floor_scroll - event.y)
+            return
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
             item, _ = self.item_at(event.pos)
@@ -1598,6 +1616,7 @@ class PackScene(OverlayScene):
             item, (source, slot) = self.item_at(event.pos)
             if item is not None:
                 self.selected = item
+                self.selected_from = source
                 self.drag = {"item": item, "from": source, "slot": slot,
                              "pos": event.pos, "moved": False}
             return
@@ -1635,12 +1654,17 @@ class PackScene(OverlayScene):
         if not drag["moved"]:
             return                                   # a click, not a drag
 
+        from_floor = drag["from"] == "floor"
+
         # An empty square on the belt is a drop target in its own right: it
         # is the obvious place to aim for, and aiming at the belt buckle
         # above it is not something anyone would guess.
         for cell, slot in self.empty_stow_rects:
             if cell.collidepoint(pos) and self.slot_accepts(slot, item):
-                self.app.act({"a": "stow", "id": item["id"], "slot": slot})
+                if from_floor:
+                    self.app.act({"a": "take", "id": item["id"], "slot": slot})
+                else:
+                    self.app.act({"a": "stow", "id": item["id"], "slot": slot})
                 return
 
         for slot, rect in self.slot_rects.items():
@@ -1652,6 +1676,9 @@ class PackScene(OverlayScene):
                 self.app.play.add_message(
                     f"{item['name']} does not go there.", "warn")
                 return
+            if from_floor:
+                self.app.act({"a": "take", "id": item["id"], "slot": slot})
+                return
             if slot in self.STOW_SLOTS and item.get("slot") != slot:
                 self.app.act({"a": "stow", "id": item["id"], "slot": slot})
                 return
@@ -1659,10 +1686,20 @@ class PackScene(OverlayScene):
             return
 
         if self.grid_rect.collidepoint(pos):
-            if drag["from"] == "stowed":
+            if from_floor:
+                self.app.act({"a": "take", "id": item["id"]})
+            elif drag["from"] == "stowed":
                 self.app.act({"a": "unstow", "id": item["id"]})
             elif drag["from"] == "slot":
                 self.app.act({"a": "unequip", "slot": drag["slot"]})
+            return
+
+        # Dragged onto the Floor panel from anywhere else: put it down. A
+        # floor item dragged back onto the floor is a no-op, same as a pack
+        # item dropped back in the pack.
+        if self.SHOWS_FLOOR and self.floor_grid_rect.collidepoint(pos):
+            if not from_floor:
+                self.app.act({"a": "drop", "id": item["id"]})
             return
 
     def handle_naming(self, event):
@@ -1682,16 +1719,22 @@ class PackScene(OverlayScene):
         elif action == "sort":
             self.app.act({"a": "sort"})
             self.scroll = 0
-        elif action == "name" and item:
+        elif action == "name" and item and self.selected_from != "floor":
             self.naming_id = item["id"]
             self.naming = W.TextField((0, 0, 260, 26),
                                       "" if not item.get("custom") else item["name"], 24)
             self.naming.focused = True
         elif item and action == "use":
-            self.app.act({"a": "use", "id": item["id"]})
+            if self.selected_from == "floor":
+                self.app.act({"a": "take", "id": item["id"]})
+                self.selected = None
+                self.selected_from = None
+            else:
+                self.app.act({"a": "use", "id": item["id"]})
         elif item and action == "drop":
             self.app.act({"a": "drop", "id": item["id"]})
             self.selected = None
+            self.selected_from = None
 
     # ------------------------------------------------------------ drawing --
     def draw(self, surf):
@@ -1724,6 +1767,18 @@ class PackScene(OverlayScene):
         self.draw_doll(surf, doll)
 
         grid_top = doll.bottom + 6
+        if self.SHOWS_FLOOR:
+            floor_h = 92
+            self.draw_floor(surf, pygame.Rect(client.x, grid_top,
+                                              client.width, floor_h))
+            grid_top += floor_h + 6
+        else:
+            # Nothing to show it here - a store takes this container over
+            # for its own shelf instead - but the rect still needs to move
+            # off its unpositioned-placeholder value so it reads as "not
+            # used here" rather than "forgotten".
+            self.floor_grid_rect = pygame.Rect(0, 0, 0, 0)
+            self.floor_rects = []
         self.draw_pack(surf, pygame.Rect(client.x, grid_top,
                                          client.width, client.bottom - grid_top - 40))
         self.draw_buttons(surf, client)
@@ -1990,6 +2045,8 @@ class PackScene(OverlayScene):
 
     CELL = 96
     CELL_H = 84
+    FLOOR_CELL = 64
+    FLOOR_CELL_H = 66
 
     @staticmethod
     def caption(label, width, size=10, lines=2):
@@ -2019,6 +2076,67 @@ class PackScene(OverlayScene):
                 tail = tail[:-1]
             out[-1] = tail + "..."
         return out
+
+    def draw_floor(self, surf, area):
+        """What is on the ground underfoot - the fourth container, next to
+        the body, the belt and the pack, that the original's inventory
+        window always shows. A store takes this space over for its shelf
+        instead (see StoreScene), which is why this only draws here.
+        """
+        bar = pygame.Rect(area.x, area.y, area.width, 18)
+        pygame.draw.rect(surf, W.TITLE_B, bar)
+        W.text(surf, "Floor", (bar.x + 6, bar.y + 2), 12, bold=True, colour=WHITE)
+
+        self.floor_grid_rect = pygame.Rect(area.x, bar.bottom, area.width,
+                                           area.height - bar.height)
+        W.panel(surf, self.floor_grid_rect, raised=False, fill=(236, 236, 232))
+
+        cell, cell_h = self.FLOOR_CELL, self.FLOOR_CELL_H
+        cols = max(1, (self.floor_grid_rect.width - 8) // cell)
+        rows = max(1, (self.floor_grid_rect.height - 8) // cell_h)
+        items = self.floor_items()
+        max_scroll = max(0, (len(items) + cols - 1) // cols - rows)
+        self.floor_scroll = min(self.floor_scroll, max_scroll)
+
+        self.floor_rects = []
+        clip = surf.get_clip()
+        surf.set_clip(self.floor_grid_rect)
+        for index, item in enumerate(items):
+            row, col = divmod(index, cols)
+            row -= self.floor_scroll
+            if row < 0 or row >= rows:
+                continue
+            r = pygame.Rect(self.floor_grid_rect.x + 4 + col * cell,
+                            self.floor_grid_rect.y + 4 + row * cell_h, cell - 4, cell_h - 4)
+            selected = (self.selected is not None and self.selected_from == "floor"
+                       and item["id"] == self.selected["id"])
+            if selected:
+                pygame.draw.rect(surf, (210, 220, 245), r)
+                pygame.draw.rect(surf, W.TITLE_A, r, 1)
+            img = self.app.sheet.item(item["icon"])
+            if img:
+                surf.blit(img, (r.centerx - TILE // 2, r.y))
+            colour = (150, 0, 0) if item.get("cursed") else BLACK
+            lines = self.caption(item["name"], r.width - 2, size=9, lines=1)
+            ly = r.bottom - 5 - 10 * len(lines)
+            for line in lines:
+                img2 = W.font(9).render(line, True, colour)
+                surf.blit(img2, (r.centerx - img2.get_width() // 2, ly))
+                ly += 10
+            qty = item.get("qty", 1)
+            if qty > 1:
+                W.text(surf, f"x{qty}", (r.right - 18, r.y), 9, bold=True)
+            self.floor_rects.append((r, item))
+        surf.set_clip(clip)
+
+        if not items:
+            W.text(surf, "Nothing here.",
+                   (self.floor_grid_rect.x + 10, self.floor_grid_rect.y + 8), 12,
+                   colour=(120, 120, 120))
+        if max_scroll:
+            W.text(surf, f"{self.floor_scroll + 1}/{max_scroll + 1}",
+                   (self.floor_grid_rect.right - 60, self.floor_grid_rect.bottom - 14), 9,
+                   colour=(120, 120, 120))
 
     def draw_pack(self, surf, area):
         inv = self.inv
@@ -2080,8 +2198,11 @@ class PackScene(OverlayScene):
 
     def draw_buttons(self, surf, client):
         item = self.selected
+        from_floor = item is not None and self.selected_from == "floor"
         label = "Use"
-        if item:
+        if from_floor:
+            label = "Pick Up"
+        elif item:
             if item.get("slot"):
                 label = "Wear"
             elif item.get("spell"):
@@ -2093,9 +2214,11 @@ class PackScene(OverlayScene):
         by = client.bottom - 32
         self.buttons = [
             W.Button((client.x, by, 110, 28), "Sort Pack", "sort"),
-            W.Button((client.x + 118, by, 130, 28), "Name Object", "name", enabled=bool(item)),
+            W.Button((client.x + 118, by, 130, 28), "Name Object", "name",
+                     enabled=bool(item) and not from_floor),
             W.Button((client.x + 256, by, 100, 28), label, "use", enabled=bool(item)),
-            W.Button((client.x + 364, by, 90, 28), "Drop", "drop", enabled=bool(item)),
+            W.Button((client.x + 364, by, 90, 28), "Drop", "drop",
+                     enabled=bool(item) and not from_floor),
             W.Button((client.right - 90, by, 90, 28), "Close", "close"),
         ]
         for b in self.buttons:
@@ -2767,6 +2890,7 @@ class StoreScene(PackScene):
 
     size = (980, 760)
     DOLL_H = 360
+    SHOWS_FLOOR = False   # the store stock takes this space instead
 
     def __init__(self, app, data):
         super().__init__(app)

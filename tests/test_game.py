@@ -516,6 +516,57 @@ class TestVerbs(unittest.TestCase):
         self.assertIs(p.equipment.get("free_hand"), held)
         self.assertIn(on_ground, level.items_at(p.x, p.y))
 
+    def test_take_lifts_one_item_off_a_pile_and_leaves_the_rest(self):
+        """The Floor window drags a single icon, unlike Get's whole sweep."""
+        from stormhold.game.items import Item
+        world, p, level = self.descend()
+        sword = Item("shortsword")
+        helm = Item("helm")
+        level.add_ground_item(p.x, p.y, sword)
+        level.add_ground_item(p.x, p.y, helm)
+        world.submit(p, {"a": "take", "id": sword.id})
+        self.assertIn(sword, p.inventory)
+        self.assertNotIn(sword, level.items_at(p.x, p.y))
+        self.assertIn(helm, level.items_at(p.x, p.y))
+        self.assertNotIn(helm, p.inventory)
+
+    def test_take_deposits_coins_straight_into_the_purse(self):
+        from stormhold.game.items import Item
+        world, p, level = self.descend()
+        before = p.copper
+        coins = world._gold_item(250, level.depth)
+        level.add_ground_item(p.x, p.y, coins)
+        world.submit(p, {"a": "take", "id": coins.id})
+        self.assertEqual(p.copper, before + coins.gold_amount)
+        self.assertNotIn(coins, level.items_at(p.x, p.y))
+        self.assertNotIn(coins, p.inventory)
+
+    def test_take_wears_a_pack_or_purse_you_do_not_have_one_of(self):
+        from stormhold.game.items import Item
+        world, p, level = self.descend()
+        p.equipment["purse"] = None
+        purse = Item("purse")
+        level.add_ground_item(p.x, p.y, purse)
+        world.submit(p, {"a": "take", "id": purse.id})
+        self.assertIs(p.equipment.get("purse"), purse)
+        self.assertNotIn(purse, level.items_at(p.x, p.y))
+
+    def test_take_with_a_slot_equips_straight_onto_the_body(self):
+        """Dragging a floor item onto a doll slot wears it in one motion,
+        the same shortcut buying an item onto the body already has."""
+        from stormhold.game.items import Item
+        world, p, level = self.descend()
+        helm = Item("helm")
+        level.add_ground_item(p.x, p.y, helm)
+        world.submit(p, {"a": "take", "id": helm.id, "slot": "head"})
+        self.assertIs(p.equipment.get("head"), helm)
+        self.assertNotIn(helm, p.inventory)
+
+    def test_take_something_no_longer_there_is_a_quiet_no_op(self):
+        world, p, level = self.descend()
+        world.submit(p, {"a": "take", "id": 999999})
+        self.assertEqual(p.inventory, [])
+
     def test_examine_costs_no_time(self):
         world, p, level = self.descend()
         before = level.clock
@@ -707,6 +758,25 @@ class TestStartingKit(unittest.TestCase):
         pack = Item("pack").base
         self.assertEqual((pack["wt"], pack["bulk"]), (1000, 1000))
         self.assertEqual((pack["capacity"], pack["bulk_capacity"]), (12000, 50000))
+
+    def test_the_pack_comes_in_three_sizes_like_the_original(self):
+        """Small, Medium and Large, each one a real step up in what it
+        carries - read off the shop caption's `Wt | Bulk | Wt Max | Bulk
+        Max`, the same source the Small Pack figures above come from."""
+        from stormhold.game.items import Item
+        small, medium, large = (Item(k).base for k in ("pack", "packmed", "packlg"))
+        self.assertEqual((small["wt"], small["bulk"], small["capacity"],
+                          small["bulk_capacity"]), (1000, 1000, 12000, 50000))
+        self.assertEqual((medium["wt"], medium["bulk"], medium["capacity"],
+                          medium["bulk_capacity"]), (2000, 1500, 22000, 75000))
+        self.assertEqual((large["wt"], large["bulk"], large["capacity"],
+                          large["bulk_capacity"]), (4000, 2000, 35000, 100000))
+        # Bigger costs more, and buys strictly more room - no size is a trap
+        # that leaves you paying for less pack than a smaller one already gave.
+        for smaller, bigger in ((small, medium), (medium, large)):
+            self.assertLess(smaller["value"], bigger["value"])
+            self.assertGreater(bigger["capacity"], smaller["capacity"])
+            self.assertGreater(bigger["bulk_capacity"], smaller["bulk_capacity"])
 
 
 class TestSpellRules(unittest.TestCase):

@@ -128,7 +128,16 @@ BASES = {
     "bracers":     dict(name="Bracers", slot="bracers", icon="bracers", bulk=7200, wt=1125, value=55, ac=3, depth=1),
     "purse":       dict(name="Purse", slot="purse", icon="sack", bulk=500, wt=300, value=15, depth=0, kind="container", capacity=5000, bulk_capacity=6000, coins_only=True),
     "coins":       dict(name="copper pieces", icon="gold", bulk=0, wt=0, value=1, depth=0, kind="coins"),
-    "pack":        dict(name="Backpack", slot="pack", icon="pack", bulk=1000, wt=1000, value=60, depth=0, kind="container", capacity=12000, bulk_capacity=50000),
+    # The measured original sells three sizes, not one - we had been calling
+    # the small one a "Backpack" and stopping there. Figures are its own:
+    # `Wt | Bulk | Wt Max | Bulk Max`, read off the shop caption character
+    # for character. The Large Pack's own caption also showed a non-zero
+    # Bulk Fx, which would be strange on a plain pack (that effect is meant
+    # for a Pack of Holding, below) and could not be cross-checked against a
+    # second reading, so it is left at zero here rather than guessed at.
+    "pack":        dict(name="Small Pack", slot="pack", icon="pack", bulk=1000, wt=1000, value=60, depth=0, kind="container", capacity=12000, bulk_capacity=50000),
+    "packmed":     dict(name="Medium Pack", slot="pack", icon="pack", bulk=1500, wt=2000, value=150, depth=3, kind="container", capacity=22000, bulk_capacity=75000),
+    "packlg":      dict(name="Large Pack", slot="pack", icon="pack", bulk=2000, wt=4000, value=320, depth=7, kind="container", capacity=35000, bulk_capacity=100000),
     "holdpack":    dict(name="Pack of Holding", slot="pack", icon="pack", bulk=1000, wt=1000, value=900, depth=9, kind="container", capacity=50000, bulk_capacity=150000, wt_fixed=5000, bulk_fixed=75000),
     # "Two slots we did not have: a Wand Quiver, and belts that are
     # containers sized in slots." A wand in the pack cannot be used; a wand in

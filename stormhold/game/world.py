@@ -1081,6 +1081,69 @@ class World:
         self.events.append({"t": "inv", "to": p.id})
         return p.action_cost(PICKUP_COST) or PICKUP_COST
 
+    def _act_take(self, level, p, action):
+        """Pick up exactly one item off the floor pile.
+
+        Get (above) sweeps up everything underfoot at once; this is what the
+        Floor window's drag-and-drop uses instead, since dragging one potion
+        out of a pile of three potions and a helmet must not also take the
+        helmet. Coins deposit straight into the purse and vanish, same as
+        Get; a pack, purse or belt you are not already wearing is worn, same
+        as Get; everything else goes in the pack, or - if the drag ended on
+        a particular slot - onto the body from there, the same "buy it
+        straight onto yourself" shortcut a store drag already has.
+        """
+        item = next((i for i in level.items_at(p.x, p.y)
+                    if i.id == int(action.get("id", 0))), None)
+        if item is None:
+            self.msg("That is not there any more.", "info", to=p)
+            return FREE_COST
+
+        if item.kind == "coins":
+            metal = getattr(item, "metal", "copper")
+            worth = dict(COINS)[metal]
+            n = max(1, item.gold_amount // worth)
+            p.gain_coins(metal, n)
+            level.take_ground_item(p.x, p.y, item)
+            self.msg(f"You pick up {n} {metal} pieces "
+                     f"(worth {item.gold_amount} copper).", "loot", to=p)
+            self.sound("gold", p.x, p.y, level.depth)
+            self.events.append({"t": "inv", "to": p.id})
+            return p.action_cost(PICKUP_COST) or PICKUP_COST
+
+        wear = self.WEARS_ITSELF.get(item.slot)
+        if wear and p.equipment.get(wear) is None and not action.get("slot"):
+            level.take_ground_item(p.x, p.y, item)
+            p.equipment[wear] = item
+            p.recalc()
+            self.msg(f"You put on {with_article(item.name(self.appearances))}.",
+                     "loot", to=p)
+            self.sound("pickup", p.x, p.y, level.depth)
+            self.events.append({"t": "inv", "to": p.id})
+            return p.action_cost(PICKUP_COST) or PICKUP_COST
+
+        ok, why = p.room_for(item)
+        if not ok or not p.add_item(item):
+            self.msg(why if not ok else "Your pack is full.", "warn", to=p)
+            return FREE_COST
+        level.take_ground_item(p.x, p.y, item)
+        self.msg(f"You pick up {with_article(item.name(self.appearances))}.",
+                 "loot", to=p)
+        self.sound("pickup", p.x, p.y, level.depth)
+
+        slot = action.get("slot")
+        if slot:
+            if item.slot == slot or (item.slot in ("ring_left", "ring_right")
+                                     and slot in ("ring_left", "ring_right")):
+                self._act_equip(level, p, {"id": item.id, "slot": slot})
+            elif slot == "free_hand" and item.slot is None:
+                self._act_equip(level, p, {"id": item.id, "slot": slot})
+            elif p.equipment.get(slot) is not None:
+                self._act_stow(level, p, {"id": item.id, "slot": slot})
+
+        self.events.append({"t": "inv", "to": p.id})
+        return p.action_cost(PICKUP_COST) or PICKUP_COST
+
     def _act_drop(self, level, p, action):
         """Put something on the floor, from wherever it is.
 
@@ -2285,8 +2348,8 @@ class World:
             # What the original's general store had on the shelf: containers,
             # belts sized in slots, and the soft gear the armourer doesn't
             # bother with. No light sources - the original has none.
-            for key in ("pack", "sack", "purse", "belt", "belt3",
-                        "cloak", "boots"):
+            for key in ("pack", "packmed", "packlg", "sack", "purse", "belt",
+                        "belt3", "cloak", "boots"):
                 items.append(Item(key))
         elif shop == "magic":
             for key in ("potion_heal", "potion_mana", "scroll_map", "scroll_ident", "scroll_teleport"):
@@ -2675,6 +2738,7 @@ class World:
     def inventory_view(self, p):
         pack_w, pack_b = p.pack_load()
         max_w, max_b = p.pack_limits()
+        level = self.levels.get(p.depth)
         return {
             "items": [self.item_view(i) for i in p.inventory],
             "equipment": {slot: (self.item_view(i) if i else None)
@@ -2691,6 +2755,13 @@ class World:
             "stowed": {slot: [self.item_view(i)
                               for i in (getattr(p.equipment.get(slot), "contents", None) or [])]
                        for slot in ("waist", "quiver")},
+            # What is on the ground underfoot - the fourth container the
+            # original's inventory window shows alongside the body, the
+            # belt and the pack. Without this the window could offer no way
+            # to see, let alone reach, anything lying at your feet short of
+            # closing the window and pressing G blind.
+            "floor": [self.item_view(i) for i in level.items_at(p.x, p.y)]
+                     if level else [],
         }
 
     def item_view(self, item, shop=False):
