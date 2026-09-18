@@ -24,7 +24,7 @@ os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 
 import pygame                                                    # noqa: E402
 
-from tools.playtest import Session                                # noqa: E402
+from tools.playtest import Session, free_port                                # noqa: E402
 from tools import crawl as C                                      # noqa: E402
 
 SHIFT = pygame.KMOD_LSHIFT
@@ -66,7 +66,7 @@ COMMANDS = [
 
 
 def main():
-    s = Session(seed=11, port=9500, size=(1280, 800))
+    s = Session(seed=11, port=free_port(), size=(1280, 800))
     C.make_character(s, spell="Spark", difficulty="Intermediate")
     play = s.app.play
 

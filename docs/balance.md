@@ -135,3 +135,29 @@ dial, and it has real range. On floor 3, against the same knot, in the open:
     python3 tools/balance.py --bosses --trials 24
     python3 tools/balance.py --play --enchant 2
     python3 tools/campaign.py --all-parties --runs 2 --depth 8
+
+
+## Measured on 18 September 2026, after a pass of playing and fixing
+
+All of this came out of `tools/campaign.py`, which plays the keep through
+the real engine, and `tools/balance.py`. The numbers before the pass are in
+brackets.
+
+| What | Measured |
+|---|---|
+| Solo run, Intermediate, median over eight seeds | floor 4-6 (floor 1) |
+| Party of two, Easy | floor 11, one run to 16 |
+| Easy / Intermediate / Experts Only, same three seeds | floor 11 / 5 / 0 |
+| Creatures on floor one | 8 (13) |
+| Creatures on floor three | 11-19 (26) |
+| A healing potion | 212 copper (672) |
+| What a first floor yields | about 1400 copper |
+| Clearing floors 1..N leaves you | level N+1, which is what floor N+1 is stocked for |
+| One on one on floor one, in the starting kit | you win every time |
+| The last fight, level 20 with +1 gear and six potions | won every time |
+| The last fight, the same character with no potions | lost 49 times in 50 |
+| The last fight, level 14 in chain mail | lost every time |
+
+The shape that matters: the early floors were killing people by arithmetic
+rather than by any one creature, and the last fight is decided by whether
+you brought healing. Both are now what they should be.

@@ -24,12 +24,13 @@ os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 
 import pygame                                                   # noqa: E402
 
-from tools.playtest import Session                               # noqa: E402
+from tools.playtest import Session, free_port                               # noqa: E402
 from tools import crawl as C                                     # noqa: E402
 
 
 class Audit:
-    def __init__(self, seed=5, port=8920):
+    def __init__(self, seed=5, port=None):
+        port = port or free_port()
         self.s = Session(seed=seed, port=port, size=(1280, 800))
         C.make_character(self.s, spell="Spark", difficulty="Intermediate")
         p = self.s.me()
@@ -345,7 +346,7 @@ PLACES = ["play", "pack", "sheet", "spells",
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", default=None)
-    ap.add_argument("--port", type=int, default=8920)
+    ap.add_argument("--port", type=int, default=None)
     args = ap.parse_args()
 
     a = Audit(port=args.port)

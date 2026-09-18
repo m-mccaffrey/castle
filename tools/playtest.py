@@ -25,6 +25,20 @@ from stormhold.ui.app import App                                # noqa: E402
 SHOTS = os.environ.get("SHOTS", "/tmp/claude-0/shots")
 
 
+def free_port():
+    """A port nobody is listening on.
+
+    The tools used to hard-code one each. Two of them running at once - or
+    one left over from a previous run - and the second client connects to
+    the first one's game, lands on somebody else's menu, and fails with
+    something that looks nothing like a port clash.
+    """
+    import socket
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        return probe.getsockname()[1]
+
+
 class Session:
     def __init__(self, seed=4242, name="Tester", size=(1280, 800), port=7801):
         save = os.path.join(SHOTS, "party.json")

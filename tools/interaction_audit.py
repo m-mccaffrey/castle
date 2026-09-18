@@ -26,12 +26,13 @@ import pygame                                                    # noqa: E402
 from stormhold.common.constants import (SHOP_BUY_MARKUP,         # noqa: E402
                                         SHOP_SELL_RATE)
 from stormhold.game.items import Item                             # noqa: E402
-from tools.playtest import Session                                # noqa: E402
+from tools.playtest import Session, free_port                                # noqa: E402
 from tools import crawl as C                                      # noqa: E402
 
 
 class Bench:
-    def __init__(self, seed=5, port=9300):
+    def __init__(self, seed=5, port=None):
+        port = port or free_port()
         self.s = Session(seed=seed, port=port, size=(1280, 800))
         C.make_character(self.s, spell="Spark", difficulty="Intermediate")
         self.rows = []

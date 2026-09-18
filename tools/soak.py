@@ -40,7 +40,7 @@ os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 import pygame                                                     # noqa: E402
 
 from stormhold.game.items import Item                             # noqa: E402
-from tools.playtest import Session                                # noqa: E402
+from tools.playtest import Session, free_port                                # noqa: E402
 from tools import crawl as C                                      # noqa: E402
 
 
@@ -147,7 +147,8 @@ VERBS = [pygame.K_g, pygame.K_s, pygame.K_o, pygame.K_c, pygame.K_i,
 
 
 class Soak:
-    def __init__(self, seed, actions, verbose=False, port=9800):
+    def __init__(self, seed, actions, verbose=False, port=None):
+        port = port or free_port()
         self.rng = random.Random(seed)
         self.seed, self.actions, self.verbose = seed, actions, verbose
         self.s = Session(seed=seed, port=port, size=(1280, 800))
@@ -365,8 +366,9 @@ def main():
     for i, seed in enumerate(seeds):
         print(f"\n-- seed {seed}: {args.actions} actions "
               f"------------------------------")
-        base = args.port if args.port is not None else 9800 + os.getpid() % 300
-        soak = Soak(seed, args.actions, args.verbose, port=base + i)
+        base = args.port
+        soak = Soak(seed, args.actions, args.verbose,
+                    port=(base + i) if base else None)
         try:
             all_faults += soak.run()
             played += soak.done
