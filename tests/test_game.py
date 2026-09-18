@@ -1953,17 +1953,24 @@ class TestThingsCanActuallyBeUsed(unittest.TestCase):
         self.assertNotIn(self.potion, self.p.inventory)
 
     def test_a_belt_holds_only_as_many_things_as_it_has_slots(self):
+        """Potions stack in the pack, so this asks the belt for one at a
+        time the way the window does - and the belt still fills up."""
         from stormhold.game.items import Item
-        extras = []
         for _ in range(5):
             item = Item("potion_mana")
             item.known = True
             self.p.add_item(item)
-            extras.append(item)
-        for item in [self.potion] + extras:
-            self.act({"a": "stow", "id": item.id, "slot": "waist"})
+        self.act({"a": "stow", "id": self.potion.id, "slot": "waist"})
+        for _ in range(6):
+            stack = next((i for i in self.p.inventory
+                          if i.key == "potion_mana"), None)
+            if stack is None:
+                break
+            self.act({"a": "stow", "id": stack.id, "slot": "waist"})
         self.assertEqual(len(self.belt.contents),
                          self.belt.base["belt_slots"])
+        self.assertTrue(any(i.key == "potion_mana" for i in self.p.inventory),
+                        "the rest should still be in the pack")
 
     def test_you_can_take_it_back_off(self):
         self.act({"a": "stow", "id": self.potion.id, "slot": "waist"})

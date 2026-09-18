@@ -315,6 +315,15 @@ def visit(s, npc):
     return False
 
 
+def on_belt(p, use):
+    """Whatever is to hand with this use, if anything."""
+    belt = p.equipment.get("waist")
+    for item in (belt.contents if belt else []) or []:
+        if item.base.get("use") == use:
+            return item
+    return None
+
+
 def go_shopping(s, log=None):
     """Sell what the trades will take, then buy the best of what is left.
 
@@ -359,14 +368,33 @@ def go_shopping(s, log=None):
             # Healing first. Everything else is worth nothing to a corpse,
             # and an empty belt is what most of the bot's deaths were.
             def ranked(row_item):
+                """Healing first, then a spell, then the biggest upgrade.
+
+                This used to return the same number for every piece of gear,
+                so `min` picked whichever the shop happened to list first -
+                and with the staples at the head of the shelf the bot bought
+                a dagger, then a short sword, then a long sword, one after
+                another, and went down with no money and no armour.
+                """
                 _row, item = row_item
                 if item.base.get("use") == "heal":
-                    return 0
+                    return (0, 0)
                 if item.spell and item.spell not in p.spells:
-                    return 1
+                    return (1, 0)
                 if item.base.get("use") == "mana":
-                    return 2
-                return 3
+                    return (2, 0)
+                current = p.equipment.get(item.slot) if item.slot else None
+                if item.slot == "weapon":
+                    def swing(it):
+                        if it is None:
+                            return 2.0
+                        n, sides = it.damage()
+                        return ((n * (sides + 1) / 2 + it.enchant)
+                                / (it.base.get("speed", 100) / 100.0))
+                    gain = swing(item) - swing(current)
+                else:
+                    gain = item.ac() - (current.ac() if current else 0)
+                return (3, -gain)                # the biggest gain first
 
             have = ammunition(p)
             belt = p.equipment.get("waist")
@@ -388,9 +416,19 @@ def go_shopping(s, log=None):
             # Keep enough back for a healing potion until there is one on
             # the belt. Five weapons and no healing is how the bot used to
             # come out of town.
-            if room_on_belt and p.copper < 2000:
+            #
+            # It used to demand two thousand copper in hand, and a character
+            # starts with fifteen hundred - so a new one bought nothing at
+            # the smith or the armourer at all and went down the stairs in
+            # its starting kit with a dagger. Reserve the price of a couple
+            # of potions instead of a flat fortune.
+            healing = [i for i in world.stock_for("magic")
+                       if i.base.get("use") == "heal"]
+            reserve = 2 * min([world.shop_price(i) for i in healing] or [250])
+            if room_on_belt and not on_belt(p, "heal"):
                 shelf = [row_item for row_item in shelf
-                         if row_item[1].base.get("use") == "heal"]
+                         if row_item[1].base.get("use") == "heal"
+                         or p.copper - row_item[0]["price"] >= reserve]
             if shelf:
                 wanted = min(shelf, key=ranked)
             if wanted is None:

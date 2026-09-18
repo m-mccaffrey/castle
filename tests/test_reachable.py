@@ -616,3 +616,84 @@ class TestNanSaysWhatSheWillPay(unittest.TestCase):
         world.do_player_action(world.levels[p.depth], p,
                                {"a": "sell", "shop": "junk", "id": sword.id})
         self.assertEqual(p.copper - before, row["price"])
+
+
+class TestBuyingOneOutOfALot(unittest.TestCase):
+    """The magic shop stocks potions in twos. One drag buys one potion, so
+    one potion is what the window must quote and what the till must charge -
+    and what the shop must decide affordability on.
+
+    All three disagreed: the shelf said 425 for the pair, the till took 212,
+    and a customer with 300 copper was turned away from a potion they could
+    afford. That last one is why a new character went down the stairs with
+    nothing to drink.
+    """
+
+    def setUp(self):
+        self.world = World(seed=8)
+        self.p = self.world.add_player("Buyer")
+        self.level = self.world.levels[self.p.depth]
+
+    def lot(self):
+        stock = self.world.stock_for("magic")
+        return next(i for i in stock if i.stackable and i.qty > 1)
+
+    def test_the_window_quotes_the_price_of_one(self):
+        lot = self.lot()
+        row = next(r for r in self.world.shop_view(self.p, "magic", 1, "M")["stock"]
+                   if r["id"] == lot.id)
+        self.assertEqual(row["price"], self.world.shop_price(Item(lot.key, qty=1)))
+
+    def test_you_are_charged_what_you_were_quoted(self):
+        lot = self.lot()
+        row = next(r for r in self.world.shop_view(self.p, "magic", 1, "M")["stock"]
+                   if r["id"] == lot.id)
+        self.p.copper = row["price"] + 5
+        before = self.p.copper
+        self.world.do_player_action(self.level, self.p,
+                                    {"a": "buy", "shop": "magic", "id": lot.id})
+        self.assertEqual(before - self.p.copper, row["price"])
+
+    def test_one_is_what_arrives_and_the_shelf_keeps_the_rest(self):
+        lot = self.lot()
+        was = lot.qty
+        self.p.copper = 9999
+        self.world.do_player_action(self.level, self.p,
+                                    {"a": "buy", "shop": "magic", "id": lot.id})
+        self.assertEqual(lot.qty, was - 1)
+        self.assertEqual(sum(i.qty for i in self.p.inventory if i.key == lot.key), 1)
+
+    def test_enough_for_one_is_enough(self):
+        lot = self.lot()
+        row = next(r for r in self.world.shop_view(self.p, "magic", 1, "M")["stock"]
+                   if r["id"] == lot.id)
+        self.p.copper = row["price"]
+        self.world.do_player_action(self.level, self.p,
+                                    {"a": "buy", "shop": "magic", "id": lot.id})
+        self.assertTrue([i for i in self.p.inventory if i.key == lot.key],
+                        "turned away from something they could afford")
+
+
+class TestAStackCanBeReachedForOneAtATime(unittest.TestCase):
+    """A belt slot takes one potion. Weighing the whole armful against it
+    meant a stack of six could not be put on a belt at all, so a character
+    carrying plenty had none of it to hand.
+    """
+
+    def test_a_stack_fills_the_belt_one_slot_at_a_time(self):
+        world = World(seed=5)
+        p = world.add_player("Drinker")
+        belt = Item("belt3")
+        p.equipment["waist"] = belt
+        for _ in range(6):
+            potion = Item("potion_mana")
+            potion.known = True
+            p.add_item(potion)
+        for _ in range(6):
+            stack = next((i for i in p.inventory if i.key == "potion_mana"), None)
+            if stack is None:
+                break
+            world.do_player_action(world.levels[p.depth], p,
+                                   {"a": "stow", "id": stack.id, "slot": "waist"})
+        self.assertEqual(len(belt.contents), belt.base["belt_slots"])
+        self.assertTrue(all(i.qty == 1 for i in belt.contents))

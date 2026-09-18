@@ -1925,9 +1925,14 @@ class World:
             self.msg(f"The {holder.name(self.appearances)} is full.",
                      "warn", to=p)
             return FREE_COST
-        if (sum(i.weight for i in holder.contents) + item.weight
+        # One goes on the belt, so weigh one - not the six in your pack.
+        # Weighing the lot meant a stack of potions could never be reached
+        # for at all: the belt refused the whole armful and you drank none
+        # of it.
+        unit = self.unit_of(item)
+        if (sum(i.weight for i in holder.contents) + unit.weight
                 > holder.base.get("capacity", 0)
-                or sum(i.bulk for i in holder.contents) + item.bulk
+                or sum(i.bulk for i in holder.contents) + unit.bulk
                 > holder.base.get("bulk_capacity", 0)):
             self.msg(f"That will not fit in the "
                      f"{holder.name(self.appearances)}.", "warn", to=p)
@@ -2193,20 +2198,35 @@ class World:
         depth = max(1, self.party_deepest)
         items = []
 
+        # The staples are always on the shelf. A shuffled pool of seven can
+        # leave a trade with nothing basic in it, and a character who cannot
+        # buy a sword or a coat before going down is finished before the
+        # first floor: one run in three ended with a dagger and no armour
+        # because of what the dice did in town.
         if shop == "weaponsmith":
+            for key in ("dagger", "shortsword", "longsword"):
+                staple = Item(key)
+                staple.known = True
+                items.append(staple)
             pool = [k for k, b in BASES.items()
-                    if b.get("slot") == "weapon" and b.get("depth", 0) <= depth + 2]
+                    if b.get("slot") == "weapon" and b.get("depth", 0) <= depth + 2
+                    and k not in ("dagger", "shortsword", "longsword")]
             rng.shuffle(pool)
-            for key in pool[:7]:
+            for key in pool[:5]:
                 it = Item(key, enchant=1 if rng.random() < 0.25 else 0)
                 it.known = True
                 items.append(it)
         elif shop == "armourer":
+            for key in ("cap", "leather", "buckler"):
+                staple = Item(key)
+                staple.known = True
+                items.append(staple)
             pool = [k for k, b in BASES.items()
                     if b.get("slot") in ("torso", "head", "shield", "arms", "feet", "legs", "back", "waist")
-                    and b.get("depth", 0) <= depth + 2]
+                    and b.get("depth", 0) <= depth + 2
+                    and k not in ("cap", "leather", "buckler")]
             rng.shuffle(pool)
-            for key in pool[:8]:
+            for key in pool[:6]:
                 it = Item(key, enchant=1 if rng.random() < 0.2 else 0)
                 it.known = True
                 items.append(it)
@@ -2302,6 +2322,15 @@ class World:
             return "We don't buy those..."
         return None
 
+    @staticmethod
+    def unit_of(item):
+        """One of whatever this is: a lot of three potions sells singly."""
+        if item.stackable and item.qty > 1:
+            one = Item(item.key, qty=1)
+            one.known = item.known
+            return one
+        return item
+
     def sell_offer(self, shop, item):
         """What a shop will actually hand over for something.
 
@@ -2328,18 +2357,24 @@ class World:
         if item is None:
             self.msg("That is not on the shelf.", "warn", to=p)
             return FREE_COST
-        price = self.shop_price(item)
-        if p.copper < price:
-            self.msg("You don't have enough money!", "warn", to=p)
-            return FREE_COST
+        # Work out what is actually leaving the shelf before pricing it. One
+        # drag out of a stack of two potions buys one potion, so the lot's
+        # price is neither what you are charged nor what you should be
+        # refused on: with 300 copper and a 425 lot of two, the shop turned
+        # away a customer who could afford a potion, and when it did sell it
+        # quoted 425 and took 212.
         take = item
         if item.stackable and item.qty > 1:
             take = Item(item.key, qty=1)
             take.known = True
-            price = self.shop_price(take)
-            item.qty -= 1
-        else:
+        price = self.shop_price(take)
+        if p.copper < price:
+            self.msg("You don't have enough money!", "warn", to=p)
+            return FREE_COST
+        if take is item:
             stock.remove(item)
+        else:
+            item.qty -= 1
         ok, why = p.room_for(take)
         if not ok:
             self.msg(why, "warn", to=p)
@@ -2623,7 +2658,10 @@ class World:
         stock = self.stock_for(shop)
         return {
             "shop": shop, "npc": npc_id, "name": name,
-            "stock": [dict(self.item_view(i, shop=True), price=self.shop_price(i)) for i in stock],
+            # The price of one, because one is what a drag buys.
+            "stock": [dict(self.item_view(i, shop=True),
+                           price=self.shop_price(self.unit_of(i)))
+                      for i in stock],
             # Each row carries the refusal as well as the price, so the
             # window can say "We don't buy those..." at the moment you drag
             # the thing in, rather than offering you 960 copper for a sword

@@ -97,25 +97,25 @@ BASES = {
     "amulet_doom":   dict(name="Amulet of Doom", slot="neck", icon="amulet", bulk=1800, wt=225, value=10, depth=4, kind="amulet", ac=-12, cursed=True),
 
     # ---- potions (appearance shuffled per world) -------------------------
-    "potion_heal":    dict(name="Potion of Healing", icon="potion_red", bulk=3600, wt=675, value=60, depth=0, kind="potion", use="heal", power=30),
-    "potion_heal2":   dict(name="Potion of Great Healing", icon="potion_red", bulk=3600, wt=675, value=180, depth=7, kind="potion", use="heal", power=90),
-    "potion_mana":    dict(name="Potion of Mana", icon="potion_blue", bulk=3600, wt=675, value=70, depth=1, kind="potion", use="mana", power=30),
-    "potion_speed":   dict(name="Potion of Quickness", icon="potion_green", bulk=3600, wt=675, value=140, depth=4, kind="potion", use="haste", power=40),
-    "potion_might":   dict(name="Potion of Giant Strength", icon="potion_yellow", bulk=3600, wt=675, value=160, depth=5, kind="potion", use="might", power=40),
-    "potion_cure":    dict(name="Potion of Cleansing", icon="potion_clear", bulk=3600, wt=675, value=90, depth=3, kind="potion", use="cure"),
-    "potion_sight":   dict(name="Potion of True Sight", icon="potion_purple", bulk=3600, wt=675, value=110, depth=4, kind="potion", use="sight", power=60),
-    "potion_float":   dict(name="Potion of Levitation", icon="potion_clear", bulk=3600, wt=675, value=120, depth=3, kind="potion", use="levitate", power=50),
-    "potion_poison":  dict(name="Draught of Sickness", icon="potion_green", bulk=3600, wt=675, value=10, depth=2, kind="potion", use="poison", power=12, bad=True),
+    "potion_heal":    dict(name="Potion of Healing", icon="potion_red", bulk=3600, wt=675, value=19, depth=0, kind="potion", use="heal", power=30, stack=True),
+    "potion_heal2":   dict(name="Potion of Great Healing", icon="potion_red", bulk=3600, wt=675, value=75, depth=7, kind="potion", use="heal", power=90, stack=True),
+    "potion_mana":    dict(name="Potion of Mana", icon="potion_blue", bulk=3600, wt=675, value=22, depth=1, kind="potion", use="mana", power=30, stack=True),
+    "potion_speed":   dict(name="Potion of Quickness", icon="potion_green", bulk=3600, wt=675, value=63, depth=4, kind="potion", use="haste", power=40, stack=True),
+    "potion_might":   dict(name="Potion of Giant Strength", icon="potion_yellow", bulk=3600, wt=675, value=69, depth=5, kind="potion", use="might", power=40, stack=True),
+    "potion_cure":    dict(name="Potion of Cleansing", icon="potion_clear", bulk=3600, wt=675, value=38, depth=3, kind="potion", use="cure", stack=True),
+    "potion_sight":   dict(name="Potion of True Sight", icon="potion_purple", bulk=3600, wt=675, value=50, depth=4, kind="potion", use="sight", power=60, stack=True),
+    "potion_float":   dict(name="Potion of Levitation", icon="potion_clear", bulk=3600, wt=675, value=44, depth=3, kind="potion", use="levitate", power=50, stack=True),
+    "potion_poison":  dict(name="Draught of Sickness", icon="potion_green", bulk=3600, wt=675, value=10, depth=2, kind="potion", use="poison", power=12, bad=True, stack=True),
 
     # ---- scrolls (title shuffled per world) ------------------------------
-    "scroll_map":     dict(name="Scroll of Cartography", icon="scroll", bulk=1800, wt=135, value=90, depth=1, kind="scroll", use="map"),
-    "scroll_ident":   dict(name="Scroll of Revelation", icon="scroll", bulk=1800, wt=135, value=120, depth=2, kind="scroll", use="identify"),
-    "scroll_teleport": dict(name="Scroll of Recall", icon="scroll", bulk=1800, wt=135, value=180, depth=3, kind="scroll", use="recall"),
-    "scroll_blink":   dict(name="Scroll of Blinking", icon="scroll", bulk=1800, wt=135, value=100, depth=2, kind="scroll", use="blink"),
-    "scroll_uncurse": dict(name="Scroll of Unbinding", icon="scroll", bulk=1800, wt=135, value=200, depth=5, kind="scroll", use="uncurse"),
-    "scroll_enchant": dict(name="Scroll of Enchantment", icon="scroll", bulk=1800, wt=135, value=400, depth=6, kind="scroll", use="enchant"),
-    "scroll_fire":    dict(name="Scroll of Conflagration", icon="scroll", bulk=1800, wt=135, value=220, depth=5, kind="scroll", use="firestorm", power=28),
-    "scroll_fear":    dict(name="Scroll of Terror", icon="scroll", bulk=1800, wt=135, value=150, depth=4, kind="scroll", use="fear"),
+    "scroll_map":     dict(name="Scroll of Cartography", icon="scroll", bulk=1800, wt=135, value=38, depth=1, kind="scroll", use="map", stack=True),
+    "scroll_ident":   dict(name="Scroll of Revelation", icon="scroll", bulk=1800, wt=135, value=50, depth=2, kind="scroll", use="identify", stack=True),
+    "scroll_teleport": dict(name="Scroll of Recall", icon="scroll", bulk=1800, wt=135, value=75, depth=3, kind="scroll", use="recall", stack=True),
+    "scroll_blink":   dict(name="Scroll of Blinking", icon="scroll", bulk=1800, wt=135, value=44, depth=2, kind="scroll", use="blink", stack=True),
+    "scroll_uncurse": dict(name="Scroll of Unbinding", icon="scroll", bulk=1800, wt=135, value=88, depth=5, kind="scroll", use="uncurse", stack=True),
+    "scroll_enchant": dict(name="Scroll of Enchantment", icon="scroll", bulk=1800, wt=135, value=188, depth=6, kind="scroll", use="enchant", stack=True),
+    "scroll_fire":    dict(name="Scroll of Conflagration", icon="scroll", bulk=1800, wt=135, value=100, depth=5, kind="scroll", use="firestorm", power=28, stack=True),
+    "scroll_fear":    dict(name="Scroll of Terror", icon="scroll", bulk=1800, wt=135, value=63, depth=4, kind="scroll", use="fear", stack=True),
 
     # ---- tomes -----------------------------------------------------------
     # One base for every spell book. Which spell a book teaches lives on the

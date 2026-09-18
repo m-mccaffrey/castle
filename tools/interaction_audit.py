@@ -167,9 +167,15 @@ class Bench:
             if sc is None:
                 self.note("price", f"{shop}: no such shop in town", False)
                 continue
-            bad = [(i["name"], i["price"], max(1, int(i["value"] * SHOP_BUY_MARKUP)))
-                   for i in sc.stock()
-                   if i["price"] != max(1, int(i["value"] * SHOP_BUY_MARKUP))]
+            # A lot of two potions is priced per potion, because one drag
+            # buys one potion. So the rule is checked against the value of
+            # one of whatever is on the shelf.
+            def unit_price(row):
+                value = row["value"] // max(1, row.get("qty", 1))
+                return max(1, int(value * SHOP_BUY_MARKUP))
+
+            bad = [(i["name"], i["price"], unit_price(i))
+                   for i in sc.stock() if i["price"] != unit_price(i)]
             self.note("price", f"{shop}: {len(sc.stock())} prices are 1.4x base",
                       not bad, "" if not bad else str(bad[:3]))
             bad = [(r["name"], r["price"]) for r in sc.data.get("sell", [])

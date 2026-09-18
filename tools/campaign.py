@@ -393,8 +393,14 @@ def decide(world, level, p, looting=True):
     # The engine refuses to rest with anything in sight within eight squares,
     # so asking on any looser test just burns the turn on a refusal.
     if not combat.enemies_in_sight(world, level, p, 8):
-        if p.hp < p.max_hp * 0.95 or p.mana < p.max_mana * 0.7:
+        # Rest is for wounds and sleep is for mana - two commands with two
+        # conditions, as the original has them. Asking to rest with full hit
+        # points is refused, the refusal is free, and the bot asks again:
+        # six thousand actions on one floor, no deaths, no progress.
+        if p.hp < p.max_hp * 0.95:
             return {"a": "rest"}
+        if p.mana < p.max_mana * 0.7:
+            return {"a": "sleep"}
 
     # --- getting out of a fight we are losing ------------------------------
     if foes and p.hp < p.max_hp * 0.35 and on_belt(p, "heal") is None:
