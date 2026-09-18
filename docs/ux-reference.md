@@ -20,7 +20,7 @@ cover them:
 | --- | --- |
 | Get | Pick up what is underfoot. |
 | Examine | Look at something without touching it. |
-| Free Hand | Read as "(put one item into free hand)" in the manual - our own gloss below it, "put your weapon away so a hand is free", was a guess made before the inventory window was measured and is likely wrong; see the Free Hand slot below. The verb's own trigger (what it acts on, and from where) is still unconfirmed, so we have not changed what the `f` key and the Free Hand button currently do. |
+| Free Hand | "(put one item into free hand)" in the manual. Takes whatever is on the ground underfoot and holds it in the Free Hand slot below, if that hand is not already full and the thing is not itself wearable (which Get is for). Our first reading of this verb, "put your weapon away", was a guess made before the inventory window had been measured at all, and wrong; corrected once the Free Hand slot itself was found. |
 | Search | Take a turn looking for traps and hidden doors. |
 | Disarm Trap | Defuse a trap you have already found. |
 | Rest Until Healed | Sit until health is restored or something interrupts. |

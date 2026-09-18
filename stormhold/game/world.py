@@ -827,14 +827,36 @@ class World:
         return p.action_cost(REST_COST) or REST_COST
 
     def _act_freehand(self, level, p, action):
-        """Put your weapon away, so you have a hand free."""
-        if p.equipment.get("weapon") is None:
-            self.msg("Your hands are already empty.", "info", to=p)
+        """"Free Hand Command (put one item into free hand)": take whatever
+        is on the ground underfoot and hold it, if the hand is free.
+
+        This used to put the weapon away instead - a guess made before the
+        original's inventory window had been measured at all, and wrong:
+        the manual's own words are "put one item into free hand", which is
+        naming the slot beside the weapon, not the weapon slot itself.
+        """
+        pile = level.items_at(p.x, p.y)
+        if not pile:
+            self.msg("There is nothing here to hold.", "info", to=p)
             return FREE_COST
-        ok, message = p.unequip("weapon")
-        self.msg(message, "info" if ok else "warn", to=p)
+        item = pile[0]
+        if item.slot is not None or item.kind == "coins":
+            # Properly wearable, or money - Get is the command for those.
+            self.msg(f"{item.name(self.appearances)} does not go in a "
+                     f"free hand.", "info", to=p)
+            return FREE_COST
+        if p.equipment.get("free_hand") is not None:
+            self.msg("Your free hand is already full.", "warn", to=p)
+            return FREE_COST
+        level.take_ground_item(p.x, p.y, item)
+        ok, message = p.equip(item, prefer_slot="free_hand")
+        if not ok:
+            level.add_ground_item(p.x, p.y, item)
+            self.msg(message, "warn", to=p)
+            return FREE_COST
+        self.msg(message, "good", to=p)
         self.events.append({"t": "inv", "to": p.id})
-        return (p.action_cost(EQUIP_COST) or EQUIP_COST) if ok else FREE_COST
+        return p.action_cost(EQUIP_COST) or EQUIP_COST
 
     def _act_rest(self, level, p, action):
         """Sit still until you are mended, or until something interrupts."""

@@ -57,7 +57,7 @@ CASES = [
      lambda w, p, l: {"a": "equip", "id": p.inventory[-1].id, "slot": "head"}),
     ("unequip", lambda w, p, l: p.equipment.__setitem__("head", Item("helm")),
      lambda w, p, l: {"a": "unequip", "slot": "head"}),
-    ("free hand", lambda w, p, l: p.equipment.__setitem__("weapon", Item("dagger")),
+    ("free hand", lambda w, p, l: l.add_ground_item(p.x, p.y, Item("potion_heal")),
      lambda w, p, l: {"a": "freehand"}),
     ("stow", lambda w, p, l: (p.equipment.__setitem__("waist", Item("belt3")),
                               p.add_item(Item("potion_heal"))),

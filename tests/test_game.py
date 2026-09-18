@@ -484,12 +484,37 @@ class TestVerbs(unittest.TestCase):
         world.submit(p, {"a": "close"})
         self.assertEqual(level.get(*spot), T.DOOR_OPEN, "closed a door on a creature")
 
-    def test_free_hand_puts_the_weapon_away(self):
+    def test_free_hand_holds_what_is_on_the_ground(self):
+        """"Free Hand Command (put one item into free hand)" - not, as an
+        earlier reading of the manual guessed, putting the weapon away."""
+        from stormhold.game.items import Item
         world, p, level = self.descend()
-        self.assertIsNotNone(p.equipment.get("weapon"))
+        potion = Item("potion_heal")
+        level.add_ground_item(p.x, p.y, potion)
+        self.assertIsNone(p.equipment.get("free_hand"))
         world.submit(p, {"a": "freehand"})
-        self.assertIsNone(p.equipment.get("weapon"))
-        self.assertTrue(any(i.slot == "weapon" for i in p.inventory))
+        self.assertIs(p.equipment.get("free_hand"), potion)
+        self.assertNotIn(potion, level.items_at(p.x, p.y))
+
+    def test_free_hand_leaves_a_wearable_thing_for_get(self):
+        from stormhold.game.items import Item
+        world, p, level = self.descend()
+        sword = Item("shortsword")
+        level.add_ground_item(p.x, p.y, sword)
+        world.submit(p, {"a": "freehand"})
+        self.assertIsNone(p.equipment.get("free_hand"))
+        self.assertIn(sword, level.items_at(p.x, p.y))
+
+    def test_free_hand_refuses_when_already_full(self):
+        from stormhold.game.items import Item
+        world, p, level = self.descend()
+        held = Item("potion_mana")
+        p.equip(held, prefer_slot="free_hand")
+        on_ground = Item("potion_heal")
+        level.add_ground_item(p.x, p.y, on_ground)
+        world.submit(p, {"a": "freehand"})
+        self.assertIs(p.equipment.get("free_hand"), held)
+        self.assertIn(on_ground, level.items_at(p.x, p.y))
 
     def test_examine_costs_no_time(self):
         world, p, level = self.descend()
