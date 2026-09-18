@@ -2206,10 +2206,17 @@ class TestTheTwoMissingDivinations(unittest.TestCase):
         self.level = self.world.levels[6]
 
     def cast(self, name):
+        """Cast and let it land, whether or not the spell is the
+        interruptible, thirty-second kind that only starts here and
+        resolves later once nothing has broken it."""
         self.p.mana = self.p.max_mana
         self.world.events.clear()
         self.world.do_player_action(self.level, self.p,
                                     {"a": "cast", "spell": name})
+        if self.p.casting:
+            cast = self.p.casting
+            self.p.casting = None
+            self.world.finish_cast(self.level, self.p, cast)
         return [e["text"] for e in self.world.events if e["t"] == "msg"]
 
     def test_both_are_in_the_book(self):
@@ -2257,6 +2264,83 @@ class TestTheTwoMissingDivinations(unittest.TestCase):
         memory = self.world.memory_for(self.p, self.level)
         floor = sum(1 for t in self.level.tiles if t != T.VOID)
         self.assertLess(sum(1 for b in memory if b), floor)
+
+
+class TestInterruptibleCasting(unittest.TestCase):
+    """"This spell can be interrupted" - the original marks it on every
+    spell of thirty seconds or more, which SPELLS already flagged
+    (`interruptible`) without anything ever reading the flag: a character
+    deep in a one-minute Identify could be hit over and over and the spell
+    still landed right on schedule, mana and all.
+    """
+
+    def setUp(self):
+        from stormhold.game.world import World
+        self.world = World(seed=5)
+        self.p = self.world.add_player("Adept", spell="Spark")
+        self.p.level = 12
+        self.p.stats = {k: 16 for k in self.p.stats}
+        self.p.recalc()
+        self.p.mana = self.p.max_mana
+        self.p.hp = self.p.max_hp
+        self.p.spells |= {"Detect Traps"}
+        self.world.move_player_to(self.p, 6)
+        self.level = self.world.levels[6]
+
+    def test_starting_a_long_cast_does_not_resolve_it_on_the_spot(self):
+        spot = (self.p.x + 2, self.p.y)
+        self.level.traps[spot] = {"kind": "pit", "found": False, "armed": True}
+        before_mana = self.p.mana
+        self.world.do_player_action(self.level, self.p,
+                                    {"a": "cast", "spell": "Detect Traps"})
+        self.assertIsNotNone(self.p.casting, "a thirty-second spell must not fire instantly")
+        self.assertFalse(self.level.traps[spot]["found"],
+                         "the trap was found before the casting time was up")
+        self.assertLess(self.p.mana, before_mana, "mana is spent when casting begins")
+
+    def test_an_uninterrupted_cast_resolves_once_its_time_is_up(self):
+        """No monster on this floor to break it - so world.submit alone
+        (which runs the scheduler, not just one action) should carry the
+        cast all the way from start to the trap actually being found."""
+        spot = (self.p.x + 2, self.p.y)
+        self.level.traps[spot] = {"kind": "pit", "found": False, "armed": True}
+        self.world.submit(self.p, {"a": "cast", "spell": "Detect Traps"})
+        self.assertIsNone(self.p.casting, "the cast should have finished by now")
+        self.assertTrue(self.level.traps[spot]["found"])
+
+    def test_a_blow_during_a_long_cast_breaks_it(self):
+        """The spell is lost, the mana stays spent, and you are free to
+        act again at once rather than standing frozen for whatever was
+        left of the original thirty seconds."""
+        spot = (self.p.x + 2, self.p.y)
+        self.level.traps[spot] = {"kind": "pit", "found": False, "armed": True}
+        m = make_monster("orc", self.p.x - 1, self.p.y, 6, random.Random(3))
+        m.hp = m.max_hp = 200          # plenty of swings within the cast time
+        level = self.level
+        level.place(m)
+        m.target_id = self.p.id
+        m.last_seen = (self.p.x, self.p.y)
+        before_mana = self.p.mana
+        self.world.submit(self.p, {"a": "cast", "spell": "Detect Traps"})
+        self.assertIsNone(self.p.casting, "the interrupted cast must not stay pending forever")
+        self.assertFalse(self.level.traps[spot]["found"],
+                         "an interrupted cast must not still go off")
+        self.assertLess(self.p.mana, before_mana,
+                        "the mana spent starting the cast is not refunded")
+        self.assertIn("breaks your concentration",
+                      " ".join(e["text"] for e in self.world.events if e["t"] == "msg"))
+
+    def test_a_short_spell_still_resolves_at_once(self):
+        """Spark is not one of the flagged ones - nothing about this
+        changes for the ordinary, instant spells."""
+        m = make_monster("cave_rat", self.p.x + 2, self.p.y, 6, random.Random(1))
+        self.level.place(m)
+        before_hp = m.hp
+        self.world.do_player_action(self.level, self.p,
+                                    {"a": "cast", "spell": "Spark",
+                                     "x": m.x, "y": m.y})
+        self.assertIsNone(self.p.casting)
+        self.assertLess(m.hp, before_hp)
 
 
 class TestEveryBlowIsNarrated(unittest.TestCase):

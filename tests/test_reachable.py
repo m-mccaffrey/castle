@@ -51,6 +51,14 @@ class TestNothingIsSpentBeforeYouHaveChosen(unittest.TestCase):
         self.world.do_player_action(self.level, self.p,
                                     {"a": "cast", "spell": "Revelation",
                                      "target": ring.id})
+        # Revelation is one of the original's "this spell can be
+        # interrupted" spells - a full minute of casting - so this only
+        # starts it; nothing here breaks the caster's concentration, so
+        # let it land the way finish_cast would once the minute was up.
+        self.assertTrue(self.p.casting, "a one-minute spell must not resolve instantly")
+        cast = self.p.casting
+        self.p.casting = None
+        self.world.finish_cast(self.level, self.p, cast)
         self.assertTrue(ring.known)
         self.assertLess(self.p.mana, 80)
 

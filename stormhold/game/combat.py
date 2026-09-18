@@ -4,7 +4,7 @@ Armour class is the one defensive number: it decides whether a blow lands at
 all, not how much it hurts. A well-armoured character is missed, not chipped.
 """
 
-from ..common.constants import chebyshev
+from ..common.constants import chebyshev, MOVE_COST
 
 
 # Armour value is a chance to avoid a telling blow, not a damage soak: "A high
@@ -121,6 +121,19 @@ def apply_damage(world, target, amount, source=None, crit=False,
         # Being struck wakes you from anything, sleep included.
         target.resting = False
         world.msg("You are woken by the blow!", "bad", to=target)
+    if getattr(target, "casting", None):
+        # "This spell can be interrupted" - the original marks every spell
+        # of 30 seconds or more that way, and nothing before this ever
+        # enforced it: a character deep in a one-minute Revelation could be
+        # struck over and over and the spell would still go off exactly as
+        # planned. The mana already spent stays spent; the spell itself
+        # does not happen, and the blow that broke it is why you are free
+        # to act again immediately rather than standing frozen for
+        # whatever was left of the original casting time.
+        target.casting = None
+        target.next_at = world.clock_for(target.depth) + MOVE_COST
+        world.msg("The blow breaks your concentration. The spell is lost!",
+                 "bad", to=target)
     target.hp -= amount
     world.float_text(target.x, target.y, target.depth, str(amount),
                      "crit" if crit else ("hurt" if target.kind == "player" else "damage"))

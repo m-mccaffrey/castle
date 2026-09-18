@@ -98,6 +98,7 @@ class Player(Actor):
         self.idle_noted = False
         self.elapsed = 0            # this character's own clock, in ticks
         self.resting = False
+        self.casting = None         # {"spell", "x", "y", "action", "ready_at"}
 
         self.recalc()
         self.hp = self.max_hp

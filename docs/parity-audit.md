@@ -76,7 +76,7 @@ to agree, and every test we had asked one question about one function.
 | Elements: a creature resists its own, fears its opposite | done |
 | Immunity: some creatures take nothing from an element | done |
 | Casting time by class - 5s, 30s detection, 60s identify | done |
-| Slow spells are interruptible | partial - flagged, not enforced |
+| Slow spells are interruptible | **fixed** - SPELLS already carried the `interruptible` flag (everything 30 seconds or more: Detect Life, Cartography, Revelation, Clairvoyance, Detect Traps, Treasure Sense, True Sight), set and never once read. Casting one of these now spends the mana and the busy period up front but defers the actual effect - the resolution that used to happen in the same call it started in - to the moment that busy period runs out, the way `_act_rest`'s own open-ended continuation already worked. A blow landing before then (combat.apply_damage) cancels it: the mana stays spent, the spell is lost, and the caster is free to act again at once rather than standing frozen for whatever was left of the original casting time. On an empty floor nothing can interrupt it anyway, so it still resolves in the same turn it was cast, same as resting does when nothing is hunting you. |
 | Overdrawing mana costs hit points | done |
 | Mana cost falls as you outgrow a spell, rises above your level | done |
 | Spells are bought as books, not only chosen at creation | partial |

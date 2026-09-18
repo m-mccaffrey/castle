@@ -323,7 +323,8 @@ class World:
             for a in list(level.actors.values()):
                 if a.dead or a.kind == "npc":
                     continue
-                if a.kind == "player" and a.pending is None and not a.resting:
+                if (a.kind == "player" and a.pending is None and not a.resting
+                        and not a.casting):
                     if threatened:
                         if blocked is None or a.next_at < blocked.next_at:
                             blocked = a
@@ -408,6 +409,16 @@ class World:
     def act(self, level, actor):
         if actor.kind == "monster":
             return ai.take_turn(self, level, actor)
+        if actor.kind == "player" and actor.casting and actor.pending is None:
+            # The busy period a long cast costs was already charged in full
+            # when it began; this is just the far end of it, reached
+            # without anything having broken the caster's concentration
+            # along the way (apply_damage clears `casting` the moment
+            # something does).
+            cast = actor.casting
+            actor.casting = None
+            self.finish_cast(level, actor, cast)
+            return FREE_COST
         if actor.kind == "player" and actor.resting and actor.pending is None:
             # Carry on resting without being asked, until healed or disturbed.
             for_mana = actor.resting == "mana"
@@ -1523,7 +1534,33 @@ class World:
             if p.hp <= 0:
                 self.kill(p)
                 return p.action_cost(spell.get("cast_ticks", CAST_COST))
+
+        cast_ticks = spell.get("cast_ticks", CAST_COST)
+        if spell.get("interruptible"):
+            # "This spell can be interrupted" - everything the original
+            # marks at 30 seconds or more (detection, Identify, Remove
+            # Curse). The mana is already spent above; what happens next
+            # only actually happens once the busy period it buys runs out
+            # untouched - see finish_cast, and the interruption itself in
+            # combat.apply_damage.
+            self.msg(f"You begin casting {name}.", "info", to=p)
+            p.casting = {"name": name, "spell": spell, "tx": tx, "ty": ty,
+                        "action": action,
+                        "ready_at": level.clock + cast_ticks}
+            return p.action_cost(cast_ticks) or cast_ticks
+
+        self.resolve_cast(level, p, name, spell, tx, ty, action)
+        return p.action_cost(cast_ticks) or cast_ticks
+
+    def finish_cast(self, level, p, cast):
+        """Where an interruptible cast's busy period lands, if nothing
+        broke the caster's concentration first."""
+        self.resolve_cast(level, p, cast["name"], cast["spell"], cast["tx"],
+                          cast["ty"], cast["action"])
+
+    def resolve_cast(self, level, p, name, spell, tx, ty, action):
         now = level.clock
+        rng_limit = spell.get("rng", 0)
         self.sound("magic", p.x, p.y, level.depth)
         power = p.level
 
@@ -1812,7 +1849,6 @@ class World:
                     self.move_player_to(ally, TOWN_DEPTH)
 
         p.recalc()
-        return p.action_cost(spell.get("cast_ticks", CAST_COST)) or CAST_COST
 
     # ---- stairs ----------------------------------------------------------
     # Drinking and sitting: "can have beneficial or harmful effects, or may do
