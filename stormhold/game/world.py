@@ -526,8 +526,11 @@ class World:
             if worn is not None and item in getattr(worn, "contents", []):
                 return True
         # equipping something out of the pack is always allowed; it is only
-        # activation that the belt gates
-        return bool(item.slot)
+        # activation that the belt gates. A wand fills the weapon slot but
+        # is not just equip-and-forget: Use zaps it rather than wielding it,
+        # so it needs the same "on your person" rule a potion or scroll
+        # gets, not the free pass every other weapon has for being put on.
+        return bool(item.slot) and item.kind != "wand"
 
     def recharge_items(self, p):
         """Charged items come back on a clock: "(Once every N hours)"."""
@@ -1236,12 +1239,77 @@ class World:
             return self.quaff(level, p, item)
         if kind == "scroll":
             return self.read_scroll(level, p, item, action)
+        if kind == "wand":
+            return self.zap_wand(level, p, item, action)
         if item.spell:
             return self.read_book(level, p, item)
         if item.slot:
             return self._act_equip(level, p, {"id": item.id})
         self.msg("You are not sure what to do with that.", "info", to=p)
         return FREE_COST
+
+    def zap_wand(self, level, p, item, action):
+        """Point a wand and loose whatever charge it holds.
+
+        Wielding one as your weapon already swings it in melee - in the
+        "blast" style `combat.WEAPON_CLASS` has named for a wand all
+        along - but nothing before this ever spent a charge or did
+        anything a dagger could not already do just as well for a
+        fifteenth the price. This is the other half: the wand's own
+        magic, activated like a potion or a scroll rather than swung.
+        It travels in a straight line out to the range Spark, the
+        first attack spell a character can know, already reaches -
+        nothing in the source material says how far a wand should
+        carry, and matching an existing beginner attack spell is the
+        least invented number available.
+        """
+        if item.charges <= 0:
+            self.msg(f"{item.name(self.appearances)} has no charge left.",
+                     "warn", to=p)
+            return FREE_COST
+
+        was_known = item.known
+        item.known = True
+        if not was_known:
+            self.appearances.identify(item.key)
+
+        dx = clamp(int(action.get("dx", 0)), -1, 1)
+        dy = clamp(int(action.get("dy", 0)), -1, 1)
+        if dx or dy:
+            p.facing = ai._dir_index(dx, dy)
+        fx, fy = DIRS[p.facing]
+        reach = 6
+        tx, ty = p.x + fx * reach, p.y + fy * reach
+
+        item.charges -= 1
+        self.sound("magic", p.x, p.y, level.depth)
+
+        target = None
+        for (cx, cy) in line_between(p.x, p.y, tx, ty):
+            if (cx, cy) == (p.x, p.y):
+                continue
+            if is_solid(level.get(cx, cy)):
+                break
+            self.fx("bolt", cx, cy, level.depth)
+            occ = level.actor_at(cx, cy)
+            if occ is not None and occ.kind == "monster" and not occ.dead:
+                target = occ
+                break
+
+        self.events.append({"t": "inv", "to": p.id})
+        if target is None:
+            self.msg(f"You wave {item.name(self.appearances)}, but nothing "
+                     f"is there.", "info", to=p)
+            return p.action_cost(ATTACK_COST, attacking=True) or ATTACK_COST
+
+        n, sides = item.damage()
+        dmg = max(1, sum(self.rng.randint(1, sides) for _ in range(n))
+                 + item.enchant)
+        fatal = dmg >= target.hp
+        text = combat.blow_message(self.rng, p, target, dmg, fatal, style="blast")
+        self.msg(text, "combat", to=p)
+        combat.apply_damage(self, target, dmg, p, killed_by_a_blow=True)
+        return p.action_cost(ATTACK_COST, attacking=True) or ATTACK_COST
 
     def quaff(self, level, p, item):
         use = item.base.get("use")
@@ -2327,7 +2395,18 @@ class World:
                     and k not in ("dagger", "shortsword", "longsword")]
             rng.shuffle(pool)
             for key in pool[:5]:
-                it = Item(key, enchant=1 if rng.random() < 0.25 else 0)
+                base = BASES[key]
+                if base.get("charges"):
+                    # A wand built the plain way defaults to zero charges,
+                    # which `it.known = True` below then reads out loud as
+                    # a Dead Wand for sale on the shelf. generate_item()
+                    # already knows to roll a wand's charges instead of its
+                    # enchantment; the shop needs the same rule, not the
+                    # ordinary weapon roll two lines down.
+                    lo, hi = base["charges"]
+                    it = Item(key, charges=rng.randint(lo, hi))
+                else:
+                    it = Item(key, enchant=1 if rng.random() < 0.25 else 0)
                 it.known = True
                 items.append(it)
         elif shop == "armourer":

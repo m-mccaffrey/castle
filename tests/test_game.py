@@ -567,6 +567,52 @@ class TestVerbs(unittest.TestCase):
         world.submit(p, {"a": "take", "id": 999999})
         self.assertEqual(p.inventory, [])
 
+    def test_zap_wand_damages_a_monster_in_line_and_spends_a_charge(self):
+        """Nothing before this consumed a wand's charge or did anything a
+        dagger could not do just as well - Activate now fires a bolt down
+        whatever direction you are facing, out to the range Spark reaches."""
+        from stormhold.game.items import Item
+        world, p, level = self.descend()
+        for i in range(1, 4):
+            level.set(p.x + i, p.y, T.FLOOR)
+        m = make_monster("cave_rat", p.x + 3, p.y, level.depth, random.Random(1))
+        level.place(m)
+        wand = Item("wand", charges=5)
+        p.equip(wand)
+        before_hp = m.hp
+        world.submit(p, {"a": "use", "id": wand.id, "dx": 1, "dy": 0})
+        self.assertEqual(wand.charges, 4)
+        self.assertLess(m.hp, before_hp)
+
+    def test_zap_wand_refuses_when_out_of_charge(self):
+        from stormhold.game.items import Item
+        world, p, level = self.descend()
+        wand = Item("wand", charges=0)
+        p.equip(wand)
+        world.submit(p, {"a": "use", "id": wand.id})
+        self.assertIn("no charge left", self.messages(world)[-1])
+
+    def test_a_wand_loose_in_the_pack_cannot_be_zapped(self):
+        """"Objects in your pack cannot be activated" - a wand in the weapon
+        slot's usual free pass to equip-from-anywhere does not apply to it,
+        since Use fires it rather than just putting it on."""
+        from stormhold.game.items import Item
+        world, p, level = self.descend()
+        wand = Item("wand", charges=5)
+        p.add_item(wand)
+        world.submit(p, {"a": "use", "id": wand.id})
+        self.assertEqual(wand.charges, 5, "a wand in the pack must not fire")
+        self.assertIn("buried in your pack", self.messages(world)[-1])
+
+    def test_a_wand_on_the_belt_can_be_zapped(self):
+        from stormhold.game.items import Item
+        world, p, level = self.descend()
+        p.equipment["waist"] = Item("belt3")
+        wand = Item("wand", charges=5)
+        p.equipment["waist"].contents.append(wand)
+        world.submit(p, {"a": "use", "id": wand.id})
+        self.assertEqual(wand.charges, 4)
+
     def test_examine_costs_no_time(self):
         world, p, level = self.descend()
         before = level.clock
@@ -777,6 +823,34 @@ class TestStartingKit(unittest.TestCase):
             self.assertLess(smaller["value"], bigger["value"])
             self.assertGreater(bigger["capacity"], smaller["capacity"])
             self.assertGreater(bigger["bulk_capacity"], smaller["bulk_capacity"])
+
+    def test_wand_kind_is_wand_not_the_gear_default(self):
+        """Every other chargeable thing in BASES says what it is; a wand
+        with no "kind" key fell through to "gear", so nothing that checks
+        kind == "wand" - the Activate menu's own filter among them - ever
+        recognised one."""
+        from stormhold.game.items import Item
+        self.assertEqual(Item("wand").kind, "wand")
+
+    def test_weaponsmith_never_stocks_a_dead_wand(self):
+        """Building a wand the plain way defaults to zero charges, and the
+        weaponsmith marks everything on the shelf known - which together
+        used to read as a Dead Wand for sale before a customer ever
+        touched it. The shop needs a wand's own rule, the way
+        generate_item() already rolls charges for one found in the
+        dungeon, rather than the ordinary weapon's enchantment roll."""
+        from stormhold.game.world import World
+        found_a_wand = False
+        for seed in range(60):
+            world = World(seed=seed)
+            world.party_deepest = 5
+            for item in world.stock_for("weaponsmith"):
+                if item.key == "wand":
+                    found_a_wand = True
+                    self.assertGreater(item.charges, 0,
+                                       "a wand for sale must not already be dead")
+        self.assertTrue(found_a_wand,
+                        "test never actually exercised a wand on the shelf")
 
 
 class TestSpellRules(unittest.TestCase):

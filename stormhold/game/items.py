@@ -57,7 +57,13 @@ BASES = {
     # ---- staves and wands ------------------------------------------------
     "quarterstaff": dict(name="Quarterstaff", slot="weapon", icon="staff", bulk=25200, wt=750, value=60, dmg=(1, 5), depth=0, mana_bonus=4, speed=85),
     "runestaff":   dict(name="Rune Staff", slot="weapon", icon="staff", bulk=25200, wt=2025, value=400, dmg=(1, 7), depth=10, mana_bonus=15, speed=105),
-    "wand":        dict(name="Wand", slot="weapon", icon="wand", bulk=2700, wt=360, value=300, dmg=(1, 3), depth=5, charges=(4, 9), recharge_hours=6, speed=80),
+    # Every other chargeable or consumable thing in BASES says what it is
+    # with an explicit "kind" - this one did not, so item.kind fell through
+    # to the "gear" default. Nothing ever checked kind == "wand" as a
+    # result, including the Activate menu's own filter for what belongs on
+    # it, so a wand sat in the weapon slot as a plain (and weak) dagger and
+    # never came up as a thing you could zap.
+    "wand":        dict(name="Wand", slot="weapon", icon="wand", bulk=2700, wt=360, value=300, dmg=(1, 3), depth=5, charges=(4, 9), recharge_hours=6, speed=80, kind="wand"),
 
     # ---- body armour -----------------------------------------------------
     "robe":        dict(name="Robe", slot="torso", icon="robe", bulk=12600, wt=900, value=25, ac=3, depth=0, mana_bonus=6),
