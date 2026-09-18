@@ -141,12 +141,24 @@ class Bench:
         return any(text in m for m in self.messages(n))
 
     def cell_for(self, scene, item_id, where="pack"):
-        """Where the window is currently drawing a given item."""
-        scene.draw(self.s.app.screen)
-        cells = scene.store_cells if where == "store" else scene.cell_rects
-        for rect, item in cells:
-            if item["id"] == item_id:
-                return rect.center
+        """Where the window is currently drawing a given item.
+
+        Each container is its own small window now, genuinely separate and
+        genuinely scrollable rather than one wide shared strip - so a check
+        run after several others have left things in the pack can find its
+        item a page down. Page through rather than assume the first screen
+        has everything.
+        """
+        scroll_attr = "store_scroll" if where == "store" else "scroll"
+        for page in range(20):
+            setattr(scene, scroll_attr, page)
+            scene.draw(self.s.app.screen)
+            cells = scene.store_cells if where == "store" else scene.cell_rects
+            for rect, item in cells:
+                if item["id"] == item_id:
+                    return rect.center
+            if getattr(scene, scroll_attr) < page:
+                break            # draw() clamped it - there is no such page
         return None
 
     # ---- half one: buying and selling ------------------------------------

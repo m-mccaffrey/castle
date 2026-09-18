@@ -1407,11 +1407,19 @@ class OverlayScene(Scene):
 
     def frame(self, surf):
         w, h = surf.get_size()
+        self.dim(surf)
         rect = pygame.Rect(w // 2 - self.size[0] // 2, h // 2 - self.size[1] // 2, *self.size)
-        dim = pygame.Surface((w, h), pygame.SRCALPHA)
-        dim.fill((0, 0, 0, 110))
-        surf.blit(dim, (0, 0))
         return W.window(surf, rect, self.title), rect
+
+    def dim(self, surf):
+        """Darken the play screen behind an overlay, without drawing the
+        single-frame window `frame()` also draws - for a scene made of
+        several independent windows rather than one.
+        """
+        w, h = surf.get_size()
+        shade = pygame.Surface((w, h), pygame.SRCALPHA)
+        shade.fill((0, 0, 0, 110))
+        surf.blit(shade, (0, 0))
 
 
 class AskScene(OverlayScene):
@@ -1466,24 +1474,28 @@ class AskScene(OverlayScene):
 
 
 class PackScene(OverlayScene):
-    """The paper doll.
+    """Four windows on the desk, not one panel wearing four labels.
 
-    A figure in the middle, the slots arranged around it with a line drawn to
-    the part of the body each one belongs to, and the pack below. Everything
-    moves by dragging: pack to body to wear it, body to pack to take it off.
-    The totals live in the title bars, one for what you are wearing and one for
-    what you are carrying.
+    The body, the floor, the belt and the pack are each their own titled
+    window - draggable by its own title bar, closable with its own box -
+    the way the original's inventory screen genuinely is more than a
+    single pane: a running screenshot of it shows all four on screen at
+    once, each with its own frame. Everything still moves by dragging
+    between them: pack to body to wear it, body to pack to take it off,
+    floor to either to pick it up.
     """
 
-    size = (940, 690)
-    SLOT_W = 196
-    SLOT_H = 46
-    DOLL_H = 360
+    SLOT_W = 150
+    SLOT_H = 42
     # Every container the original's inventory window shows at once - the
-    # body, the belt (drawn as the "to hand" strip under the figure), and
-    # the pack - plus what is on the ground underfoot. A store replaces
-    # this last one with its shelf instead, so StoreScene turns it off.
+    # body, the floor, the belt, and the pack. A store replaces the floor
+    # with its own shelf instead, so StoreScene turns this off and adds a
+    # "store" window of its own.
     SHOWS_FLOOR = True
+    PANEL_KEYS = ("person", "floor", "belt", "pack")
+    # Closing this particular window closes the whole scene - it is the
+    # original's own anchor window, the one carrying Exit! on its menu.
+    ANCHOR_PANEL = "person"
 
     def __init__(self, app, picking=None):
         super().__init__(app)
@@ -1507,6 +1519,94 @@ class PackScene(OverlayScene):
         self.floor_scroll = 0
         self.belt_grid_rect = pygame.Rect(0, 0, 10, 10)
         self.belt_scroll = 0
+
+        # Each window's own position, whether it is open, and their front-
+        # to-back order (last is frontmost). Positioned for real in layout(),
+        # once the screen's actual size is known.
+        self.win_rect = {}
+        self.win_open = {}
+        self.win_order = []
+        self.win_drag = None        # {"key", "dx", "dy"} while a title bar is held
+        self._tiled = False
+
+    def default_layout(self):
+        """Where each window starts, relative to the group's own corner -
+        layout() offsets the whole group to sit centred on the real screen.
+        """
+        return {
+            "person": pygame.Rect(0, 0, 540, 470),
+            "floor": pygame.Rect(560, 0, 400, 190),
+            "belt": pygame.Rect(560, 200, 400, 130),
+            "pack": pygame.Rect(560, 340, 400, 300),
+        }
+
+    def layout(self, size):
+        if self._tiled:
+            return
+        rects = self.default_layout()
+        group = pygame.Rect(0, 0, 0, 0).unionall(list(rects.values()))
+        w, h = size
+        off_x = max(10, (w - group.width) // 2)
+        off_y = max(10, (h - group.height) // 2)
+        for key, rect in rects.items():
+            rect.move_ip(off_x, off_y)
+        self.win_rect = rects
+        self.win_open = {k: True for k in self.PANEL_KEYS}
+        self.win_order = list(self.PANEL_KEYS)
+        self._tiled = True
+
+    # ------------------------------------------------------- window chrome --
+    def title_bar_rect(self, rect):
+        return pygame.Rect(rect.x + 4, rect.y + 4, rect.width - 8, 20)
+
+    def close_box_rect(self, rect):
+        return pygame.Rect(rect.right - 22, rect.y + 6, 16, 16)
+
+    def draw_window(self, surf, key, title):
+        """One of the several separate windows this scene is made of.
+        Returns its client rect."""
+        rect = self.win_rect[key]
+        client = W.window(surf, rect, title, active=(self.win_order[-1] == key))
+        close = self.close_box_rect(rect)
+        pygame.draw.rect(surf, (222, 222, 216), close)
+        pygame.draw.rect(surf, (40, 40, 40), close, 1)
+        pygame.draw.line(surf, (40, 40, 40),
+                         (close.x + 3, close.y + 3), (close.right - 3, close.bottom - 3), 2)
+        pygame.draw.line(surf, (40, 40, 40),
+                         (close.x + 3, close.bottom - 3), (close.right - 3, close.y + 3), 2)
+        return client
+
+    def window_at(self, pos):
+        """The frontmost open window under the cursor, and which part of
+        it: "close", "bar", or "body"."""
+        for key in reversed(self.win_order):
+            if not self.win_open.get(key):
+                continue
+            rect = self.win_rect[key]
+            if not rect.collidepoint(pos):
+                continue
+            if self.close_box_rect(rect).collidepoint(pos):
+                return key, "close"
+            if self.title_bar_rect(rect).collidepoint(pos):
+                return key, "bar"
+            return key, "body"
+        return None, None
+
+    def bring_to_front(self, key):
+        if key in self.win_order:
+            self.win_order.remove(key)
+            self.win_order.append(key)
+
+    def close_window(self, key):
+        if key == self.ANCHOR_PANEL:
+            self.close()
+            return
+        self.win_open[key] = False
+
+    def belt_title(self):
+        names = [self.equipment().get(slot)["name"] for slot in self.STOW_SLOTS
+                 if self.equipment().get(slot)]
+        return " & ".join(names) if names else "Belt"
 
     # ------------------------------------------------------------ helpers --
     @property
@@ -1606,6 +1706,23 @@ class PackScene(OverlayScene):
                 return
 
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            # A separate window's own chrome gets first refusal: its close
+            # box, then its title bar (which starts moving it rather than
+            # anything underneath). Clicking anywhere in a window also
+            # brings it to the front, the way any window manager does.
+            key, part = self.window_at(event.pos)
+            if part == "close":
+                self.close_window(key)
+                return
+            if part == "bar":
+                self.bring_to_front(key)
+                rect = self.win_rect[key]
+                self.win_drag = {"key": key, "dx": event.pos[0] - rect.x,
+                                 "dy": event.pos[1] - rect.y}
+                return
+            if key is not None:
+                self.bring_to_front(key)
+
             # The buttons get first refusal. Without this the press never
             # reaches them, they never arm, and the release does nothing -
             # which left Close, Drop, Use and the rest dead in every store.
@@ -1627,6 +1744,11 @@ class PackScene(OverlayScene):
             return
 
         if event.type == pygame.MOUSEMOTION:
+            if self.win_drag:
+                rect = self.win_rect[self.win_drag["key"]]
+                rect.x = event.pos[0] - self.win_drag["dx"]
+                rect.y = event.pos[1] - self.win_drag["dy"]
+                return
             if self.drag:
                 self.drag["pos"] = event.pos
                 self.drag["moved"] = True
@@ -1636,9 +1758,13 @@ class PackScene(OverlayScene):
                         self.hover_slot = slot
             return
 
-        if event.type == pygame.MOUSEBUTTONUP and event.button == 1 and self.drag:
-            self.finish_drag(event.pos)
-            return
+        if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            if self.win_drag:
+                self.win_drag = None
+                return
+            if self.drag:
+                self.finish_drag(event.pos)
+                return
 
         for b in self.buttons:
             action = b.handle(event)
@@ -1742,60 +1868,68 @@ class PackScene(OverlayScene):
             self.selected_from = None
 
     # ------------------------------------------------------------ drawing --
+    def panel_title(self, key, inv):
+        if key == "person":
+            cp = inv.get("copper", 0)
+            wt, wt_max = inv.get("weight", 0), max(1, inv.get("capacity", 1))
+            bk, bk_max = inv.get("bulk", 0), max(1, inv.get("bulk_capacity", 1))
+            return (f"{self.app.play.you.get('name', 'Pack')}"
+                   f"   Cp: {cp}   Weight: {wt} ({wt_max})"
+                   f"   Bulk: {bk} ({bk_max})")
+        if key == "floor":
+            return "Floor"
+        if key == "belt":
+            return self.belt_title()
+        if key == "pack":
+            pw, pwm = inv.get("pack_weight", 0), max(1, inv.get("pack_max_weight", 1))
+            pb, pbm = inv.get("pack_bulk", 0), max(1, inv.get("pack_max_bulk", 1))
+            name = inv.get("pack_name", "Pack")
+            return f"{name}   Wt {pw} ({pwm})   Bulk {pb} ({pbm})"
+        return key.title()
+
+    def draw_panel_content(self, key, surf, area):
+        if key == "person":
+            button_h = 54
+            doll_area = pygame.Rect(area.x, area.y, area.width,
+                                    area.height - button_h)
+            self.draw_doll(surf, doll_area)
+            self.draw_buttons(surf, pygame.Rect(area.x, doll_area.bottom,
+                                                area.width, button_h))
+        elif key == "floor":
+            self.draw_floor(surf, area)
+        elif key == "belt":
+            self.draw_belt(surf, area)
+        elif key == "pack":
+            self.draw_pack(surf, area)
+
     def draw(self, surf):
         below = self.app.under(self)
         if below is not None:
             below.draw(surf)
+        self.dim(surf)
         inv = self.inv
-        cp = inv.get("copper", 0)
-        wt, wt_max = inv.get("weight", 0), max(1, inv.get("capacity", 1))
-        bk, bk_max = inv.get("bulk", 0), max(1, inv.get("bulk_capacity", 1))
-        self.title = (f"{self.app.play.you.get('name', 'Pack')}"
-                      f"   Cp: {cp}   Weight: {wt} ({wt_max})"
-                      f"   Bulk: {bk} ({bk_max})")
+
+        if not self.SHOWS_FLOOR:
+            # A store takes the floor window's place with its own shelf -
+            # the rects still need to move off their unpositioned-placeholder
+            # values so they read as "not used here" rather than "forgotten".
+            self.floor_grid_rect = pygame.Rect(0, 0, 0, 0)
+            self.floor_rects = []
+
+        for key in self.win_order:
+            if not self.win_open.get(key):
+                continue
+            client = self.draw_window(surf, key, self.panel_title(key, inv))
+            self.draw_panel_content(key, surf, client)
+
         if self.picking is not None:
-            self.title = self.picking["prompt"]
-        client, _ = self.frame(surf)
-        if self.picking is not None:
-            bar = pygame.Rect(client.x, client.y, client.width, 22)
+            w, _ = surf.get_size()
+            bar = pygame.Rect(20, 8, w - 40, 26)
             pygame.draw.rect(surf, (244, 232, 170), bar)
             pygame.draw.rect(surf, (140, 120, 40), bar, 1)
             W.text(surf, self.picking["prompt"] + "   (Esc to think better of it)",
-                   (bar.x + 8, bar.y + 4), 12, bold=True)
-            client = pygame.Rect(client.x, bar.bottom + 4, client.width,
-                                 client.height - bar.height - 4)
+                   (bar.x + 8, bar.y + 5), 12, bold=True)
 
-        # A store splits the lower half in two, so the doll gives some height
-        # back - otherwise neither grid is tall enough to show a whole cell.
-        doll_h = self.DOLL_H
-        doll = pygame.Rect(client.x, client.y, client.width, doll_h)
-        self.draw_doll(surf, doll)
-
-        grid_top = doll.bottom + 6
-        row_h = 92
-        row = pygame.Rect(client.x, grid_top, client.width, row_h)
-        if self.SHOWS_FLOOR:
-            # Floor and Belt side by side rather than each claiming a full
-            # row of their own - there is no height in a 1024x700 window
-            # to give every container its own strip, and splitting this
-            # one sideways costs nothing the pack grid below was using.
-            half = (row.width - 8) // 2
-            self.draw_floor(surf, pygame.Rect(row.x, row.y, half, row.height))
-            belt_area = pygame.Rect(row.x + half + 8, row.y,
-                                    row.width - half - 8, row.height)
-        else:
-            # Nothing to show it here - a store takes this container over
-            # for its own shelf instead - but the rect still needs to move
-            # off its unpositioned-placeholder value so it reads as "not
-            # used here" rather than "forgotten".
-            self.floor_grid_rect = pygame.Rect(0, 0, 0, 0)
-            self.floor_rects = []
-            belt_area = row
-        self.draw_belt(surf, belt_area)
-        grid_top += row_h + 6
-        self.draw_pack(surf, pygame.Rect(client.x, grid_top,
-                                         client.width, client.bottom - grid_top - 40))
-        self.draw_buttons(surf, client)
         if self.drag and self.drag["moved"]:
             img = self.app.sheet.item(self.drag["item"]["icon"])
             if img:
@@ -1804,7 +1938,7 @@ class PackScene(OverlayScene):
         if self.popup is not None:
             draw_popup(surf, self.popup[0], self.popup[1])
         if self.naming is not None:
-            self.draw_naming(surf, client)
+            self.draw_naming(surf, self.win_rect.get(self.ANCHOR_PANEL, surf.get_rect()))
 
     def draw_doll(self, surf, area):
         """Slots down each side, three across the top, and the figure between."""
@@ -2062,18 +2196,9 @@ class PackScene(OverlayScene):
             count = max(len(held), worn.get("slots") or 2)
             groups.append((slot, worn, held, count))
 
-        bar = pygame.Rect(area.x, area.y, area.width, 18)
-        pygame.draw.rect(surf, W.TITLE_B, bar)
-        if not groups:
-            title = "Belt"
-        elif len(groups) == 1:
-            title = groups[0][1]["name"]
-        else:
-            title = " & ".join(g[1]["name"] for g in groups)
-        W.text(surf, title, (bar.x + 6, bar.y + 2), 12, bold=True, colour=WHITE)
-
-        self.belt_grid_rect = pygame.Rect(area.x, bar.bottom, area.width,
-                                          area.height - bar.height)
+        # The window's own title bar (drawn by draw_window, from belt_title())
+        # already names the belt - this panel is just the grid.
+        self.belt_grid_rect = pygame.Rect(area.x, area.y, area.width, area.height)
         W.panel(surf, self.belt_grid_rect, raised=False, fill=(236, 236, 232))
 
         self.stow_rects = []
@@ -2146,12 +2271,9 @@ class PackScene(OverlayScene):
         window always shows. A store takes this space over for its shelf
         instead (see StoreScene), which is why this only draws here.
         """
-        bar = pygame.Rect(area.x, area.y, area.width, 18)
-        pygame.draw.rect(surf, W.TITLE_B, bar)
-        W.text(surf, "Floor", (bar.x + 6, bar.y + 2), 12, bold=True, colour=WHITE)
-
-        self.floor_grid_rect = pygame.Rect(area.x, bar.bottom, area.width,
-                                           area.height - bar.height)
+        # The window's own title bar already says "Floor" - this panel is
+        # just the grid.
+        self.floor_grid_rect = pygame.Rect(area.x, area.y, area.width, area.height)
         W.panel(surf, self.floor_grid_rect, raised=False, fill=(236, 236, 232))
 
         cell, cell_h = self.FLOOR_CELL, self.FLOOR_CELL_H
@@ -2202,16 +2324,9 @@ class PackScene(OverlayScene):
                    colour=(120, 120, 120))
 
     def draw_pack(self, surf, area):
-        inv = self.inv
-        name = inv.get("pack_name", "Pack")
-        pw, pwm = inv.get("pack_weight", 0), max(1, inv.get("pack_max_weight", 1))
-        pb, pbm = inv.get("pack_bulk", 0), max(1, inv.get("pack_max_bulk", 1))
-        bar = pygame.Rect(area.x, area.y, area.width, 18)
-        pygame.draw.rect(surf, W.TITLE_B, bar)
-        W.text(surf, f"{name}   Wt {pw} ({pwm})   Bulk {pb} ({pbm})",
-               (bar.x + 6, bar.y + 2), 12, bold=True, colour=WHITE)
-
-        self.grid_rect = pygame.Rect(area.x, bar.bottom, area.width, area.height - bar.height)
+        # The window's own title bar already names the pack and its load -
+        # see panel_title() - so this panel is just the grid.
+        self.grid_rect = pygame.Rect(area.x, area.y, area.width, area.height)
         W.panel(surf, self.grid_rect, raised=False, fill=(236, 236, 232))
 
         cell, cell_h = self.CELL, self.CELL_H
@@ -2274,32 +2389,33 @@ class PackScene(OverlayScene):
                 label = "Drink"
             elif item.get("kind") == "scroll":
                 label = "Read"
-        by = client.bottom - 32
-        self.buttons = [
-            W.Button((client.x, by, 110, 28), "Sort Pack", "sort"),
-            W.Button((client.x + 118, by, 130, 28), "Name Object", "name",
-                     enabled=bool(item) and not from_floor),
-            W.Button((client.x + 256, by, 100, 28), label, "use", enabled=bool(item)),
-            W.Button((client.x + 364, by, 90, 28), "Drop", "drop",
-                     enabled=bool(item) and not from_floor),
-            W.Button((client.right - 90, by, 90, 28), "Close", "close"),
-        ]
-        for b in self.buttons:
-            b.draw(surf)
-
-        # The detail line shares the row with the Close button, so it has to
-        # stop short of it rather than run underneath.
-        text_x = client.x + 466
-        room = (client.right - 100) - text_x
+        # The Person window is its own, narrower pane now rather than one
+        # end of a wide shared footer, so the detail line gets a row of its
+        # own above the buttons instead of squeezed in beside them.
         detail = (f"{item['name']} - {item['desc']}" if item
                   else "Drag things between your body and your pack.")
         f = W.font(11)
+        room = client.width - 8
         if f.size(detail)[0] > room:
             while f.size(detail + "...")[0] > room and len(detail) > 3:
                 detail = detail[:-1]
             detail += "..."
-        W.text(surf, detail, (text_x, by + 7), 11,
+        W.text(surf, detail, (client.x + 4, client.y + 2), 11,
                colour=(70, 70, 70) if item else (120, 120, 120))
+
+        by = client.bottom - 28
+        widths = (88, 96, 76, 64, 64)
+        labels = ("Sort Pack", "Name Object", label, "Drop", "Close")
+        actions = ("sort", "name", "use", "drop", "close")
+        enabled = (True, bool(item) and not from_floor, bool(item),
+                  bool(item) and not from_floor, True)
+        self.buttons = []
+        x = client.x
+        for w, lb, ac, en in zip(widths, labels, actions, enabled):
+            self.buttons.append(W.Button((x, by, w, 26), lb, ac, enabled=en))
+            x += w + 6
+        for b in self.buttons:
+            b.draw(surf)
 
     def draw_naming(self, surf, client):
         box = pygame.Rect(client.centerx - 170, client.centery - 50, 340, 100)
@@ -2948,12 +3064,12 @@ class StoreScene(PackScene):
     are given a chance to accept or reject the offer."
 
     So there is no separate shop interface: the same paper doll, the same pack,
-    the same dragging, with one more container to drag to and from.
+    the same dragging, with one more container - its own window here too,
+    same as Floor, Belt and Pack are - to drag to and from.
     """
 
-    size = (980, 760)
-    DOLL_H = 360
-    SHOWS_FLOOR = False   # the store stock takes this space instead
+    SHOWS_FLOOR = False   # the store window takes this place instead
+    PANEL_KEYS = ("person", "store", "belt", "pack")
 
     def __init__(self, app, data):
         super().__init__(app)
@@ -2962,6 +3078,19 @@ class StoreScene(PackScene):
         self.store_cells = []
         self.store_scroll = 0
         self.confirm = None          # {"text", "yes", "no", "action"}
+
+    def default_layout(self):
+        # A shop's shelf typically holds more than a few things underfoot
+        # ever does, so it gets Floor's spot but Pack's own height rather
+        # than Floor's - the shrunken 190px a plain Floor window is happy
+        # with showed only a store's first row and scrolled the rest out
+        # of sight by default.
+        return {
+            "person": pygame.Rect(0, 0, 540, 470),
+            "store": pygame.Rect(560, 0, 400, 290),
+            "belt": pygame.Rect(560, 300, 400, 120),
+            "pack": pygame.Rect(560, 430, 400, 240),
+        }
 
     @property
     def shop(self):
@@ -3096,23 +3225,22 @@ class StoreScene(PackScene):
         if self.confirm is not None:
             self.draw_confirm(surf)
 
-    def draw_pack(self, surf, area):
-        """Split the right-hand side: the store above, your pack below."""
-        top = pygame.Rect(area.x, area.y, area.width, area.height // 2 - 6)
-        bottom = pygame.Rect(area.x, top.bottom + 12, area.width,
-                             area.height - top.height - 12)
-        self.draw_store(surf, top)
-        super().draw_pack(surf, bottom)
+    def panel_title(self, key, inv):
+        if key == "store":
+            purse = self.data.get("copper", 0)
+            return f"{self.store_title()}      you have {purse} C.P."
+        return super().panel_title(key, inv)
+
+    def draw_panel_content(self, key, surf, area):
+        if key == "store":
+            self.draw_store(surf, area)
+        else:
+            super().draw_panel_content(key, surf, area)
 
     def draw_store(self, surf, area):
-        bar = pygame.Rect(area.x, area.y, area.width, 18)
-        pygame.draw.rect(surf, W.TITLE_B, bar)
-        purse = self.data.get("copper", 0)
-        W.text(surf, f"{self.store_title()}      you have {purse} C.P.",
-               (bar.x + 6, bar.y + 2), 12, bold=True, colour=WHITE)
-
-        self.store_rect = pygame.Rect(area.x, bar.bottom, area.width,
-                                      area.height - bar.height)
+        # The window's own title bar already names the shop and the
+        # purse - this panel is just the shelf.
+        self.store_rect = pygame.Rect(area.x, area.y, area.width, area.height)
         W.panel(surf, self.store_rect, raised=False, fill=(236, 236, 232))
 
         cell, cell_h = self.CELL, self.CELL_H
