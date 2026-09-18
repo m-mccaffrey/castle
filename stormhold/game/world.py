@@ -81,11 +81,22 @@ class World:
         count_mult = 1 + (party - 1) * 0.3
         tough_mult = 1 + (party - 1) * 0.45
 
-        for x, y, vault in level.spawns:
-            if not level.walkable(x, y):
-                continue
-            if rng.random() > 0.85 * count_mult:
-                continue
+        # How many creatures a floor holds. This was 85% of however many
+        # spawn points the map generator happened to put down, from the
+        # first floor to the twenty-fifth: thirteen on floor one against a
+        # character with twenty-two hit points and a dagger, and then
+        # twenty-six on floor three because that map had more room. One at a
+        # time none of the early creatures can beat you - measured, a fresh
+        # character wins every duel on floor one - so what killed people was
+        # arithmetic, and a floor that doubles because of its shape is a
+        # cliff nobody chose. A count, ramped with depth and capped, gives
+        # the curve the floors are supposed to have.
+        wanted = int(min(24, 6 + 1.1 * level.depth) * count_mult)
+        spots = [(x, y, vault) for x, y, vault in level.spawns
+                 if level.walkable(x, y)]
+        rng.shuffle(spots)
+
+        for x, y, vault in spots[:wanted]:
             key = self._weighted(table)
             m = self.spawn(key, x, y, level.depth)
             m.max_hp = int(m.max_hp * tough_mult)
@@ -229,15 +240,23 @@ class World:
         return p
 
     def give_starting_kit(self, p):
-        """A dagger, a pack and a purse - the rest you buy.
+        """A dagger, a pack, a purse and a belt - the rest you buy.
 
-        The original starts you with exactly this and 1500 copper, which is the
-        point: a suit of leather armour costs 1050 and a short sword 1470, so
-        your first decision is which one you can afford. Handing out a sword
-        and armour for free made that starting purse meaningless, and left the
-        character at 84% of capacity before leaving town.
+        The original starts you with a dagger, a pack and a purse and 1500
+        copper, which is the point: a suit of leather armour costs 1050 and a
+        short sword 1470, so your first decision is which one you can afford.
+        Handing out a sword and armour for free made that starting purse
+        meaningless, and left the character at 84% of capacity before leaving
+        town.
+
+        The belt is in the kit because of a rule of ours, not the original's
+        shop list: nothing in the pack can be drunk, so without a belt a
+        healing potion is an ornament. Leather, a belt and a potion came to
+        more than the starting purse, so a new character walked down the
+        stairs in a dagger with nothing to drink and died on the first floor
+        three times running.
         """
-        for key in ("dagger", "pack", "purse"):
+        for key in ("dagger", "pack", "purse", "belt"):
             it = Item(key)
             it.known = True
             p.equipment[it.slot] = it

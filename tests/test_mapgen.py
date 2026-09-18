@@ -132,3 +132,42 @@ class TestEverySpellHasAGlyph(unittest.TestCase):
                                    f"{name} is nearly blank at {painted} pixels")
                 self.assertLess(painted, art.SPELL_ICON * art.SPELL_ICON - 8,
                                 f"{name} fills the whole square, so it has no silhouette")
+
+
+class TestHowThicklyAFloorIsStocked(unittest.TestCase):
+    """The first floors have to be quiet.
+
+    Every floor used to be filled to 85% of however many spawn points the
+    map generator happened to lay down: thirteen creatures on floor one
+    against a character with twenty-two hit points and a dagger, and then
+    twenty-six on floor three because that particular map had more room. One
+    at a time none of the early creatures can beat a fresh character - that
+    is measured - so what killed people was arithmetic, and a floor that
+    doubles because of its shape is a difficulty cliff nobody chose.
+    """
+
+    def counts(self, seed):
+        from stormhold.game.world import World
+        world = World(seed=seed)
+        world.add_player("Counter")
+        return {depth: sum(1 for a in world.get_level(depth).actors.values()
+                           if getattr(a, "kind", "") == "monster")
+                for depth in (1, 2, 3, 5, 8, 12, 20)}
+
+    def test_the_first_floor_is_quiet(self):
+        for seed in range(4):
+            with self.subTest(seed=seed):
+                self.assertLessEqual(self.counts(seed)[1], 12)
+
+    def test_it_gets_busier_as_you_go_down(self):
+        for seed in range(4):
+            with self.subTest(seed=seed):
+                counts = self.counts(seed)
+                self.assertGreater(counts[12], counts[1] + 6)
+
+    def test_no_floor_is_a_crowd(self):
+        """The cap is what stops a big map becoming a massacre."""
+        for seed in range(4):
+            with self.subTest(seed=seed):
+                for depth, n in self.counts(seed).items():
+                    self.assertLessEqual(n, 40, f"floor {depth} holds {n}")
