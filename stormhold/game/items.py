@@ -39,15 +39,15 @@ BASES = {
     # ---- blades ---------------------------------------------------------
     "dagger":      dict(name="Dagger", slot="weapon", icon="dagger", bulk=500, wt=500, value=20, dmg=(1, 4), depth=0, speed=80),
     "shortsword":  dict(name="Short Sword", slot="weapon", icon="shortsword", bulk=5000, wt=1000, value=50, dmg=(1, 6), depth=0, speed=90),
-    "sabre":       dict(name="Sabre", slot="weapon", icon="sabre", bulk=5000, wt=1000, value=95, dmg=(1, 8), depth=3, speed=90),
-    "longsword":   dict(name="Long Sword", slot="weapon", icon="longsword", bulk=8000, wt=1500, value=150, dmg=(2, 4), depth=4),
-    "broadsword":  dict(name="Broad Sword", slot="weapon", icon="broadsword", bulk=9000, wt=1600, value=320, dmg=(2, 6), depth=8, str_req=13, two_handed=True, speed=110),
+    "sabre":       dict(name="Sabre", slot="weapon", icon="sabre", bulk=5000, wt=1000, value=95, dmg=(1, 9), depth=3, speed=90),
+    "longsword":   dict(name="Long Sword", slot="weapon", icon="longsword", bulk=8000, wt=1500, value=150, dmg=(2, 6), depth=4),
+    "broadsword":  dict(name="Broad Sword", slot="weapon", icon="broadsword", bulk=9000, wt=1600, value=320, dmg=(2, 8), depth=8, str_req=13, two_handed=True, speed=105),
     # ---- hafted ---------------------------------------------------------
-    "mace":        dict(name="Mace", slot="weapon", icon="mace", bulk=4375, wt=2500, value=70, dmg=(1, 7), depth=1, speed=105),
+    "mace":        dict(name="Mace", slot="weapon", icon="mace", bulk=4375, wt=2000, value=70, dmg=(2, 4), depth=1, speed=105),
     "warhammer":   dict(name="War Hammer", slot="weapon", icon="hammer", bulk=7500, wt=1400, value=190, dmg=(2, 5), depth=6, str_req=12, speed=105),
-    "axe":         dict(name="Battle Axe", slot="weapon", icon="axe", bulk=6000, wt=3000, value=230, dmg=(1, 10), depth=7, str_req=12, speed=125),
-    "halberd":     dict(name="Halberd", slot="weapon", icon="halberd", bulk=36000, wt=4950, value=420, dmg=(2, 8), depth=12, str_req=15, two_handed=True, speed=140),
-    "spear":       dict(name="Spear", slot="weapon", icon="spear", bulk=5000, wt=1500, value=85, dmg=(1, 8), depth=2),
+    "axe":         dict(name="Battle Axe", slot="weapon", icon="axe", bulk=6000, wt=3000, value=230, dmg=(2, 8), depth=7, str_req=12, speed=125),
+    "halberd":     dict(name="Halberd", slot="weapon", icon="halberd", bulk=36000, wt=4950, value=420, dmg=(2, 12), depth=12, str_req=15, two_handed=True, speed=140),
+    "spear":       dict(name="Spear", slot="weapon", icon="spear", bulk=5000, wt=1500, value=85, dmg=(1, 10), depth=2),
     # No bows, and no arrows. The original has no missile weapon for the
     # player at all: you fight by walking into things, and everything that
     # reaches across a room is a spell. Monsters still shoot - the help file
@@ -55,7 +55,7 @@ BASES = {
     # accuracy and effect of a company of crossbowmen" - and that is on the
     # monster side, where it belongs.
     # ---- staves and wands ------------------------------------------------
-    "quarterstaff": dict(name="Quarterstaff", slot="weapon", icon="staff", bulk=25200, wt=1800, value=60, dmg=(1, 6), depth=0, mana_bonus=4),
+    "quarterstaff": dict(name="Quarterstaff", slot="weapon", icon="staff", bulk=25200, wt=750, value=60, dmg=(1, 5), depth=0, mana_bonus=4, speed=85),
     "runestaff":   dict(name="Rune Staff", slot="weapon", icon="staff", bulk=25200, wt=2025, value=400, dmg=(1, 7), depth=10, mana_bonus=15, speed=105),
     "wand":        dict(name="Wand", slot="weapon", icon="wand", bulk=2700, wt=360, value=300, dmg=(1, 3), depth=5, charges=(4, 9), recharge_hours=6, speed=80),
 
@@ -65,7 +65,8 @@ BASES = {
     "studded":     dict(name="Suit of Studded Leather", slot="torso", icon="studded", bulk=25000, wt=7000, value=170, ac=12, depth=2),
     "ringmail":    dict(name="Suit of Ring Mail", slot="torso", icon="ringmail", bulk=30000, wt=8000, value=290, ac=18, depth=4, str_req=11),
     "chainmail":   dict(name="Suit of Chain Mail", slot="torso", icon="chainmail", bulk=30000, wt=10000, value=520, ac=30, depth=7, str_req=13),
-    "scalemail":   dict(name="Suit of Scale Mail", slot="torso", icon="scalemail", bulk=30000, wt=9000, value=760, ac=24, depth=10, str_req=14),
+    "scalemail":   dict(name="Suit of Scale Mail", slot="torso", icon="scalemail", bulk=30000, wt=9000, value=400, ac=24, depth=6, str_req=12),
+    "bandedmail":  dict(name="Suit of Banded Mail", slot="torso", icon="chainmail", bulk=34000, wt=12000, value=900, ac=36, depth=11, str_req=15),
     "platemail":   dict(name="Suit of Plate Armour", slot="torso", icon="platemail", bulk=40000, wt=15000, value=1400, ac=42, depth=14, str_req=16),
     # ---- shields ---------------------------------------------------------
     "buckler":     dict(name="Buckler", slot="shield", icon="buckler", bulk=15000, wt=3000, value=45, ac=3, depth=0),
