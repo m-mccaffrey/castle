@@ -1499,6 +1499,7 @@ class SpriteSheet:
         self.items = {}
         self.spells = {}
         self._player_cache = {}
+        self._glow_cache = {}
 
     def build(self):
         import sys
@@ -1527,8 +1528,42 @@ class SpriteSheet:
             self._player_cache[key] = cached
         return cached
 
-    def item(self, name):
-        return self.items.get(name) or self.items.get("gold")
+    def item(self, name, glowing=False):
+        base = self.items.get(name) or self.items.get("gold")
+        if not glowing or base is None:
+            return base
+        cached = self._glow_cache.get(name)
+        if cached is None:
+            cached = self._glow(base)
+            self._glow_cache[name] = cached
+        return cached
+
+    def _glow(self, base):
+        """Halo an identified-enchanted icon in soft gold.
+
+        A silhouette of the icon, stamped out repeatedly at growing offsets
+        and added (not just blitted) into an empty layer, builds a halo
+        that is brightest right at the icon's edge and fades outward - the
+        overlap from stamping near the silhouette does the falloff for
+        free. Kept at the icon's own size (the icon art already leaves a
+        little headroom to the tile edge) so every call site that blits or
+        scales by the plain icon's size keeps working unchanged.
+        """
+        mask = pygame.mask.from_surface(base)
+        halo_colour = (255, 220, 80, 60)
+        w, h = base.get_size()
+        silhouette = pygame.Surface((w, h), pygame.SRCALPHA)
+        mask.to_surface(silhouette, setcolor=halo_colour, unsetcolor=(0, 0, 0, 0))
+        halo = pygame.Surface((w, h), pygame.SRCALPHA)
+        margin = 2
+        for dx in range(-margin, margin + 1):
+            for dy in range(-margin, margin + 1):
+                if dx or dy:
+                    halo.blit(silhouette, (dx, dy), special_flags=pygame.BLEND_RGBA_ADD)
+        glowing = pygame.Surface((w, h), pygame.SRCALPHA)
+        glowing.blit(halo, (0, 0))
+        glowing.blit(base, (0, 0))
+        return glowing
 
     def spell(self, name):
         """A spell's glyph. Built on demand for anything added since start-up."""

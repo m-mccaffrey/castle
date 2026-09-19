@@ -1113,7 +1113,7 @@ class PlayScene(Scene):
         for it in self.items:
             if not (cx <= it["x"] < cx + cols + 1 and cy <= it["y"] < cy + rows + 1):
                 continue
-            img = sheet.item(it["icon"])
+            img = sheet.item(it["icon"], glowing=it.get("glowing"))
             if img:
                 surf.blit(img, (view.x + (it["x"] - cx) * TILE, view.y + (it["y"] - cy) * TILE))
 
@@ -1942,7 +1942,7 @@ class PackScene(OverlayScene):
                    (bar.x + 8, bar.y + 5), 12, bold=True)
 
         if self.drag and self.drag["moved"]:
-            img = self.app.sheet.item(self.drag["item"]["icon"])
+            img = self.app.sheet.item(self.drag["item"]["icon"], glowing=self.drag["item"].get("glowing"))
             if img:
                 surf.blit(img, (self.drag["pos"][0] - TILE // 2,
                                 self.drag["pos"][1] - TILE // 2))
@@ -2137,7 +2137,7 @@ class PackScene(OverlayScene):
         W.panel(surf, rect, raised=bool(worn), fill=fill)
         W.text(surf, label, (rect.x + 5, rect.y + 3), 10, colour=(90, 90, 90))
         if worn:
-            img = self.app.sheet.item(worn["icon"])
+            img = self.app.sheet.item(worn["icon"], glowing=worn.get("glowing"))
             if img:
                 surf.blit(pygame.transform.smoothscale(img, (22, 22)), (rect.x + 5, rect.y + 18))
             colour = (150, 0, 0) if worn.get("cursed") else BLACK
@@ -2259,7 +2259,7 @@ class PackScene(OverlayScene):
             if selected:
                 pygame.draw.rect(surf, W.TITLE_A, r, 2)
             if item is not None:
-                img = self.app.sheet.item(item["icon"])
+                img = self.app.sheet.item(item["icon"], glowing=item.get("glowing"))
                 if img:
                     inner = r.width - 6
                     surf.blit(pygame.transform.smoothscale(img, (inner, inner)),
@@ -2309,7 +2309,7 @@ class PackScene(OverlayScene):
             if selected:
                 pygame.draw.rect(surf, (210, 220, 245), r)
                 pygame.draw.rect(surf, W.TITLE_A, r, 1)
-            img = self.app.sheet.item(item["icon"])
+            img = self.app.sheet.item(item["icon"], glowing=item.get("glowing"))
             if img:
                 surf.blit(img, (r.centerx - TILE // 2, r.y))
             colour = (150, 0, 0) if item.get("cursed") else BLACK
@@ -2361,7 +2361,7 @@ class PackScene(OverlayScene):
             if selected:
                 pygame.draw.rect(surf, (210, 220, 245), r)
                 pygame.draw.rect(surf, W.TITLE_A, r, 1)
-            img = self.app.sheet.item(item["icon"])
+            img = self.app.sheet.item(item["icon"], glowing=item.get("glowing"))
             if img:
                 surf.blit(img, (r.centerx - TILE // 2, r.y + 2))
             colour = (150, 0, 0) if item.get("cursed") else BLACK
@@ -2989,7 +2989,7 @@ class ServiceScene(OverlayScene):
 
         def row_drawer(price_key):
             def draw_row(target, item, rect, selected):
-                img = sheet.item(item["icon"])
+                img = sheet.item(item["icon"], glowing=item.get("glowing"))
                 if img:
                     target.blit(pygame.transform.smoothscale(img, (24, 24)), (rect.x + 3, rect.y + 4))
                 colour = WHITE if selected else BLACK
@@ -3271,7 +3271,7 @@ class StoreScene(PackScene):
                 continue
             r = pygame.Rect(self.store_rect.x + 4 + col * cell,
                             self.store_rect.y + 4 + row * cell_h, cell - 4, cell_h - 4)
-            img = self.app.sheet.item(item["icon"])
+            img = self.app.sheet.item(item["icon"], glowing=item.get("glowing"))
             if img:
                 surf.blit(img, (r.centerx - TILE // 2, r.y + 2))
             lines = self.caption(item["name"], r.width - 4)

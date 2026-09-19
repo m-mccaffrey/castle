@@ -871,6 +871,26 @@ class TestTheEnchantmentPopupIsClear(unittest.TestCase):
         self.assertIn("1d4 damage", " ".join(lines))
         self.assertNotIn("When wielded", " ".join(lines))
 
+    def test_the_item_view_carries_a_glow_flag(self):
+        """"The enchanted items also have a glowing modification to the
+        icons." The client draws the glow off this flag rather than
+        re-deriving the grading rule itself."""
+        enchanted = self.item_view("longsword", enchant=2)
+        self.assertTrue(enchanted["glowing"])
+
+        cursed = self.item_view("longsword", enchant=-3, cursed=True)
+        self.assertFalse(cursed["glowing"])
+
+        plain = self.item_view("dagger")
+        self.assertFalse(plain["glowing"])
+
+    def test_the_sprite_sheet_draws_a_distinct_glowing_icon(self):
+        app = make_app()
+        glow = app.sheet.item("longsword", glowing=True)
+        plain = app.sheet.item("longsword", glowing=False)
+        self.assertIsNot(glow, plain)
+        self.assertEqual(glow.get_size(), plain.get_size())
+
 
 class TestRightClickPopups(unittest.TestCase):
     """"Right click anything, anywhere - dungeon, map or inventory - for a

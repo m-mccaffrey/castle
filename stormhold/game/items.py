@@ -254,6 +254,26 @@ def damaged_prefix(key, base):
     return DAMAGED[material]
 
 
+def magnitude(amount):
+    """The adverb a property sentence opens its verb with, by size.
+
+    The manual's own worked examples ("adds +2...") give no numeric bands,
+    but the game's own vocabulary for a bigger effect is right there in the
+    binary's string table alongside the plain wording - "makes the
+    character strongly resistant", next to the unmodified "resistant" -
+    and separately "greatly "/"very " sit next to the plain stat-increase
+    template. The exact original cutoffs aren't recoverable from that
+    table alone, so these bands are our own placement of that real
+    vocabulary, not a sourced threshold.
+    """
+    amount = abs(amount)
+    if amount >= 5:
+        return "greatly "
+    if amount >= 3:
+        return "strongly "
+    return ""
+
+
 def article(word):
     """a or an, depending on how the next word starts."""
     return "an" if word[:1].lower() in "aeiou" else "a"
@@ -438,6 +458,21 @@ class Item:
             out += f" ({self.charges} charges)"
         return out
 
+    def is_glowing(self, shop=False):
+        """Whether the icon should carry the enchanted glow.
+
+        Mirrors the "Enchanted " branch of name() exactly: gear that has
+        been identified (or is sitting in a shop, already labelled) as
+        genuinely beneficially magical, as opposed to cursed, damaged, or
+        merely mundane. Cursed and damaged gear looks the same as it
+        always did - the glow is a promise, not a warning.
+        """
+        base = self.base
+        gradeable = base.get("slot") and base.get("kind") != "container"
+        if not gradeable:
+            return False
+        return (self.known or shop) and not self.cursed and self.enchant > 0
+
     def describe(self, appearances=None):
         """The detail line shown when an item is selected.
 
@@ -485,26 +520,29 @@ class Item:
         verb = "activated" if b.get("kind") in ("potion", "scroll", "wand") else "wielded"
         props = []
         if b.get("ac") and is_accessory:
-            props.append(f"When {verb}, adds {b['ac']:+d} to your Armor "
-                         f"Value, until removed.")
+            props.append(f"When {verb}, {magnitude(b['ac'])}adds {b['ac']:+d} "
+                         f"to your Armor Value, until removed.")
         if b.get("bonus"):
             stat, amount = b["bonus"]
-            props.append(f"When {verb}, adds {amount:+d} to your "
-                         f"{stat.title()}, until removed.")
+            props.append(f"When {verb}, {magnitude(amount)}adds {amount:+d} "
+                         f"to your {stat.title()}, until removed.")
         if b.get("hp_bonus"):
-            props.append(f"When {verb}, adds {b['hp_bonus']:+d} to your "
-                         f"maximum hit points, until removed.")
+            props.append(f"When {verb}, {magnitude(b['hp_bonus'])}adds "
+                         f"{b['hp_bonus']:+d} to your maximum hit points, "
+                         f"until removed.")
         if b.get("mana_bonus"):
-            props.append(f"When {verb}, adds {b['mana_bonus']:+d} to your "
-                         f"maximum mana, until removed.")
+            props.append(f"When {verb}, {magnitude(b['mana_bonus'])}adds "
+                         f"{b['mana_bonus']:+d} to your maximum mana, "
+                         f"until removed.")
         if self.known and self.enchant:
             if b.get("dmg"):
-                props.append(f"When wielded, adds {self.enchant:+d} to "
-                             f"your chance to hit and to damage, until "
-                             f"removed.")
+                props.append(f"When wielded, {magnitude(self.enchant)}adds "
+                             f"{self.enchant:+d} to your chance to hit and "
+                             f"to damage, until removed.")
             else:
-                props.append(f"When wielded, adds {self.enchant:+d} to "
-                             f"your Armor Value, until removed.")
+                props.append(f"When wielded, {magnitude(self.enchant)}adds "
+                             f"{self.enchant:+d} to your Armor Value, "
+                             f"until removed.")
 
         out = ", ".join(bits)
         if props:

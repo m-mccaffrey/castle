@@ -2027,6 +2027,63 @@ class TestQualityPrefixes(unittest.TestCase):
         self.assertIn("When wielded, adds -1 to your Armor Value, "
                       "until removed.", armour.describe())
 
+    def test_an_identified_enchanted_item_glows(self):
+        """"The enchanted items also have a glowing modification to the
+        icons." The glow is the same promise the name and description make
+        - genuinely, identifiably beneficial magic - so it tracks the exact
+        same condition as the "Enchanted " name prefix, not a separate
+        guess."""
+        from stormhold.game.items import Item
+        sword = Item("dagger", enchant=2)
+        sword.known = True
+        self.assertTrue(sword.is_glowing())
+
+    def test_a_cursed_or_unidentified_item_does_not_glow(self):
+        from stormhold.game.items import Item
+        cursed = Item("dagger", enchant=-3, cursed=True)
+        cursed.known = True
+        self.assertFalse(cursed.is_glowing())
+
+        unidentified = Item("dagger", enchant=2)
+        self.assertFalse(unidentified.is_glowing())
+
+        plain = Item("dagger")
+        plain.known = True
+        self.assertFalse(plain.is_glowing())
+
+    def test_shop_stock_glows_on_its_own_enchantment_without_being_known(self):
+        """Shop stock is already labelled, the same as name(shop=True) is -
+        an item does not need item.known set for the shopkeeper's own
+        goods to show what they are."""
+        from stormhold.game.items import Item
+        sword = Item("dagger", enchant=2)
+        self.assertTrue(sword.is_glowing(shop=True))
+
+    def test_a_big_bonus_reads_strongly_or_greatly_not_just_a_number(self):
+        """"Vote [note] has tiers, enchanted, strongly, very strongly
+        enchanted." The binary's own string table backs a magnitude word on
+        the property sentence itself - "makes the character strongly
+        resistant" sits right next to the plain "resistant" template - so a
+        +2 blade reads plain but a +5 one reads as visibly stronger, not
+        just a bigger digit."""
+        from stormhold.game.items import Item
+        modest = Item("dagger", enchant=2)
+        modest.known = True
+        self.assertIn("adds +2 to your chance to hit", modest.describe())
+        self.assertNotIn("strongly", modest.describe())
+
+        strong = Item("dagger", enchant=3)
+        strong.known = True
+        self.assertIn("strongly adds +3", strong.describe())
+
+        mighty = Item("dagger", enchant=5)
+        mighty.known = True
+        self.assertIn("greatly adds +5", mighty.describe())
+
+        cursed = Item("dagger", enchant=-5, cursed=True)
+        cursed.known = True
+        self.assertIn("greatly adds -5", cursed.describe())
+
 
 class TestTwoHandedWeapons(unittest.TestCase):
     """"Two-handed weapons conflict with shields, and the game says so rather

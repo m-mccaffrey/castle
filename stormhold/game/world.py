@@ -2889,6 +2889,7 @@ class World:
             "weight": item.weight, "bulk": item.bulk, "value": item.value(),
             "custom": bool(item.custom_name),
             "cursed": item.cursed and item.known,
+            "glowing": item.is_glowing(shop=shop),
             "spell": item.spell,
             # How many things this will hold to hand. The window could not
             # draw a belt's empty slots without it, so an empty belt showed
