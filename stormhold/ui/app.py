@@ -423,12 +423,23 @@ def describe_item(item):
     """
     lines = [item.get("name", "Something")]
     lines.append(f"Weight {item.get('weight', 0)} g   Bulk {item.get('bulk', 0)} cc")
-    # The detail line ends with the weight and bulk, which the line above
-    # already says properly.
-    parts = [bit for bit in (item.get("desc") or "").split(", ")
+    # Item.describe() puts plain facts first - weight and bulk among them,
+    # which the line above already says properly - and then, for anything
+    # magical, one full sentence per property: "When wielded, adds +2 to
+    # your chance to hit and to damage, until removed." Splitting the
+    # whole string on ", " the way the facts alone used to be filtered
+    # swallowed a property sentence into the very fragment that starts
+    # with "bulk " and got dropped with it, which is how "When wielded"
+    # went missing from the popup entirely.
+    desc = item.get("desc") or ""
+    facts_part, sep, properties = desc.partition(". ")
+    facts = [bit for bit in facts_part.split(", ")
              if not bit.endswith(" g") and not bit.startswith("bulk ")]
-    if parts:
-        lines.extend(W.wrap(", ".join(parts), 300, 12))
+    body = ", ".join(facts)
+    if sep:
+        body = f"{body}. {properties}" if body else properties
+    if body:
+        lines.extend(W.wrap(body, 300, 12))
     if item.get("cursed"):
         lines.append("It is cursed.")
     if item.get("price") is not None:

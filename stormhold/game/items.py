@@ -405,19 +405,23 @@ class Item:
             label = f"Tome of {self.spell}"
         prefix = ""
         # Only gear carries an enchantment; a potion is never "+2". The
-        # original always says what grade a piece of gear is, which is why its
-        # shop shelf reads "Normal Suit of Leather Armor" and "Enchanted Cape
-        # of Protection" rather than leaving plain things unqualified.
-        gradeable = (base.get("slot") and base.get("kind") != "container"
-                     and (base.get("dmg") or base.get("ac")))
+        # manual is explicit that the *name* only ever says which grade a
+        # thing is - "the name will also indicate if the object is
+        # Enchanted or Cursed" - never the number. A raw "+2 Long Sword"
+        # was never what the original showed; the +2 itself belongs in the
+        # identified description (see describe()), not the name. Any
+        # equippable, non-container item grades this way, not only the
+        # ones with a damage die or an armour value - a Ring of Might
+        # carries the same Normal/Enchanted/Cursed word a sword does.
+        gradeable = base.get("slot") and base.get("kind") != "container"
         if gradeable:
             if self.known or shop:
-                if self.cursed and self.enchant <= 0:
-                    prefix = f"Cursed {self.enchant:+d} " if self.enchant else "Cursed "
+                if self.cursed:
+                    prefix = "Cursed "
                 elif self.enchant < 0:
-                    prefix = f"{damaged_prefix(self.key, base)} {self.enchant:+d} "
-                elif self.enchant:
-                    prefix = f"{self.enchant:+d} "
+                    prefix = f"{damaged_prefix(self.key, base)} "
+                elif self.enchant > 0:
+                    prefix = "Enchanted "
                 else:
                     prefix = "Normal "
             elif self.enchant or self.cursed:
@@ -446,21 +450,17 @@ class Item:
                   and not appearances.is_known(self.key))
         if hidden:
             return f"unidentified, {self.weight} g, bulk {self.bulk} cc"
+
+        # A ring or amulet's armour value is a magical property, learned
+        # only on identification, the same as its stat bonus would be; a
+        # suit of armour's is a plain physical fact, visible on sight.
+        is_accessory = b.get("kind") in ("ring", "amulet")
         bits = []
         if b.get("dmg"):
             n, s = b["dmg"]
             bits.append(f"{n}d{s} damage")
-        if b.get("ac"):
+        if b.get("ac") and not is_accessory:
             bits.append(f"{b['ac']} armour")
-        if self.known and self.enchant:
-            bits.append(f"{self.enchant:+d} enchantment")
-        if b.get("bonus"):
-            stat, amount = b["bonus"]
-            bits.append(f"{amount:+d} {stat}")
-        if b.get("hp_bonus"):
-            bits.append(f"+{b['hp_bonus']} max health")
-        if b.get("mana_bonus"):
-            bits.append(f"+{b['mana_bonus']} max mana")
         speed = b.get("speed")
         if b.get("dmg") and speed and speed != 100:
             # Otherwise the heaviest weapon in the game looks like a pure
@@ -473,7 +473,43 @@ class Item:
             bits.append(f"holds {b['capacity'] / 1000:.0f} kg")
         bits.append(f"{self.weight} g")
         bits.append(f"bulk {self.bulk}")
-        return ", ".join(bits)
+
+        # "Each property description has three parts: 1. What you have to
+        # do to the object for the property to apply ... 2. What it does
+        # ... 3. How long it lasts" - down to the wording: an "Amulet of
+        # Resist Fire" reads "When wielded, makes the character more
+        # resistant to fire, until removed." Weapons, armour and amulets
+        # are wielded; potions, scrolls and wands are activated. Every
+        # property a worn thing can carry lasts only "until removed" - it
+        # is the wearing that makes it work.
+        verb = "activated" if b.get("kind") in ("potion", "scroll", "wand") else "wielded"
+        props = []
+        if b.get("ac") and is_accessory:
+            props.append(f"When {verb}, adds {b['ac']:+d} to your Armor "
+                         f"Value, until removed.")
+        if b.get("bonus"):
+            stat, amount = b["bonus"]
+            props.append(f"When {verb}, adds {amount:+d} to your "
+                         f"{stat.title()}, until removed.")
+        if b.get("hp_bonus"):
+            props.append(f"When {verb}, adds {b['hp_bonus']:+d} to your "
+                         f"maximum hit points, until removed.")
+        if b.get("mana_bonus"):
+            props.append(f"When {verb}, adds {b['mana_bonus']:+d} to your "
+                         f"maximum mana, until removed.")
+        if self.known and self.enchant:
+            if b.get("dmg"):
+                props.append(f"When wielded, adds {self.enchant:+d} to "
+                             f"your chance to hit and to damage, until "
+                             f"removed.")
+            else:
+                props.append(f"When wielded, adds {self.enchant:+d} to "
+                             f"your Armor Value, until removed.")
+
+        out = ", ".join(bits)
+        if props:
+            out += ". " + " ".join(props)
+        return out
 
     # --------------------------------------------------------------- data --
     def to_dict(self):

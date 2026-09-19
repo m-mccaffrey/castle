@@ -20,7 +20,7 @@ from stormhold.ui.app import (App, MenuScene, CharGenScene,      # noqa: E402
                               StoreScene, ServiceScene, PackScene,
                               SpellScene, SheetScene, AttributesScene,
                               MenuOverlay, HelpScene, OverlayScene,
-                              PlayScene, draw_popup)
+                              PlayScene, draw_popup, describe_item)
 from stormhold.game.world import World                            # noqa: E402
 from stormhold.game.items import Item                            # noqa: E402
 
@@ -831,6 +831,45 @@ class TestTargetingASpell(unittest.TestCase):
         self.assertIsNone(self.play.target_mode)
         self.assertEqual(self.sent, [])
         self.assertTrue(any("Never mind" in m[0] for m in self.play.messages))
+
+
+class TestTheEnchantmentPopupIsClear(unittest.TestCase):
+    """"Match the enchantment tiers and system - currently the system is
+    very vague and it's not clear what it does." A bare "+2 enchantment"
+    told you a number and nothing about what it touched; the manual's own
+    template is three parts - what to do, what it does, how long it
+    lasts - e.g. "When wielded, makes the character more resistant to
+    fire, until removed."
+    """
+
+    def item_view(self, key, enchant=0, cursed=False, known=True):
+        make_app()          # pygame.font needs pygame.init() before W.wrap()
+        world = World(seed=7)
+        item = Item(key, enchant=enchant, cursed=cursed)
+        item.known = known
+        return world.item_view(item)
+
+    def test_the_name_says_enchanted_not_a_number(self):
+        view = self.item_view("longsword", enchant=2)
+        self.assertEqual(view["name"], "Enchanted Long Sword")
+
+    def test_the_popup_keeps_the_sentence_the_flat_split_used_to_eat(self):
+        """describe_item() used to split the whole description on ", "
+        to drop the weight and bulk fragments the line above it already
+        states - and swallowed "When wielded" into the same fragment as
+        "bulk 8000." in the process, since a plain comma-split does not
+        know a sentence boundary from a list boundary."""
+        view = self.item_view("longsword", enchant=2)
+        lines = describe_item(view)
+        body = " ".join(lines)
+        self.assertIn("When wielded, adds +2 to your chance to hit and "
+                      "to damage, until removed.", body)
+
+    def test_a_plain_things_popup_is_unaffected(self):
+        view = self.item_view("dagger")
+        lines = describe_item(view)
+        self.assertIn("1d4 damage", " ".join(lines))
+        self.assertNotIn("When wielded", " ".join(lines))
 
 
 class TestRightClickPopups(unittest.TestCase):

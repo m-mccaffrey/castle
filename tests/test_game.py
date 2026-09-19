@@ -1987,16 +1987,45 @@ class TestQualityPrefixes(unittest.TestCase):
         self.assertTrue(self.named("quarterstaff", -1).startswith("Broken"))
         self.assertTrue(self.named("dagger", -1).startswith("Rusty"))
 
-    def test_a_good_thing_keeps_its_plus(self):
-        self.assertTrue(self.named("dagger", 2).startswith("+2"))
+    def test_a_good_thing_is_named_enchanted_not_numbered(self):
+        """"The name will also indicate if the object is Enchanted or
+        Cursed" - the manual's own words, and never a number: a "+2 Long
+        Sword" was never what the original showed. The +2 itself belongs
+        in the identified description, not the name."""
+        self.assertEqual(self.named("dagger", 2), "Enchanted Dagger")
+        self.assertNotIn("+2", self.named("dagger", 2))
 
     def test_a_cursed_thing_says_so(self):
         self.assertTrue(self.named("leather", -1, cursed=True).startswith("Cursed"))
+
+    def test_a_cursed_things_name_carries_no_number_either(self):
+        self.assertEqual(self.named("dagger", -3, cursed=True), "Cursed Dagger")
 
     def test_before_you_know_it_it_is_only_enchanted_or_normal(self):
         self.assertTrue(self.named("dagger", 2, known=False).startswith("Enchanted"))
         self.assertTrue(self.named("dagger", -2, known=False).startswith("Enchanted"))
         self.assertTrue(self.named("dagger", 0, known=False).startswith("Normal"))
+
+    def test_an_accessory_grades_too_even_with_no_damage_or_armour(self):
+        """A Ring of Might has neither a damage die nor an armour value,
+        but it is still gear that can be found enchanted or cursed, and
+        the original grades every piece of gear the same way."""
+        self.assertEqual(self.named("ring_might", 2), "Enchanted Ring of Might")
+
+    def test_the_number_lives_in_the_description_not_the_name(self):
+        """"Each property description has three parts: what you have to
+        do ... what it does ... how long it lasts" - e.g. "When wielded,
+        makes the character more resistant to fire, until removed." """
+        from stormhold.game.items import Item
+        sword = Item("dagger", enchant=2)
+        sword.known = True
+        self.assertIn("When wielded, adds +2 to your chance to hit and "
+                      "to damage, until removed.", sword.describe())
+
+        armour = Item("leather", enchant=-1)
+        armour.known = True
+        self.assertIn("When wielded, adds -1 to your Armor Value, "
+                      "until removed.", armour.describe())
 
 
 class TestTwoHandedWeapons(unittest.TestCase):
