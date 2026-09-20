@@ -2022,9 +2022,9 @@ class TestQualityPrefixes(unittest.TestCase):
         self.assertIn("When wielded, adds +2 to your chance to hit and "
                       "to damage, until removed.", sword.describe())
 
-        armour = Item("leather", enchant=-1)
+        armour = Item("leather", enchant=-5)
         armour.known = True
-        self.assertIn("When wielded, adds -1 to your Armor Value, "
+        self.assertIn("When wielded, Decreases your Armor Value, "
                       "until removed.", armour.describe())
 
     def test_an_identified_enchanted_item_glows(self):
@@ -2059,30 +2059,66 @@ class TestQualityPrefixes(unittest.TestCase):
         sword = Item("dagger", enchant=2)
         self.assertTrue(sword.is_glowing(shop=True))
 
-    def test_a_big_bonus_reads_strongly_or_greatly_not_just_a_number(self):
+    def test_armor_value_reads_as_a_named_step_not_a_number(self):
         """"Vote [note] has tiers, enchanted, strongly, very strongly
-        enchanted." The binary's own string table backs a magnitude word on
-        the property sentence itself - "makes the character strongly
-        resistant" sits right next to the plain "resistant" template - so a
-        +2 blade reads plain but a +5 one reads as visibly stronger, not
-        just a bigger digit."""
-        from stormhold.game.items import Item
-        modest = Item("dagger", enchant=2)
+        enchanted." Checked against the RPGClassics shrine's own armour and
+        ring tables, which agree word for word: "Increases Armor Value:
+        Normal Armor Value + 5", "Strongly Increases Armor Value: ... + 10",
+        "Very Strongly Increases Armor Value: ... + 20" - and the mirrored
+        Decreases/-5/-10/-20 for a curse. Unlike a weapon's to-hit and
+        damage bonus (the shrine's weapons page calls that "generated
+        randomly" - no named steps there), this one really is one of three
+        fixed sizes, worded, never shown as a bare "+10"."""
+        from stormhold.game.items import Item, tier_verb
+
+        self.assertEqual(tier_verb(5), "Increases")
+        self.assertEqual(tier_verb(10), "Strongly Increases")
+        self.assertEqual(tier_verb(20), "Very Strongly Increases")
+        self.assertEqual(tier_verb(-5), "Decreases")
+        self.assertEqual(tier_verb(-10), "Strongly Decreases")
+        self.assertEqual(tier_verb(-20), "Very Strongly Decreases")
+
+        modest = Item("leather", enchant=5)
         modest.known = True
-        self.assertIn("adds +2 to your chance to hit", modest.describe())
-        self.assertNotIn("strongly", modest.describe())
+        desc = modest.describe()
+        self.assertIn("When wielded, Increases your Armor Value, "
+                      "until removed.", desc)
+        self.assertNotIn("+5", desc)
 
-        strong = Item("dagger", enchant=3)
-        strong.known = True
-        self.assertIn("strongly adds +3", strong.describe())
-
-        mighty = Item("dagger", enchant=5)
+        mighty = Item("leather", enchant=20)
         mighty.known = True
-        self.assertIn("greatly adds +5", mighty.describe())
+        self.assertIn("When wielded, Very Strongly Increases your Armor "
+                      "Value, until removed.", mighty.describe())
 
-        cursed = Item("dagger", enchant=-5, cursed=True)
-        cursed.known = True
-        self.assertIn("greatly adds -5", cursed.describe())
+    def test_a_weapons_hit_and_damage_bonus_stays_a_plain_number(self):
+        """The shrine's weapons page, in contrast to armour and rings:
+        "Enchanted Weapons: ... gain bonuses to Hit %, Damage, or other
+        stats (generated randomly)." No named steps for this one."""
+        from stormhold.game.items import Item
+        sword = Item("dagger", enchant=2)
+        sword.known = True
+        self.assertIn("When wielded, adds +2 to your chance to hit and "
+                      "to damage, until removed.", sword.describe())
+
+    def test_a_ring_of_might_carries_no_fixed_amount(self):
+        """"Increases [Stat]: Stat + 5", "Strongly Increases [Stat]: ...
+        + 10", "Very Strongly Increases [Stat]: ... + 20" - the shrine's
+        rings table. A Ring of Might's own base entry now names only the
+        stat; roll_ring_bonus supplies the tier, same as armour does."""
+        from stormhold.game.items import Item
+        ring = Item("ring_might", enchant=10)
+        ring.known = True
+        self.assertIn("When wielded, Strongly Increases your Strength, "
+                      "until removed.", ring.describe())
+
+    def test_a_ring_of_mights_bonus_actually_applies_to_the_stat(self):
+        from stormhold.game.actors import Player
+        from stormhold.game.items import Item
+        p = Player("Ringed", {"strength": 12, "dexterity": 10,
+                              "intelligence": 10, "constitution": 10})
+        ring = Item("ring_might", enchant=10)
+        p.equipment["ring_left"] = ring
+        self.assertEqual(p.stat("strength"), 22)
 
 
 class TestTwoHandedWeapons(unittest.TestCase):

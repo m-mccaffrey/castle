@@ -91,10 +91,14 @@ BASES = {
     "beltutil":    dict(name="Utility Belt", slot="waist", icon="belt", bulk=5200, wt=600, value=2400, ac=3, depth=14, kind="container", belt_slots=10, capacity=20000, bulk_capacity=40000),
 
     # ---- jewellery (always unidentified when found) ----------------------
-    "ring_might":    dict(name="Ring of Might", slot="ring_left", icon="ring", bulk=900, wt=90, value=600, depth=3, kind="ring", bonus=("strength", 2)),
-    "ring_grace":    dict(name="Ring of Grace", slot="ring_left", icon="ring", bulk=900, wt=90, value=600, depth=3, kind="ring", bonus=("dexterity", 2)),
-    "ring_wit":      dict(name="Ring of Wit", slot="ring_left", icon="ring", bulk=900, wt=90, value=600, depth=3, kind="ring", bonus=("intelligence", 2)),
-    "ring_health":   dict(name="Ring of Health", slot="ring_left", icon="ring", bulk=900, wt=90, value=650, depth=4, kind="ring", bonus=("constitution", 2)),
+    # These four carry no fixed amount: what a Ring of Might actually does
+    # to your Strength is entirely the roll_ring_bonus tier it lands on -
+    # the same +5/+10/+20 steps as everything else in TIERS - not a
+    # number fixed to the item type. See roll_ring_bonus and describe().
+    "ring_might":    dict(name="Ring of Might", slot="ring_left", icon="ring", bulk=900, wt=90, value=600, depth=3, kind="ring", bonus_stat="strength"),
+    "ring_grace":    dict(name="Ring of Grace", slot="ring_left", icon="ring", bulk=900, wt=90, value=600, depth=3, kind="ring", bonus_stat="dexterity"),
+    "ring_wit":      dict(name="Ring of Wit", slot="ring_left", icon="ring", bulk=900, wt=90, value=600, depth=3, kind="ring", bonus_stat="intelligence"),
+    "ring_health":   dict(name="Ring of Health", slot="ring_left", icon="ring", bulk=900, wt=90, value=650, depth=4, kind="ring", bonus_stat="constitution"),
     "ring_warding":  dict(name="Ring of Warding", slot="ring_left", icon="ring", bulk=900, wt=90, value=800, depth=6, kind="ring", ac=9),
     "ring_burden":   dict(name="Ring of Burdens", slot="ring_left", icon="ring", bulk=900, wt=90, value=10, depth=2, kind="ring", bonus=("strength", -3), cursed=True),
     "amulet_ward":   dict(name="Amulet of Warding", slot="neck", icon="amulet", bulk=1800, wt=225, value=900, depth=7, kind="amulet", ac=12),
@@ -252,26 +256,6 @@ def damaged_prefix(key, base):
     if material is None:
         material = "metal"                # mail, plate, blades, hafted
     return DAMAGED[material]
-
-
-def magnitude(amount):
-    """The adverb a property sentence opens its verb with, by size.
-
-    The manual's own worked examples ("adds +2...") give no numeric bands,
-    but the game's own vocabulary for a bigger effect is right there in the
-    binary's string table alongside the plain wording - "makes the
-    character strongly resistant", next to the unmodified "resistant" -
-    and separately "greatly "/"very " sit next to the plain stat-increase
-    template. The exact original cutoffs aren't recoverable from that
-    table alone, so these bands are our own placement of that real
-    vocabulary, not a sourced threshold.
-    """
-    amount = abs(amount)
-    if amount >= 5:
-        return "greatly "
-    if amount >= 3:
-        return "strongly "
-    return ""
 
 
 def article(word):
@@ -519,30 +503,49 @@ class Item:
         # is the wearing that makes it work.
         verb = "activated" if b.get("kind") in ("potion", "scroll", "wand") else "wielded"
         props = []
+        # These three are an item's own fixed, designed power - Ring of
+        # Warding's +9, Amulet of Vigour's +25 HP - not a roll, so they
+        # stay a plain number rather than borrowing the tier wording below.
         if b.get("ac") and is_accessory:
-            props.append(f"When {verb}, {magnitude(b['ac'])}adds {b['ac']:+d} "
-                         f"to your Armor Value, until removed.")
+            props.append(f"When {verb}, adds {b['ac']:+d} to your Armor "
+                         f"Value, until removed.")
         if b.get("bonus"):
             stat, amount = b["bonus"]
-            props.append(f"When {verb}, {magnitude(amount)}adds {amount:+d} "
-                         f"to your {stat.title()}, until removed.")
+            props.append(f"When {verb}, adds {amount:+d} to your "
+                         f"{stat.title()}, until removed.")
         if b.get("hp_bonus"):
-            props.append(f"When {verb}, {magnitude(b['hp_bonus'])}adds "
-                         f"{b['hp_bonus']:+d} to your maximum hit points, "
-                         f"until removed.")
+            props.append(f"When {verb}, adds {b['hp_bonus']:+d} to your "
+                         f"maximum hit points, until removed.")
         if b.get("mana_bonus"):
-            props.append(f"When {verb}, {magnitude(b['mana_bonus'])}adds "
-                         f"{b['mana_bonus']:+d} to your maximum mana, "
-                         f"until removed.")
+            props.append(f"When {verb}, adds {b['mana_bonus']:+d} to your "
+                         f"maximum mana, until removed.")
+
+        # A Ring of Might's whole point is this bonus, and unlike the
+        # fixed numbers above, this one really is a roll - see
+        # roll_ring_bonus. It reads in the shrine's own named steps, the
+        # same as the generic Armor Value case just below: "Increases
+        # Strength"/"Strongly Increases Strength"/"Very Strongly Increases
+        # Strength", never a bare "+10".
+        if b.get("bonus_stat") and self.known and self.enchant:
+            props.append(f"When {verb}, {tier_verb(self.enchant)} your "
+                         f"{b['bonus_stat'].title()}, until removed.")
         if self.known and self.enchant:
             if b.get("dmg"):
-                props.append(f"When wielded, {magnitude(self.enchant)}adds "
-                             f"{self.enchant:+d} to your chance to hit and "
-                             f"to damage, until removed.")
-            else:
-                props.append(f"When wielded, {magnitude(self.enchant)}adds "
-                             f"{self.enchant:+d} to your Armor Value, "
-                             f"until removed.")
+                # The shrine's own weapons page: a magic weapon's bonus to
+                # hit and damage is "generated randomly", not one of the
+                # three named steps below - so this stays a plain number.
+                props.append(f"When wielded, adds {self.enchant:+d} to "
+                             f"your chance to hit and to damage, until "
+                             f"removed.")
+            elif not b.get("bonus_stat"):
+                # "Increases Armor Value: Normal Armor Value + 5",
+                # "Strongly Increases Armor Value: ... + 10", "Very
+                # Strongly Increases Armor Value: ... + 20" - the
+                # shrine's own table, word for word, for every other
+                # piece of non-weapon gear (armour, shields, rings,
+                # amulets alike).
+                props.append(f"When wielded, {tier_verb(self.enchant)} "
+                             f"your Armor Value, until removed.")
 
         out = ", ".join(bits)
         if props:
@@ -602,7 +605,13 @@ def _weighted(rng, pairs):
 
 
 def roll_enchantment(depth, rng):
-    """Most things are plain. Some are blessed. A few will bite you."""
+    """Most things are plain. Some are blessed. A few will bite you.
+
+    Weapons only: the shrine's own weapons page says a magic weapon's
+    bonus to hit and damage is "generated randomly", unlike armour and
+    rings (see roll_tier below), which is why this is still a plain
+    continuous roll and the other two aren't.
+    """
     roll = rng.random()
     if roll < 0.06 + depth * 0.004:
         return -rng.randint(1, 3), True             # cursed
@@ -613,6 +622,69 @@ def roll_enchantment(depth, rng):
         best = 1 + min(4, depth // 5) + max(0, (depth - 25) // 10)
         return rng.randint(1, best), False
     return 0, False
+
+
+# Armour Value and ring/amulet stat bonuses do not roll a number in the
+# original - they land on one of three named, fixed steps. The RPGClassics
+# shrine gives matching tables for both armour and rings:
+#   "Increases Armor Value: Normal Armor Value + 5"
+#   "Strongly Increases Armor Value: Normal Armor Value + 10"
+#   "Very Strongly Increases Armor Value: Normal Armor Value + 20"
+#   "Increases [Stat]: Stat + 5" / "Strongly..." + 10 / "Very Strongly..." + 20
+# and the mirrored Decreases/-5/-10/-20 for a curse. TIERS is that table.
+TIERS = (5, 10, 20)
+
+
+def tier_verb(amount):
+    """The named step a rolled bonus reads as, straight off the shrine's
+    own wording - never the raw number."""
+    n = abs(amount)
+    verb = "Increases" if amount >= 0 else "Decreases"
+    if n >= 20:
+        return f"Very Strongly {verb}"
+    if n >= 10:
+        return f"Strongly {verb}"
+    return verb
+
+
+def _pick_tier(depth, rng):
+    """Which of the three steps a magic item's bonus lands on. The shrine
+    gives the step sizes but not the odds between them - rarer, bigger
+    steps turning up deeper is our own placement of those numbers, the
+    same as roll_enchantment's own depth curve above.
+    """
+    weights = [70, 25, 5]
+    if depth >= 10:
+        weights = [55, 32, 13]
+    if depth >= 20:
+        weights = [40, 35, 25]
+    return rng.choices(TIERS, weights=weights)[0]
+
+
+def roll_tier(depth, rng):
+    """Like roll_enchantment, but for the gear the shrine documents in
+    named steps instead of a rolled number: armour, shields, and the rest
+    of the non-weapon slots. Same odds of being magical at all as
+    roll_enchantment; only the size comes from _pick_tier instead of a
+    randint.
+    """
+    roll = rng.random()
+    if roll < 0.06 + depth * 0.004:
+        return -_pick_tier(depth, rng), True
+    if roll < 0.30 + depth * 0.012:
+        return _pick_tier(depth, rng), False
+    return 0, False
+
+
+def roll_ring_bonus(depth, rng):
+    """A Ring of Might is never Normal - the stat bonus is the entire
+    reason to wear one, unlike a sword's edge or a cloak's weave, so
+    "does nothing" is not a state this class of item has. Same curse
+    odds as roll_tier; the "nothing happened" branch is removed.
+    """
+    cursed = rng.random() < 0.06 + depth * 0.004
+    magnitude = _pick_tier(depth, rng)
+    return (-magnitude if cursed else magnitude), cursed
 
 
 def generate_item(depth, rng, rich=False, kinds=None):
@@ -640,7 +712,13 @@ def generate_item(depth, rng, rich=False, kinds=None):
 
     enchant, cursed = 0, False
     if base.get("slot"):
-        enchant, cursed = roll_enchantment(depth + (5 if rich else 0), rng)
+        roll_depth = depth + (5 if rich else 0)
+        if base.get("bonus_stat"):
+            enchant, cursed = roll_ring_bonus(roll_depth, rng)
+        elif base.get("dmg"):
+            enchant, cursed = roll_enchantment(roll_depth, rng)
+        else:
+            enchant, cursed = roll_tier(roll_depth, rng)
     if base.get("cursed"):
         cursed = True
     return Item(key, enchant=enchant, cursed=cursed)

@@ -114,6 +114,11 @@ class Player(Actor):
             bonus = item.base.get("bonus")
             if bonus and bonus[0] == name:
                 value += bonus[1]
+            # Ring of Might and the like carry no fixed amount - the tier
+            # this instance rolled (item.enchant) is the whole bonus, per
+            # roll_ring_bonus.
+            if item.base.get("bonus_stat") == name:
+                value += item.enchant
         if name == "strength" and self.has("might"):
             value += 4
         return max(1, value)
