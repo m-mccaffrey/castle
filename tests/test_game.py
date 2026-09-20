@@ -2184,6 +2184,90 @@ class TestTheRealShieldAndHelmetLadders(unittest.TestCase):
         self.assertEqual(BASES["gauntlets"]["ac"], 5)
 
 
+class TestGauntletAndCloakEgoNaming(unittest.TestCase):
+    """gauntlets.shtml and cloaks.shtml, pasted directly into this session:
+    a gauntlet's or cloak's magic is a named ego item - "Gauntlets of
+    Strength", "Cape of Protection" - not the bare Enchanted/Cursed prefix
+    everything else in the game uses.
+    """
+
+    def item(self, key, ego, enchant, cursed=False, known=True):
+        from stormhold.game.items import Item
+        it = Item(key, enchant=enchant, cursed=cursed)
+        it.ego = ego
+        it.known = known
+        return it
+
+    def test_the_name_says_what_it_is_of(self):
+        self.assertEqual(self.item("gauntlets", "strength", 5).name(),
+                         "Enchanted Gauntlets of Strength")
+        self.assertEqual(
+            self.item("gauntlets", "protection", -5, cursed=True).name(),
+            "Cursed Gauntlets of Protection")
+
+    def test_a_cloaks_ego_name_replaces_the_word_not_just_a_prefix(self):
+        """"Enchanted Cape of Protection", not "Enchanted Wool Cloak of
+        Protection" - the shrine's own reference-run quote, independently
+        confirmed in docs/reference-run.md."""
+        self.assertEqual(self.item("cloak", "protection", 5).name(),
+                         "Enchanted Cape of Protection")
+
+    def test_a_stat_kind_reads_two_sentences_not_one(self):
+        """"Increases Strength = Stat + 5, Armor Value + 5" - the shrine's
+        own formula for a gauntlet's stat kind grants both at once."""
+        gaunt = self.item("gauntlets", "strength", 10)
+        desc = gaunt.describe()
+        self.assertIn("When wielded, Strongly Increases your Strength, "
+                      "until removed.", desc)
+        self.assertIn("When wielded, Strongly Increases your Armor Value, "
+                      "until removed.", desc)
+
+    def test_protection_only_touches_armor_value(self):
+        gaunt = self.item("gauntlets", "protection", 10)
+        self.assertIn("Armor Value", gaunt.describe())
+        self.assertNotIn("Strength", gaunt.describe())
+
+    def test_slaying_is_a_plain_number_not_a_named_step(self):
+        """gauntlets.shtml's own contrast with the stat kinds: "Enchanted
+        Gauntlets of Slaying ... Hit% / Damage", no Armor Value line."""
+        gaunt = self.item("gauntlets", "slaying", 3)
+        desc = gaunt.describe()
+        self.assertIn("adds +3 to your chance to hit and to damage, "
+                      "until removed.", desc)
+        self.assertNotIn("Armor Value", desc)
+        self.assertEqual(gaunt.ac(), 5)          # base +5 only, untouched
+
+    def test_a_stat_kind_actually_raises_the_stat_and_the_armor_value(self):
+        from stormhold.game.actors import Player
+        p = Player("Gauntleted", {"strength": 12, "dexterity": 10,
+                                  "intelligence": 10, "constitution": 10})
+        gaunt = self.item("gauntlets", "strength", 10)
+        p.equipment["arms"] = gaunt
+        self.assertEqual(p.stat("strength"), 22)
+        self.assertEqual(p.armour_class, 15)      # base 5 + tier 10
+
+    def test_slaying_adds_to_hit_and_damage_not_armor_value(self):
+        from stormhold.game.actors import Player
+        p = Player("Slayer", {"strength": 12, "dexterity": 10,
+                              "intelligence": 10, "constitution": 10})
+        bare_hit = p.to_hit
+        gaunt = self.item("gauntlets", "slaying", 4)
+        p.equipment["arms"] = gaunt
+        self.assertEqual(p.to_hit, bare_hit + 4)
+        self.assertEqual(p.armour_class, 5)       # base only, no AV from Slaying
+
+    def test_generation_never_curses_a_slaying_gauntlet(self):
+        """gauntlets.shtml shows five cursed kinds but never a cursed
+        Slaying row - so a curse should never land on that kind."""
+        import random
+        from stormhold.game.items import roll_ego, GAUNTLET_EGO_KINDS
+        rng = random.Random(1)
+        for _ in range(5000):
+            kind, magnitude, cursed = roll_ego(20, rng, GAUNTLET_EGO_KINDS)
+            if cursed:
+                self.assertNotEqual(kind, "slaying")
+
+
 class TestTwoHandedWeapons(unittest.TestCase):
     """"Two-handed weapons conflict with shields, and the game says so rather
     than silently refusing." We had no two-handed weapons at all.

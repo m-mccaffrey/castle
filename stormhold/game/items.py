@@ -35,6 +35,20 @@ def _new_id():
 #    depth  : shallowest floor it is generated on
 # --------------------------------------------------------------------------
 
+# Gauntlets and cloaks name their magic after what it touches, rather than
+# the bare Enchanted/Cursed prefix everything else uses - gauntlets.shtml's
+# own rows: "Gauntlets of Protection/Strength/Dexterity/Intelligence/
+# Constitution/Slaying"; cloaks.shtml only ever shows "Cape of Protection",
+# so that is the only kind a cloak rolls. Defined here, ahead of BASES,
+# since BASES itself references these tuples.
+EGO_STAT_KINDS = ("strength", "dexterity", "intelligence", "constitution")
+GAUNTLET_EGO_KINDS = ("protection",) + EGO_STAT_KINDS + ("slaying",)
+CLOAK_EGO_KINDS = ("protection",)
+EGO_LABELS = {"protection": "Protection", "slaying": "Slaying",
+              "strength": "Strength", "dexterity": "Dexterity",
+              "intelligence": "Intelligence", "constitution": "Constitution"}
+
+
 BASES = {
     # ---- blades ---------------------------------------------------------
     "dagger":      dict(name="Dagger", slot="weapon", icon="dagger", bulk=500, wt=500, value=20, dmg=(1, 4), depth=0, speed=80),
@@ -102,19 +116,17 @@ BASES = {
     "helm_iron":   dict(name="Iron Helmet", slot="head", icon="cap", bulk=2000, wt=2000, value=75, ac=6, depth=2),
     "helm":        dict(name="Steel Helmet", slot="head", icon="helm", bulk=2000, wt=2500, value=225, ac=9, depth=5),
     "gloves":      dict(name="Leather Gloves", slot="arms", icon="gauntlets", bulk=4500, wt=450, value=20, ac=3, depth=0),
-    # The shrine's gauntlets.shtml gives only one plain physical tier,
-    # "Gauntlet" at +5 - its magic versions are named ego items ("Gauntlets
-    # of Protection/Strength/.../Slaying"), a different naming mechanic
-    # from the Enchanted/Cursed prefix everything else here uses. Not
-    # built yet: this row is only the physical +5, unchanged in kind from
-    # before.
-    "gauntlets":   dict(name="Gauntlets", slot="arms", icon="gauntlets", bulk=2000, wt=500, value=8, ac=5, depth=1),
+    # The shrine's gauntlets.shtml gives one plain physical tier, "Gauntlet"
+    # at +5, and its magic versions as named ego items: "Gauntlets of
+    # Protection/Strength/Dexterity/Intelligence/Constitution/Slaying" -
+    # see roll_ego(), name() and describe().
+    "gauntlets":   dict(name="Gauntlets", slot="arms", icon="gauntlets", bulk=2000, wt=500, value=8, ac=5, depth=1, ego_kinds=GAUNTLET_EGO_KINDS),
     "boots":       dict(name="Boots", slot="feet", icon="boots", bulk=10800, wt=1125, value=30, ac=3, depth=0),
     "leggings":    dict(name="Leggings", slot="legs", icon="leggings", bulk=16200, wt=2700, value=95, ac=6, depth=3),
-    # Cloaks: cloaks.shtml gives one plain tier, "Wool Cloak" at +1 - its
-    # magic version is the named ego item "Cape of Protection", the same
-    # mechanic as gauntlets above and, like them, not built yet.
-    "cloak":       dict(name="Wool Cloak", slot="back", icon="cloak", bulk=6000, wt=500, value=2, ac=1, depth=1),
+    # Cloaks: cloaks.shtml gives one plain tier, "Wool Cloak" at +1, and its
+    # magic version as the named ego item "Cape of Protection" - the label
+    # itself changes, not just a prefix, hence ego_label.
+    "cloak":       dict(name="Wool Cloak", slot="back", icon="cloak", bulk=6000, wt=500, value=2, ac=1, depth=1, ego_kinds=CLOAK_EGO_KINDS, ego_label="Cape"),
     "belt":        dict(name="Two Slot Belt", slot="waist", icon="belt", bulk=4500, wt=450, value=35, ac=3, depth=1, kind="container", belt_slots=2, capacity=4000, bulk_capacity=8000),
     "belt3":       dict(name="Three Slot Belt", slot="waist", icon="belt", bulk=4700, wt=500, value=90, ac=3, depth=5, kind="container", belt_slots=3, capacity=6000, bulk_capacity=12000),
     "beltutil":    dict(name="Utility Belt", slot="waist", icon="belt", bulk=5200, wt=600, value=2400, ac=3, depth=14, kind="container", belt_slots=10, capacity=20000, bulk_capacity=40000),
@@ -340,7 +352,7 @@ class Item:
 
     __slots__ = ("id", "key", "base", "enchant", "cursed", "known", "qty",
                  "charges", "contents", "spell", "gold_amount", "metal",
-                 "recharge_at", "custom_name")
+                 "recharge_at", "custom_name", "ego")
 
     def __init__(self, key, enchant=0, cursed=False, qty=1, charges=0, spell=None):
         self.id = _new_id()
@@ -357,6 +369,11 @@ class Item:
         self.gold_amount = 0        # value in copper, on a pile of coins
         self.metal = "copper"       # what that pile is actually made of
         self.custom_name = None     # whatever the player chose to call it
+        # What a gauntlet's or cloak's magic touches - "protection",
+        # "strength"/"dexterity"/"intelligence"/"constitution", or
+        # "slaying" - set by roll_ego() at generation, None on everything
+        # else. See name()/describe() for how it changes the wording.
+        self.ego = None
 
     # ------------------------------------------------------------ queries --
     @property
@@ -422,7 +439,12 @@ class Item:
         return self.base.get("dmg", (1, 2))
 
     def ac(self):
-        return self.base.get("ac", 0) + self.enchant
+        # Gauntlets of Slaying put their whole roll into hit and damage,
+        # not Armor Value - "Enchanted Gauntlets of Slaying +0" in the
+        # shrine's own gauntlets table, unlike every other ego kind
+        # ("... = Stat + 5, Armor Value + 5").
+        bonus = 0 if self.ego == "slaying" else self.enchant
+        return self.base.get("ac", 0) + bonus
 
     def to_hit(self):
         return self.enchant
@@ -469,10 +491,22 @@ class Item:
                 prefix = "Enchanted "     # magical, but you cannot read it yet
             else:
                 prefix = "Normal "
-        # "A spent wand becomes a Dead Wand."
+        # "A spent wand becomes a Dead Wand." - unaffected by ego naming
+        # below, since a wand never carries an ego_kinds entry.
         if base.get("charges") and self.known and self.charges <= 0:
             label = f"Dead {label}"
-        out = f"{prefix}{label}"
+        # Gauntlets and cloaks name their magic after what it touches -
+        # "Enchanted Gauntlets of Strength", "Cursed Gauntlets of
+        # Protection", "Enchanted Cape of Protection" - not a bare
+        # Enchanted/Cursed prefix on the plain name. A cloak's magic label
+        # even replaces the word itself ("Cape", not "Wool Cloak"); a
+        # gauntlet's does not. Unenchanted gear keeps its plain name -
+        # ego is only ever set alongside a real roll.
+        if base.get("ego_kinds") and self.ego and (self.known or shop):
+            ego_label = base.get("ego_label", label)
+            out = f"{prefix}{ego_label} of {EGO_LABELS[self.ego]}"
+        else:
+            out = f"{prefix}{label}"
         if self.qty > 1:
             out = f"{self.qty} {pluralise(out, self.qty)}"
         if self.charges and self.known:
@@ -566,7 +600,25 @@ class Item:
         if b.get("bonus_stat") and self.known and self.enchant:
             props.append(f"When {verb}, {tier_verb(self.enchant)} your "
                          f"{b['bonus_stat'].title()}, until removed.")
-        if self.known and self.enchant:
+
+        # Gauntlets of Slaying/Strength/etc and a Cape of Protection: the
+        # ego kind decides the wording, straight off gauntlets.shtml's own
+        # rows. "Of Slaying" reads like a weapon's roll (plain number,
+        # "generated randomly", the same as any other hit/damage bonus).
+        # A stat kind reads two sentences, not one - the shrine's own
+        # formula gives both at once: "Increases Strength = Stat + 5,
+        # Armor Value + 5". "Of Protection" gets no special-casing here at
+        # all; it falls through to the plain Armor Value wording below,
+        # since that IS what it says.
+        if b.get("ego_kinds") and self.known and self.ego == "slaying":
+            props.append(f"When wielded, adds {self.enchant:+d} to your "
+                         f"chance to hit and to damage, until removed.")
+        elif b.get("ego_kinds") and self.known and self.ego in EGO_STAT_KINDS:
+            props.append(f"When wielded, {tier_verb(self.enchant)} your "
+                         f"{self.ego.title()}, until removed.")
+            props.append(f"When wielded, {tier_verb(self.enchant)} your "
+                         f"Armor Value, until removed.")
+        elif self.known and self.enchant:
             if b.get("dmg"):
                 # The shrine's own weapons page: a magic weapon's bonus to
                 # hit and damage is "generated randomly", not one of the
@@ -580,7 +632,7 @@ class Item:
                 # Strongly Increases Armor Value: ... + 20" - the
                 # shrine's own table, word for word, for every other
                 # piece of non-weapon gear (armour, shields, rings,
-                # amulets alike).
+                # amulets, and a Cape/Gauntlets of Protection alike).
                 props.append(f"When wielded, {tier_verb(self.enchant)} "
                              f"your Armor Value, until removed.")
 
@@ -594,6 +646,7 @@ class Item:
         return {"id": self.id, "key": self.key, "e": self.enchant, "g": self.gold_amount,
                 "c": self.cursed, "k": self.known, "q": self.qty,
                 "ch": self.charges, "sp": self.spell, "cn": self.custom_name,
+                "eg": self.ego,
                 "in": [i.to_dict() for i in self.contents] if self.contents else None}
 
     @staticmethod
@@ -604,6 +657,7 @@ class Item:
         it.known = d.get("k", False)
         it.gold_amount = d.get("g", 0)
         it.custom_name = d.get("cn")
+        it.ego = d.get("eg")
         if d.get("in"):
             it.contents = [Item.from_dict(x) for x in d["in"]]
         return it
@@ -724,6 +778,31 @@ def roll_ring_bonus(depth, rng):
     return (-magnitude if cursed else magnitude), cursed
 
 
+def roll_ego(depth, rng, kinds):
+    """Like roll_tier, but for gauntlets and cloaks: which kind of magic
+    it is, as well as whether it has any, comes off the roll. The shrine's
+    gauntlets table shows five cursed kinds but never a cursed Slaying, so
+    a curse never lands on that one here either - everything else is even
+    odds among the kinds this item can roll. Slaying's own size is a plain
+    roll, same reasoning as roll_enchantment's weapon bonus; every other
+    kind uses the named _pick_tier steps.
+    """
+    roll = rng.random()
+    if roll < 0.06 + depth * 0.004:
+        kind = rng.choice([k for k in kinds if k != "slaying"])
+        magnitude = -_pick_tier(depth, rng)
+        return kind, magnitude, True
+    if roll < 0.30 + depth * 0.012:
+        kind = rng.choice(kinds)
+        if kind == "slaying":
+            best = 1 + min(4, depth // 5) + max(0, (depth - 25) // 10)
+            magnitude = rng.randint(1, best)
+        else:
+            magnitude = _pick_tier(depth, rng)
+        return kind, magnitude, False
+    return None, 0, False
+
+
 def generate_item(depth, rng, rich=False, kinds=None):
     # Character creation tells the player "you learn magic from books you find
     # or buy", and until now the keep never dropped one: the only books in the
@@ -747,10 +826,12 @@ def generate_item(depth, rng, rich=False, kinds=None):
         lo, hi = base["charges"]
         return Item(key, charges=rng.randint(lo, hi))
 
-    enchant, cursed = 0, False
+    enchant, cursed, ego = 0, False, None
     if base.get("slot"):
         roll_depth = depth + (5 if rich else 0)
-        if base.get("bonus_stat"):
+        if base.get("ego_kinds"):
+            ego, enchant, cursed = roll_ego(roll_depth, rng, base["ego_kinds"])
+        elif base.get("bonus_stat"):
             enchant, cursed = roll_ring_bonus(roll_depth, rng)
         elif base.get("dmg"):
             enchant, cursed = roll_enchantment(roll_depth, rng)
@@ -758,7 +839,9 @@ def generate_item(depth, rng, rich=False, kinds=None):
             enchant, cursed = roll_tier(roll_depth, rng)
     if base.get("cursed"):
         cursed = True
-    return Item(key, enchant=enchant, cursed=cursed)
+    it = Item(key, enchant=enchant, cursed=cursed)
+    it.ego = ego
+    return it
 
 
 def generate_gold(depth, rng):

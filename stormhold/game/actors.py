@@ -119,6 +119,12 @@ class Player(Actor):
             # roll_ring_bonus.
             if item.base.get("bonus_stat") == name:
                 value += item.enchant
+            # Gauntlets of Strength/Dexterity/Intelligence/Constitution:
+            # the shrine's own formula pairs this with an equal Armor
+            # Value bump, which item.ac() already applies generically -
+            # see Item.ac().
+            if item.ego == name:
+                value += item.enchant
         if name == "strength" and self.has("might"):
             value += 4
         return max(1, value)
@@ -148,12 +154,22 @@ class Player(Actor):
         ac += self.effect_value("stoneskin", 0)
         return ac
 
+    def _slaying_bonus(self):
+        """A Gauntlets of Slaying's whole roll goes to hit and damage,
+        the same as a weapon's own enchant - gauntlets.shtml's "Enchanted
+        Gauntlets of Slaying ... Hit% / Damage" row."""
+        gauntlets = self.equipment.get("arms")
+        if gauntlets and gauntlets.ego == "slaying":
+            return gauntlets.enchant
+        return 0
+
     @property
     def to_hit(self):
         bonus = self.level // 2 + stat_bonus(self.stat("dexterity"))
         weapon = self.equipment.get("weapon")
         if weapon:
             bonus += weapon.to_hit()
+        bonus += self._slaying_bonus()
         return bonus
 
     def damage_roll(self, rng):
@@ -164,6 +180,7 @@ class Player(Actor):
         else:
             dmg = rng.randint(1, 3)          # bare hands
         dmg += stat_bonus(self.stat("strength"))
+        dmg += self._slaying_bonus()
         return max(1, dmg)
 
     # ------------------------------------------------------------- money ---
