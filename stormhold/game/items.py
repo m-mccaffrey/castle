@@ -74,18 +74,47 @@ BASES = {
     "scalemail":   dict(name="Suit of Scale Mail", slot="torso", icon="scalemail", bulk=30000, wt=9000, value=400, ac=24, depth=6, str_req=12),
     "bandedmail":  dict(name="Suit of Banded Mail", slot="torso", icon="chainmail", bulk=34000, wt=12000, value=900, ac=36, depth=11, str_req=15),
     "platemail":   dict(name="Suit of Plate Armour", slot="torso", icon="platemail", bulk=40000, wt=15000, value=1400, ac=42, depth=14, str_req=16),
-    # ---- shields ---------------------------------------------------------
-    "buckler":     dict(name="Buckler", slot="shield", icon="buckler", bulk=15000, wt=3000, value=45, ac=3, depth=0),
-    "shield":      dict(name="Kite Shield", slot="shield", icon="shield", bulk=23400, wt=4050, value=140, ac=9, depth=3),
-    "towershield": dict(name="Tower Shield", slot="shield", icon="tower", bulk=50000, wt=6000, value=390, ac=12, depth=9, str_req=14),
+    # ---- shields -----------------------------------------------------------
+    # RPGClassics shrine's own shields table (shields.shtml, pasted directly
+    # into this session): nine named tiers, not three - Small/Medium/Large
+    # across Wooden/Iron/Steel. The three keys below keep their old names
+    # (armourer stock and tools/balance.py's grouping reference "buckler",
+    # "shield" and "towershield" directly) but now carry the shrine's low,
+    # middle and top tier; the six in between are new. Icons are reused by
+    # size (Small/Medium/Large -> buckler/kite/tower silhouette) since we
+    # have three shield icons, not nine - a simplification, not a claim
+    # about what the original's art looked like.
+    "buckler":       dict(name="Small Wooden Shield", slot="shield", icon="buckler", bulk=15000, wt=3000, value=38, ac=3, depth=0),
+    "shield_mw":     dict(name="Medium Wooden Shield", slot="shield", icon="buckler", bulk=35000, wt=4000, value=75, ac=6, depth=1),
+    "shield_si":     dict(name="Small Iron Shield", slot="shield", icon="buckler", bulk=15000, wt=4000, value=90, ac=7, depth=2),
+    "shield_lw":     dict(name="Large Wooden Shield", slot="shield", icon="buckler", bulk=50000, wt=5000, value=84, ac=9, depth=3),
+    "shield":        dict(name="Medium Iron Shield", slot="shield", icon="shield", bulk=35000, wt=5000, value=180, ac=10, depth=4),
+    "shield_ss":     dict(name="Small Steel Shield", slot="shield", icon="shield", bulk=15000, wt=4000, value=195, ac=11, depth=5),
+    "shield_li":     dict(name="Large Iron Shield", slot="shield", icon="tower", bulk=50000, wt=6000, value=225, ac=12, depth=6, str_req=14),
+    "shield_ms":     dict(name="Medium Steel Shield", slot="shield", icon="tower", bulk=35000, wt=5000, value=240, ac=13, depth=7),
+    "towershield":   dict(name="Large Steel Shield", slot="shield", icon="tower", bulk=50000, wt=6000, value=256, ac=15, depth=8, str_req=14),
     # ---- the other slots -------------------------------------------------
-    "cap":         dict(name="Leather Cap", slot="head", icon="cap", bulk=7200, wt=675, value=25, ac=3, depth=0),
-    "helm":        dict(name="Steel Helm", slot="head", icon="helm", bulk=2000, wt=2500, value=130, ac=9, depth=4),
+    # Helmets: the shrine's own helmets.shtml gives a three-tier ladder,
+    # Leather/Iron/Steel at +3/+6/+9 - "cap" and "helm" keep their old key
+    # names (armourer staple, tools/interaction_audit.py) but now carry the
+    # shrine's low and top tier; "helm_iron" is the new middle one.
+    "cap":         dict(name="Leather Helmet", slot="head", icon="cap", bulk=500, wt=500, value=38, ac=3, depth=0),
+    "helm_iron":   dict(name="Iron Helmet", slot="head", icon="cap", bulk=2000, wt=2000, value=75, ac=6, depth=2),
+    "helm":        dict(name="Steel Helmet", slot="head", icon="helm", bulk=2000, wt=2500, value=225, ac=9, depth=5),
     "gloves":      dict(name="Leather Gloves", slot="arms", icon="gauntlets", bulk=4500, wt=450, value=20, ac=3, depth=0),
-    "gauntlets":   dict(name="Gauntlets", slot="arms", icon="gauntlets", bulk=8100, wt=1575, value=110, ac=6, depth=5),
+    # The shrine's gauntlets.shtml gives only one plain physical tier,
+    # "Gauntlet" at +5 - its magic versions are named ego items ("Gauntlets
+    # of Protection/Strength/.../Slaying"), a different naming mechanic
+    # from the Enchanted/Cursed prefix everything else here uses. Not
+    # built yet: this row is only the physical +5, unchanged in kind from
+    # before.
+    "gauntlets":   dict(name="Gauntlets", slot="arms", icon="gauntlets", bulk=2000, wt=500, value=8, ac=5, depth=1),
     "boots":       dict(name="Boots", slot="feet", icon="boots", bulk=10800, wt=1125, value=30, ac=3, depth=0),
     "leggings":    dict(name="Leggings", slot="legs", icon="leggings", bulk=16200, wt=2700, value=95, ac=6, depth=3),
-    "cloak":       dict(name="Cloak", slot="back", icon="cloak", bulk=12600, wt=675, value=40, ac=3, depth=1),
+    # Cloaks: cloaks.shtml gives one plain tier, "Wool Cloak" at +1 - its
+    # magic version is the named ego item "Cape of Protection", the same
+    # mechanic as gauntlets above and, like them, not built yet.
+    "cloak":       dict(name="Wool Cloak", slot="back", icon="cloak", bulk=6000, wt=500, value=2, ac=1, depth=1),
     "belt":        dict(name="Two Slot Belt", slot="waist", icon="belt", bulk=4500, wt=450, value=35, ac=3, depth=1, kind="container", belt_slots=2, capacity=4000, bulk_capacity=8000),
     "belt3":       dict(name="Three Slot Belt", slot="waist", icon="belt", bulk=4700, wt=500, value=90, ac=3, depth=5, kind="container", belt_slots=3, capacity=6000, bulk_capacity=12000),
     "beltutil":    dict(name="Utility Belt", slot="waist", icon="belt", bulk=5200, wt=600, value=2400, ac=3, depth=14, kind="container", belt_slots=10, capacity=20000, bulk_capacity=40000),
@@ -242,11 +271,19 @@ DAMAGED = {
 }
 MATERIAL = {
     "robe": "cloth", "cloak": "cloth",
-    "leather": "leather", "studded": "leather", "cap": "leather",
+    "leather": "leather", "studded": "leather",
     "gloves": "leather", "boots": "leather", "leggings": "leather",
     "belt": "leather", "belt3": "leather", "beltutil": "leather",
-    "buckler": "wood", "shield": "wood", "quarterstaff": "wood",
-    "runestaff": "wood", "wand": "wood",
+    # The shrine calls a damaged shield "Broken Shield" and a damaged
+    # helmet "Broken Helmet" - wood's damaged name, not metal's "Rusty"
+    # or leather's "Ripped" - for both shields.shtml and helmets.shtml,
+    # cap/steel alike, so all nine shield tiers and all three helmet
+    # tiers go in this bucket rather than by their own material name.
+    "buckler": "wood", "shield_mw": "wood", "shield_si": "wood",
+    "shield_lw": "wood", "shield": "wood", "shield_ss": "wood",
+    "shield_li": "wood", "shield_ms": "wood", "towershield": "wood",
+    "cap": "wood", "helm_iron": "wood", "helm": "wood",
+    "quarterstaff": "wood", "runestaff": "wood", "wand": "wood",
 }
 
 

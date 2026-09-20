@@ -2121,6 +2121,69 @@ class TestQualityPrefixes(unittest.TestCase):
         self.assertEqual(p.stat("strength"), 22)
 
 
+class TestTheRealShieldAndHelmetLadders(unittest.TestCase):
+    """The RPGClassics shrine's shields.shtml and helmets.shtml, pasted
+    directly into this session: nine named shield tiers (Small/Medium/Large
+    x Wooden/Iron/Steel, +3 through +15) and a three-tier Leather/Iron/Steel
+    helmet ladder (+3/+6/+9), not the three shields and two helmets with
+    invented names and values this project had before.
+    """
+
+    def normal(self, key):
+        from stormhold.game.items import Item
+        it = Item(key)
+        it.known = True
+        return it
+
+    def test_the_nine_shield_tiers_match_the_shrine(self):
+        from stormhold.game.items import BASES
+        expected = [
+            ("buckler", "Small Wooden Shield", 3),
+            ("shield_mw", "Medium Wooden Shield", 6),
+            ("shield_si", "Small Iron Shield", 7),
+            ("shield_lw", "Large Wooden Shield", 9),
+            ("shield", "Medium Iron Shield", 10),
+            ("shield_ss", "Small Steel Shield", 11),
+            ("shield_li", "Large Iron Shield", 12),
+            ("shield_ms", "Medium Steel Shield", 13),
+            ("towershield", "Large Steel Shield", 15),
+        ]
+        for key, name, ac in expected:
+            self.assertEqual(BASES[key]["ac"], ac, key)
+            self.assertEqual(self.normal(key).name(), f"Normal {name}")
+
+    def test_the_three_helmet_tiers_match_the_shrine(self):
+        from stormhold.game.items import BASES
+        expected = [("cap", "Leather Helmet", 3),
+                    ("helm_iron", "Iron Helmet", 6),
+                    ("helm", "Steel Helmet", 9)]
+        for key, name, ac in expected:
+            self.assertEqual(BASES[key]["ac"], ac, key)
+            self.assertEqual(self.normal(key).name(), f"Normal {name}")
+
+    def test_a_damaged_shield_or_helmet_is_broken_not_rusty(self):
+        """The shrine's own damaged-item row is "Broken Shield"/"Broken
+        Helmet" - wood's damaged name in DAMAGED, not metal's "Rusty",
+        even for the steel tiers."""
+        from stormhold.game.items import Item
+        for key in ("buckler", "towershield", "cap", "helm"):
+            it = Item(key, enchant=-1)
+            it.known = True
+            self.assertTrue(it.name().startswith("Broken "), it.name())
+
+    def test_a_plain_cloak_is_now_a_wool_cloak_at_plus_one(self):
+        """cloaks.shtml: a plain cloak is a "Wool Cloak" at +1, not the
+        invented "Cloak" at +3 this project had before."""
+        from stormhold.game.items import BASES
+        self.assertEqual(BASES["cloak"]["ac"], 1)
+        self.assertEqual(self.normal("cloak").name(), "Normal Wool Cloak")
+
+    def test_plain_gauntlets_are_plus_five(self):
+        """gauntlets.shtml: the physical tier is "Gauntlet" at +5."""
+        from stormhold.game.items import BASES
+        self.assertEqual(BASES["gauntlets"]["ac"], 5)
+
+
 class TestTwoHandedWeapons(unittest.TestCase):
     """"Two-handed weapons conflict with shields, and the game says so rather
     than silently refusing." We had no two-handed weapons at all.
