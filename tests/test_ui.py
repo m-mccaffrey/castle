@@ -971,6 +971,36 @@ class TestFloorItemPiles(unittest.TestCase):
         self.assertTrue(self.badge_matches_at(tx, ty))
 
 
+class TestOpeningThePackAsksForAFreshFloor(unittest.TestCase):
+    """Still "the floor window is always empty", after the server-side fix:
+    standing on something and opening the Pack window with no prior action
+    - right after spawning on it, say - showed an empty Floor panel, since
+    opening the window is not an action and the client had never asked for
+    an inventory snapshot on its own. C_RESYNC already answers with a
+    fresh S_INV among other things, so PackScene asks for one as soon as
+    it opens rather than only reacting to what the server volunteers.
+    """
+
+    def test_opening_the_pack_sends_a_resync(self):
+        import stormhold.net.protocol as P
+        app = make_app()
+        sent = []
+        app.client.send = lambda kind, data=None: sent.append(kind)
+        PackScene(app)
+        self.assertIn(P.C_RESYNC, sent)
+
+    def test_opening_it_to_answer_a_pick_prompt_does_not_double_up(self):
+        """The server already just answered with fresh state to prompt the
+        pick in the first place - a resync here would only be a second,
+        redundant round trip."""
+        import stormhold.net.protocol as P
+        app = make_app()
+        sent = []
+        app.client.send = lambda kind, data=None: sent.append(kind)
+        PackScene(app, picking={"prompt": "Wear what?", "want": "worn"})
+        self.assertNotIn(P.C_RESYNC, sent)
+
+
 class TestRightClickPopups(unittest.TestCase):
     """"Right click anything, anywhere - dungeon, map or inventory - for a
     popup description. On a monster it gives the condition words. Capped at

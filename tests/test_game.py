@@ -516,6 +516,40 @@ class TestVerbs(unittest.TestCase):
         self.assertIs(p.equipment.get("free_hand"), held)
         self.assertIn(on_ground, level.items_at(p.x, p.y))
 
+    def test_reading_a_scroll_from_the_free_hand_actually_uses_it_up(self):
+        """"The scrolls don't disappear after use." A scroll held in the
+        free hand is neither in the pack nor inside a container's contents
+        - it is the thing that slot points at directly - so Player.consume()
+        never found it to remove, and reading it again worked forever."""
+        from stormhold.game.items import Item
+        world, p, level = self.descend()
+        scroll = Item("scroll_map")
+        p.inventory.append(scroll)
+        ok, _ = p.equip(scroll, "free_hand")
+        self.assertTrue(ok)
+        world.submit(p, {"a": "use", "id": scroll.id})
+        self.assertIsNone(p.equipment.get("free_hand"))
+
+    def test_a_potion_from_the_free_hand_is_used_up_too(self):
+        from stormhold.game.items import Item
+        world, p, level = self.descend()
+        potion = Item("potion_heal")
+        p.inventory.append(potion)
+        p.equip(potion, "free_hand")
+        world.submit(p, {"a": "use", "id": potion.id})
+        self.assertIsNone(p.equipment.get("free_hand"))
+
+    def test_a_stack_in_the_free_hand_only_loses_one_at_a_time(self):
+        from stormhold.game.items import Item
+        world, p, level = self.descend()
+        scrolls = Item("scroll_map", qty=3)
+        p.inventory.append(scrolls)
+        p.equip(scrolls, "free_hand")
+        world.submit(p, {"a": "use", "id": scrolls.id})
+        held = p.equipment.get("free_hand")
+        self.assertIsNotNone(held)
+        self.assertEqual(held.qty, 2)
+
     def test_take_lifts_one_item_off_a_pile_and_leaves_the_rest(self):
         """The Floor window drags a single icon, unlike Get's whole sweep."""
         from stormhold.game.items import Item

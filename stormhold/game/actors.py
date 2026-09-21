@@ -484,7 +484,12 @@ class Player(Actor):
         """Use something up, wherever it is being carried.
 
         remove_item only knows about the pack, so once belts could really
-        hold things a potion drunk off the belt was never used up.
+        hold things a potion drunk off the belt was never used up. A scroll
+        or potion held in the Free Hand is neither of those - it is not in
+        the pack, and it is not inside a container's contents, it IS the
+        thing a slot points at directly - so it needed its own branch too.
+        Without this, reading a scroll straight from the free hand never
+        consumed it: the same scroll sat there ready to read again, forever.
         """
         taken = self.remove_item(item, qty)
         if taken is not None:
@@ -497,6 +502,14 @@ class Player(Actor):
                 item.qty -= qty
                 return Item(item.key, qty=qty)
             contents.remove(item)
+            return item
+        for slot, worn in self.equipment.items():
+            if worn is not item:
+                continue
+            if item.stackable and item.qty > qty:
+                item.qty -= qty
+                return Item(item.key, qty=qty)
+            self.equipment[slot] = None
             return item
         return None
 

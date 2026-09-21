@@ -1550,6 +1550,19 @@ class PackScene(OverlayScene):
         self.win_drag = None        # {"key", "dx", "dy"} while a title bar is held
         self._tiled = False
 
+        # The Floor panel draws whatever app.inventory last held, which the
+        # server only ever refreshes on request or after an action that
+        # changes what you carry - walking onto a tile never used to be
+        # one of those (see describe_floor()), and opening this window is
+        # not an action at all. Opening it while standing on something you
+        # had not yet picked up, or right after spawning on top of
+        # something, showed an empty Floor panel until you happened to do
+        # something else first. C_RESYNC already answers with a fresh
+        # S_INV (among other things), so asking for one here costs nothing
+        # new to build.
+        if picking is None:
+            self.app.client.send(P.C_RESYNC, {})
+
     def default_layout(self):
         """Where each window starts, relative to the group's own corner -
         layout() offsets the whole group to sit centred on the real screen.
