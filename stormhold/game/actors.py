@@ -568,6 +568,24 @@ class Player(Actor):
         if current and current.cursed:
             current.known = True
             return False, f"You cannot remove the {current.name()} - it is stuck fast."
+        # The item might already be worn somewhere else (dragged from the
+        # free hand onto a belt cell, say, the long way round through this
+        # method) or sitting in a belt or quiver's contents, not the pack.
+        # Only ever taking it out of self.inventory left it in both places
+        # at once - worn here AND still listed in whatever was holding it -
+        # which is what "duplication putting things in belts/free hand"
+        # was: the same Item object drawn twice, because it still was.
+        for other_slot, worn in self.equipment.items():
+            if worn is item:
+                if item.cursed:
+                    item.known = True
+                    return False, f"You cannot remove the {item.name()} - it is stuck fast."
+                self.equipment[other_slot] = None
+                break
+            contents = getattr(worn, "contents", None)
+            if contents and item in contents:
+                contents.remove(item)
+                break
         if current:
             self.inventory.append(current)
         if item in self.inventory:
@@ -602,14 +620,22 @@ class Player(Actor):
             return True, f"You keep {item.name()} in your free hand, ready to use."
         return True, f"You are now using {item.name()}."
 
-    def unequip(self, slot):
+    def unequip(self, slot, skip_room_check=False):
+        """Take something off, into the pack.
+
+        skip_room_check is for a caller that is not actually keeping the
+        thing in the pack - _act_drop takes it straight back out again to
+        put it on the floor - so a full pack refusing the room it would
+        occupy for a heartbeat was refusing a drop that had nowhere to do
+        with the pack at all.
+        """
         item = self.equipment.get(slot)
         if not item:
             return False, "Nothing there."
         if item.cursed:
             item.known = True
             return False, f"The {item.name()} will not come off."
-        if slot != "pack":
+        if slot != "pack" and not skip_room_check:
             ok, why = self.room_for(item)
             if not ok:
                 return False, why

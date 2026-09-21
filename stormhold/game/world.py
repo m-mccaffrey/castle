@@ -1182,7 +1182,7 @@ class World:
             worn_slot = next((slot for slot, w in p.equipment.items() if w is item),
                              None)
             if worn_slot is not None:
-                ok, why = p.unequip(worn_slot)
+                ok, why = p.unequip(worn_slot, skip_room_check=True)
                 if not ok:
                     self.msg(why, "warn", to=p)     # cursed things stay on
                     return FREE_COST
@@ -2168,6 +2168,28 @@ class World:
             return FREE_COST
 
         moved = p.remove_item(item, 1)
+        if moved is None:
+            # Not loose in the pack - dragged straight from the free hand,
+            # a body slot, or another belt or quiver instead. remove_item
+            # only ever looked in the pack, so any of those silently did
+            # nothing: the item never left where it was, so it couldn't be
+            # duplicated by ending up on the belt too - but it also never
+            # actually moved.
+            for other_slot, worn in p.equipment.items():
+                if worn is item:
+                    if item.cursed:
+                        item.known = True
+                        self.msg(f"The {item.name(self.appearances)} will not "
+                                 f"come off.", "warn", to=p)
+                        return FREE_COST
+                    p.equipment[other_slot] = None
+                    moved = item
+                    break
+                contents = getattr(worn, "contents", None)
+                if contents and item in contents and worn is not holder:
+                    contents.remove(item)
+                    moved = item
+                    break
         if moved is None:
             return FREE_COST
         holder.contents.append(moved)

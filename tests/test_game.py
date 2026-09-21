@@ -516,6 +516,71 @@ class TestVerbs(unittest.TestCase):
         self.assertIs(p.equipment.get("free_hand"), held)
         self.assertIn(on_ground, level.items_at(p.x, p.y))
 
+    def test_a_full_pack_does_not_stop_you_dropping_what_you_are_wearing(self):
+        """"Can't put things on floor if no room in pack." Dropping a worn
+        item used to go through unequip(), which checks pack room even
+        though the drop takes the thing straight back out of the pack and
+        onto the floor a line later - so a full pack refused to make room
+        for something it was never going to keep."""
+        from stormhold.game.items import Item
+        world, p, level = self.descend()
+        sword = Item("longsword")
+        p.equip(sword, "weapon")
+        while p.room_for(Item("dagger"))[0]:
+            p.inventory.append(Item("dagger"))
+        self.assertFalse(p.room_for(Item("dagger"))[0], "pack never filled up")
+        world.submit(p, {"a": "drop", "id": sword.id})
+        self.assertIsNone(p.equipment.get("weapon"))
+        self.assertIn(sword, level.items_at(p.x, p.y))
+
+    def test_equipping_something_off_the_belt_does_not_leave_it_there_too(self):
+        """"Duplication bugs putting things in belts/free hand." equip()
+        only ever took an item out of the pack before putting it on -
+        dragged from a belt's own contents instead (or straight from
+        another slot, such as the free hand), the same Item ended up
+        both worn AND still listed in whatever had been holding it."""
+        from stormhold.game.items import Item
+        world, p, level = self.descend()
+        belt = Item("belt3")
+        p.equipment["waist"] = belt
+        potion = Item("potion_heal")
+        belt.contents.append(potion)
+        p.recalc()
+        world.submit(p, {"a": "equip", "id": potion.id, "slot": "free_hand"})
+        self.assertIs(p.equipment.get("free_hand"), potion)
+        self.assertNotIn(potion, belt.contents)
+
+    def test_moving_something_from_the_free_hand_to_the_belt_actually_moves_it(self):
+        """The mirror image of the bug above: stow() only ever looked in
+        the pack too, so a free-hand item dragged onto the belt silently
+        did nothing rather than duplicating - still wrong, just wrong the
+        other way."""
+        from stormhold.game.items import Item
+        world, p, level = self.descend()
+        belt = Item("belt3")
+        p.equipment["waist"] = belt
+        scroll = Item("scroll_map")
+        p.inventory.append(scroll)
+        p.equip(scroll, "free_hand")
+        world.submit(p, {"a": "stow", "id": scroll.id, "slot": "waist"})
+        self.assertIsNone(p.equipment.get("free_hand"))
+        self.assertIn(scroll, belt.contents)
+
+    def test_a_cursed_thing_cannot_be_dragged_off_the_body_through_equip(self):
+        """equip() pulling an item out of wherever it is already worn must
+        still respect a curse - the direct route (drag straight from one
+        slot to another) must not let a cursed thing slip off any more
+        easily than the front door (unequip) does."""
+        from stormhold.game.items import Item
+        world, p, level = self.descend()
+        cursed_ring = Item("ring_burden", cursed=True)
+        p.equip(cursed_ring, prefer_slot="ring_left")
+        cursed_ring.known = True
+        ok, why = p.equip(cursed_ring, prefer_slot="ring_right")
+        self.assertFalse(ok)
+        self.assertIs(p.equipment.get("ring_left"), cursed_ring)
+        self.assertIsNone(p.equipment.get("ring_right"))
+
     def test_reading_a_scroll_from_the_free_hand_actually_uses_it_up(self):
         """"The scrolls don't disappear after use." A scroll held in the
         free hand is neither in the pack nor inside a container's contents
