@@ -2930,6 +2930,20 @@ class TestWhatAShopWillTake(unittest.TestCase):
         self.assertIn("You sell", " ".join(self.offer("armourer", "leather")))
         self.assertIn("You sell", " ".join(self.offer("magic", "potion_heal")))
 
+    def test_the_general_store_buys_a_gemstone(self):
+        """"No one buys the gemstone." True: a Gemstone (350 base value,
+        2800 copper) has kind="treasure", which no trade's SHOP_TAKES
+        listed, so every shop but Nan's junk store refused it outright -
+        and Nan only ever pays a flat 25, regardless of what the thing was
+        actually worth. The general store already catches "the soft gear
+        the armourer doesn't bother with"; a loose gem is exactly that
+        kind of leftover."""
+        from stormhold.game.items import Item
+        self.assertIsNone(self.world.shop_refusal("general", Item("gem")))
+        self.assertGreater(self.world.sell_offer("general", Item("gem")), 25,
+                           "the general store still only paid junk-shop rates")
+        self.assertIn("You sell", " ".join(self.offer("general", "gem")))
+
     def test_and_refuses_what_it_does_not(self):
         for shop, key in (("weaponsmith", "potion_heal"),
                           ("weaponsmith", "leather"),
@@ -2980,3 +2994,38 @@ class TestWhatAShopWillTake(unittest.TestCase):
                                      "id": 999999})
         said = [e["text"] for e in self.world.events if e["t"] == "msg"]
         self.assertTrue(said, "it failed in silence")
+
+
+class TestShopStockTracksHowDeepThePartyHasBeen(unittest.TestCase):
+    """"The shops should update along with the level of the player."
+    Checked directly: stock_for() already generates a shop's shelf from
+    self.party_deepest, and move_player_to() already clears the cached
+    stock every time anyone steps back into town, so the shelf really
+    does restock to match how far the party has actually gone - this
+    just pins that down so it stays true.
+    """
+
+    def test_a_deeper_party_sees_better_gear_on_return_to_town(self):
+        from stormhold.game.world import World
+        world = World(seed=5)
+        p = world.add_player("Climber")
+        shallow = {i.key for i in world.stock_for("weaponsmith")}
+
+        world.move_player_to(p, 10)
+        world.move_player_to(p, 0)
+        deep = {i.key for i in world.stock_for("weaponsmith")}
+
+        self.assertNotEqual(shallow, deep,
+                            "the shelf looked the same before and after "
+                            "the party went ten floors deeper")
+
+    def test_stock_is_not_rerolled_mid_visit(self):
+        """The shelf is what you look at while you shop, not a slot
+        machine - it should hold still between two calls in the same
+        town visit."""
+        from stormhold.game.world import World
+        world = World(seed=5)
+        world.add_player("Browser")
+        first = list(world.stock_for("armourer"))
+        second = list(world.stock_for("armourer"))
+        self.assertEqual([i.id for i in first], [i.id for i in second])

@@ -2550,7 +2550,11 @@ class World:
     SHOP_TAKES = {
         "weaponsmith": ("weapon",),
         "armourer": ("armour",),
-        "general": ("container", "armour"),
+        # "treasure": a gemstone (350 base value, 2800 copper) had nowhere
+        # to sell but Nan's flat 25 - the general store already catches
+        # "the soft gear the armourer doesn't bother with", and a loose
+        # gem is exactly that kind of leftover, not a weapon or armour.
+        "general": ("container", "armour", "treasure"),
         "magic": ("potion", "scroll", "book", "ring", "amulet", "wand"),
         "sage": ("potion", "scroll", "book", "ring", "amulet", "wand"),
         "temple": ("potion", "scroll"),
