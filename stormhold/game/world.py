@@ -791,6 +791,14 @@ class World:
         return True
 
     def describe_floor(self, level, p):
+        # The pack window's own Floor panel reads inventory_view()'s
+        # "floor" field, which is only ever recomputed when an "inv" event
+        # fires - walking onto (or off of) a tile never fired one, so the
+        # panel kept showing whatever it last saw, usually nothing, no
+        # matter what was actually underfoot. describe_floor() runs on
+        # every step regardless of what's here, so it is where that gap
+        # needs closing, not just the branch that prints a message.
+        self.events.append({"t": "inv", "to": p.id})
         pile = level.items_at(p.x, p.y)
         if not pile:
             return
@@ -1957,6 +1965,9 @@ class World:
         self.update_fov(p, force=True)
         self.resend_level(p)
         self.events.append({"t": "level", "to": p.id})
+        # Same gap as describe_floor(): landing on a new floor's stairs
+        # never refreshed the pack window's Floor panel either.
+        self.events.append({"t": "inv", "to": p.id})
         if level.boss_key and getattr(level, "boss", None) and not level.boss.dead:
             entry = level.boss.tpl.get("entry")
             if entry:

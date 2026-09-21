@@ -8,6 +8,7 @@ a few percent of one core while you think about your next move.
 import os
 import sys
 import time
+from collections import Counter
 
 import pygame
 
@@ -1110,12 +1111,21 @@ class PlayScene(Scene):
                     shade.fill((0, 0, 24, 150))
                     surf.blit(shade, (px, py))
 
+        # A tile holding more than one item only ever showed the last one
+        # drawn - nothing on screen said there was anything else there.
+        pile_counts = Counter((it["x"], it["y"]) for it in self.items)
         for it in self.items:
             if not (cx <= it["x"] < cx + cols + 1 and cy <= it["y"] < cy + rows + 1):
                 continue
             img = sheet.item(it["icon"], glowing=it.get("glowing"))
             if img:
-                surf.blit(img, (view.x + (it["x"] - cx) * TILE, view.y + (it["y"] - cy) * TILE))
+                px = view.x + (it["x"] - cx) * TILE
+                py = view.y + (it["y"] - cy) * TILE
+                surf.blit(img, (px, py))
+                if sheet.pile_badge and pile_counts[(it["x"], it["y"])] > 1:
+                    badge = sheet.pile_badge
+                    surf.blit(badge, (px + TILE - badge.get_width(),
+                                      py + TILE - badge.get_height()))
 
         my_id = self.you.get("id")
         for a in sorted(self.actors, key=lambda a: a["y"]):

@@ -1258,6 +1258,25 @@ def icon_pack():
     return ic.outline().shade()
 
 
+def badge_pile():
+    """Corner badge for a floor tile holding more than one item.
+
+    Not from the original - neither the manual nor the extracted string
+    table say anything about a floor-pile indicator, so this is a
+    Stormhold-only UI affordance, not a parity claim. Small enough to sit
+    in a tile's corner over whichever item's icon is drawn on top: three
+    overlapping gems, the same "there's more than one of something here"
+    idiom the pack windows already use with a plain "x2" corner label,
+    just pictorial instead of numeric since the floor has no room for text
+    next to a name.
+    """
+    ic = Icon(10, 10)
+    ic.oval(3, 7, 2, 2, DARK_BROWN)
+    ic.oval(7, 6, 2, 2, SILVER)
+    ic.oval(5, 3, 2, 2, GOLD_DITHER)
+    return ic.outline().shade()
+
+
 def icon_sack():
     ic = Icon()
     ic.oval(16, 21, 11, 10, (OLIVE, SILVER, 0.5))
@@ -1500,6 +1519,7 @@ class SpriteSheet:
         self.spells = {}
         self._player_cache = {}
         self._glow_cache = {}
+        self.pile_badge = None
 
     def build(self):
         import sys
@@ -1515,6 +1535,7 @@ class SpriteSheet:
                 self.items[name[5:]] = getattr(module, name)().surface(self.scale)
         for name in SPELL_BUILDERS:
             self.spells[name] = spell_icon(name).surface(self.scale)
+        self.pile_badge = badge_pile().surface(self.scale)
         return self
 
     def player(self, colour_index=0, weapon=None, shield=False, helm=False, robe=False):

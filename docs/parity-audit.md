@@ -232,6 +232,8 @@ is simply a death sentence.
 | Levitation avoids pits and trap doors | done, with a Potion of Levitation to get it |
 | Saving, and carrying a character between evenings | done - autosave, File > Save, and a round trip test |
 | Map! | done |
+| The Floor window keeps up with your feet | **fixed** - reported directly: "The floor window is always empty." It reads `inventory_view()`'s own `"floor"` field, which is only ever recomputed when an `"inv"` event fires; picking something up fires one, but simply walking onto - or off of - a tile with something on it never did, so the panel kept showing whatever it last saw (usually nothing, from before the character had ever stood on anything) no matter what was actually underfoot. `describe_floor()` already ran on every step regardless of what was there, so that is where the event now fires too, plus the same gap on landing via stairs in `move_player_to()`. |
+| A floor tile holding more than one item showed only the last one drawn | **fixed** - "We need an icon for when multiple things are on the floor." Not a parity claim - neither the manual nor the extracted string table say anything about a floor-pile indicator - so this is a Stormhold-only UI affordance. A small three-gem corner badge (`badge_pile()` in `art.py`) now draws over whichever item's icon is on top, wherever more than one item shares a tile: map, and anywhere else floor items render. |
 
 ## Known rough edges in our own window
 

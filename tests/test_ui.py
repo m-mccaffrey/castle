@@ -23,6 +23,7 @@ from stormhold.ui.app import (App, MenuScene, CharGenScene,      # noqa: E402
                               PlayScene, draw_popup, describe_item)
 from stormhold.game.world import World                            # noqa: E402
 from stormhold.game.items import Item                            # noqa: E402
+from stormhold.ui.art import TILE                                 # noqa: E402
 
 SIZES = [(1024, 700), (1280, 800), (1440, 900), (1920, 1080)]
 
@@ -890,6 +891,84 @@ class TestTheEnchantmentPopupIsClear(unittest.TestCase):
         plain = app.sheet.item("longsword", glowing=False)
         self.assertIsNot(glow, plain)
         self.assertEqual(glow.get_size(), plain.get_size())
+
+
+class TestFloorItemPiles(unittest.TestCase):
+    """"We need an icon for when multiple things are on the floor." A tile
+    holding more than one item only ever showed whichever was drawn last -
+    nothing on screen said there was anything else there.
+    """
+
+    def setUp(self):
+        import stormhold.net.protocol as P
+        self.app = make_app()
+        self.app.screen = pygame.display.set_mode((1280, 800))
+        self.world = World(seed=3)
+        self.player = self.world.add_player("Looker", spell="Spark")
+        self.world.move_player_to(self.player, 1)
+        self.world.update_fov(self.player, force=True)
+        self.play = PlayScene(self.app)
+        self.app.play = self.play
+        self.app.inventory = self.world.inventory_view(self.player)
+        self.app.replace(self.play)
+        level = self.world.levels[1]
+        self.play.on_message(P.S_LEVEL, {"w": level.w, "h": level.h, "depth": 1,
+                                         "name": level.name, "town": False})
+        view = self.world.snapshot_for(self.player)
+        self.play.you, self.play.actors = view["you"], view["actors"]
+        self.play.items, self.play.party = view["items"], view["party"]
+        self.world.resend_level(self.player)
+        self.play.map.apply(self.player.pending_tiles)
+        # Full FOV, so a tile away from the player is drawn at full
+        # brightness rather than the "seen but not lit now" night-shade -
+        # this test reads exact pixel colours, which the shade overlay
+        # would otherwise darken unpredictably.
+        self.play.fov = set(range(level.w * level.h))
+        me = self.play.me()
+        # One tile off the player's own square, not on it: the player's
+        # own sprite is drawn after floor items and fully covers the tile
+        # underneath, badge and all.
+        self.tile = (me["x"] + 1, me["y"])
+
+    def badge_matches_at(self, tx, ty):
+        """Whether the pixels in the tile's bottom-right corner are
+        exactly the pile badge's own opaque pixels, position for
+        position - not just "some colour the badge also happens to use",
+        which an item icon's own palette can share by coincidence.
+        """
+        view = self.play.viewport(self.app.screen)
+        cx, cy = self.play.camera
+        x = view.x + (tx - cx) * TILE
+        y = view.y + (ty - cy) * TILE
+        badge = self.app.sheet.pile_badge
+        bw, bh = badge.get_size()
+        ox, oy = x + TILE - bw, y + TILE - bh
+        for by in range(bh):
+            for bx in range(bw):
+                bc = badge.get_at((bx, by))
+                if bc.a == 0:
+                    continue
+                if self.app.screen.get_at((ox + bx, oy + by)) != bc:
+                    return False
+        return True
+
+    def test_a_single_item_gets_no_badge(self):
+        tx, ty = self.tile
+        self.play.items = [{"x": tx, "y": ty, "icon": "dagger",
+                            "name": "Dagger", "glowing": False}]
+        self.play.draw(self.app.screen)
+        self.assertFalse(self.badge_matches_at(tx, ty))
+
+    def test_two_items_on_one_tile_get_a_badge(self):
+        tx, ty = self.tile
+        self.play.items = [
+            {"x": tx, "y": ty, "icon": "dagger",
+             "name": "Dagger", "glowing": False},
+            {"x": tx, "y": ty, "icon": "longsword",
+             "name": "Long Sword", "glowing": False},
+        ]
+        self.play.draw(self.app.screen)
+        self.assertTrue(self.badge_matches_at(tx, ty))
 
 
 class TestRightClickPopups(unittest.TestCase):

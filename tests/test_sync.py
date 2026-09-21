@@ -164,3 +164,59 @@ class TestAShortGameStaysConsistent(unittest.TestCase):
         self.assertEqual(
             [f[3] for f in faults], [],
             "playing the game made the window and the game disagree")
+
+
+class TestTheFloorWindowKeepsUpWithYourFeet(unittest.TestCase):
+    """"The floor window is always empty." Reported from play - and true for
+    a different reason than the pack bug above: the Floor panel reads
+    inventory_view()'s own "floor" field, which is only ever recomputed when
+    an "inv" event fires. Picking something up fires one; simply walking
+    onto (or off of) a tile with something on it never did, so the panel
+    kept showing whatever it last saw - usually nothing, from before you had
+    ever stood on anything - no matter what was actually underfoot.
+    """
+
+    def test_walking_onto_an_item_tells_the_window(self):
+        world = World(seed=5)
+        p = world.add_player("Walker")
+        level = world.levels[p.depth]
+        nx, ny = level.find_free(p.x + 1, p.y, 5)
+        level.add_ground_item(nx, ny, Item("dagger"))
+
+        world.events.clear()
+        world.do_player_action(level, p, {"a": "move", "dx": 1 if nx > p.x else -1,
+                                          "dy": 1 if ny > p.y else (-1 if ny < p.y else 0)})
+        self.assertTrue(any(e["t"] == "inv" for e in world.events),
+                        "moving onto an item tile never refreshed the Floor window")
+
+    def test_walking_onto_bare_floor_still_tells_the_window(self):
+        """Leaving a tile that had something on it has to clear the panel
+        too, not just filling it in has to work. dx=dy=0 is Wait, not a
+        step, so this needs an actual move onto an adjacent open tile."""
+        world = World(seed=5)
+        p = world.add_player("Walker")
+        level = world.levels[p.depth]
+        nx, ny = level.find_free(p.x + 1, p.y, 5)
+        dx = 1 if nx > p.x else (-1 if nx < p.x else 0)
+        dy = 1 if ny > p.y else (-1 if ny < p.y else 0)
+        world.events.clear()
+        world.do_player_action(level, p, {"a": "move", "dx": dx, "dy": dy})
+        self.assertTrue(any(e["t"] == "inv" for e in world.events))
+
+    def test_taking_the_stairs_tells_the_window_too(self):
+        world = World(seed=5)
+        p = world.add_player("Descender")
+        world.events.clear()
+        world.move_player_to(p, p.depth + 1)
+        self.assertTrue(any(e["t"] == "inv" for e in world.events),
+                        "landing on a new floor never refreshed the Floor window")
+
+    def test_the_inventory_views_own_floor_field_matches_whats_underfoot(self):
+        """Not just that an event fires - that inventory_view() itself, once
+        recomputed, actually lists what is on the ground under the player."""
+        world = World(seed=5)
+        p = world.add_player("Walker")
+        level = world.levels[p.depth]
+        level.add_ground_item(p.x, p.y, Item("dagger"))
+        floor = world.inventory_view(p)["floor"]
+        self.assertEqual([f["key"] for f in floor], ["dagger"])
