@@ -28,7 +28,8 @@ from ..common.fov import compute_fov, has_los, line_between
 from .level import generate_dungeon, generate_town
 from .actors import Player, NPC, make_monster, stat_bonus
 from .items import (Item, Appearances, generate_item, generate_gold,
-                    coin_metal, article, with_article, BASES)
+                    coin_metal, article, with_article, BASES,
+                    roll_enchantment, roll_tier)
 from .monsters import spawn_table, MONSTERS
 from .spells import SPELLS, can_learn, elemental_factor, starting_spell
 from .traps import TRAPS, search_here, disarm_at, a_or_an
@@ -2539,7 +2540,15 @@ class World:
                     lo, hi = base["charges"]
                     it = Item(key, charges=rng.randint(lo, hi))
                 else:
-                    it = Item(key, enchant=1 if rng.random() < 0.25 else 0)
+                    # A trader knowingly stocking a cursed blade makes no
+                    # sense, so a cursed roll here is treated as a miss
+                    # (same as generate_item's own known-shop convention);
+                    # otherwise this is the same depth-scaling roll dungeon
+                    # loot gets, so a smith's shelf keeps pace with what the
+                    # party is already finding underground instead of
+                    # staying flat at a token +1.
+                    enchant, cursed = roll_enchantment(depth, rng)
+                    it = Item(key, enchant=0 if cursed else enchant)
                 it.known = True
                 items.append(it)
         elif shop == "armourer":
@@ -2553,7 +2562,8 @@ class World:
                     and k not in ("cap", "leather", "buckler")]
             rng.shuffle(pool)
             for key in pool[:6]:
-                it = Item(key, enchant=1 if rng.random() < 0.2 else 0)
+                tier, cursed = roll_tier(depth, rng)
+                it = Item(key, enchant=0 if cursed else tier)
                 it.known = True
                 items.append(it)
         elif shop == "general":

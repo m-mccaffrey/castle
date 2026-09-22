@@ -3132,6 +3132,54 @@ class TestShopStockTracksHowDeepThePartyHasBeen(unittest.TestCase):
         self.assertEqual([i.id for i in first], [i.id for i in second])
 
 
+class TestShopStockScalesWithDepthLikeDungeonLoot(unittest.TestCase):
+    """"Shops should contain extra buffed items at high prices but anytime
+    you go in a store the items are super underpowered." Before this fix
+    stock_for()'s weaponsmith and armourer rolls were a flat, depth-blind
+    coin toss (25%/20% chance of a token +1), while generate_item() for
+    dungeon loot already used roll_enchantment()/roll_tier(), which scale
+    up with depth. A deep party coming home found a shelf stuck at the
+    same trinket a level-1 character saw. Routing the shop rolls through
+    the same depth-scaling functions dungeon loot uses closes that gap;
+    a shop wouldn't knowingly sell a cursed item, so a cursed roll here
+    is treated as a miss (enchant 0) rather than stocked as-is.
+    """
+
+    def test_a_deep_weaponsmith_sells_stronger_gear_than_a_shallow_one(self):
+        from stormhold.game.world import World
+        shallow = World(seed=9)
+        shallow.party_deepest = 1
+        shallow_enchant = sum(i.enchant for i in shallow.stock_for("weaponsmith"))
+
+        deep = World(seed=9)
+        deep.party_deepest = 20
+        deep_enchant = sum(i.enchant for i in deep.stock_for("weaponsmith"))
+
+        self.assertGreater(deep_enchant, shallow_enchant)
+
+    def test_a_deep_armourer_sells_stronger_gear_than_a_shallow_one(self):
+        from stormhold.game.world import World
+        shallow = World(seed=9)
+        shallow.party_deepest = 1
+        shallow_enchant = sum(i.enchant for i in shallow.stock_for("armourer"))
+
+        deep = World(seed=9)
+        deep.party_deepest = 20
+        deep_enchant = sum(i.enchant for i in deep.stock_for("armourer"))
+
+        self.assertGreater(deep_enchant, shallow_enchant)
+
+    def test_shop_never_knowingly_sells_a_cursed_item(self):
+        from stormhold.game.world import World
+        world = World(seed=3)
+        world.party_deepest = 20
+        for shop in ("weaponsmith", "armourer"):
+            for it in world.stock_for(shop):
+                self.assertFalse(it.cursed,
+                                  f"{shop} stocked a cursed {it.key}")
+                self.assertGreaterEqual(it.enchant, 0)
+
+
 class TestDroppingCoinToEscapeAnOverloadedPurse(unittest.TestCase):
     """"Are you sure copper is supposed to weigh? It can't be dropped, so
     there's a condition where one could freeze themselves out of the game
