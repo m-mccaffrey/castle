@@ -1506,6 +1506,27 @@ class World:
             return p.action_cost(READ_COST) or READ_COST
         return FREE_COST
 
+    # "The player character automatically gains a spell with each
+    # level-up, and can permanently gain another using the corresponding
+    # book (found or purchased), until he learns all the spells that he
+    # can learn." - sourced from the Wikibooks CotW walkthrough, not the
+    # manual or the executable's own string table, which is silent on how
+    # level-up interacts with spells beyond "each level increase will add
+    # to your ... spells" (help1/help2, the leveling section). Every level
+    # that unlocks at least one spell you do not already know and are
+    # smart enough for grants one of them for free, on top of - not
+    # instead of - tomes; which one among several eligible is our own
+    # placement, the Wikibooks source does not say.
+    def grant_level_spell(self, p):
+        eligible = [name for name in SPELLS
+                    if name not in p.spells
+                    and can_learn(name, p.level, p.stat("intelligence"))[0]]
+        if not eligible:
+            return
+        spell = self.rng.choice(eligible)
+        p.spells.add(spell)
+        self.msg(f"{p.name} instinctively learns the spell of {spell}.", "good", to=p)
+
     def read_book(self, level, p, item):
         spell = item.spell
         ok, why = can_learn(spell, p.level, p.stat("intelligence"))
@@ -2140,6 +2161,7 @@ class World:
                     for lvl in p.add_xp(share):
                         self.msg(f"{p.name} reaches level {lvl}.", "good", depth=target.depth)
                         self.sound("levelup", p.x, p.y, target.depth)
+                        self.grant_level_spell(p)
             if source is not None and source.kind == "player":
                 source.kills += 1
             if announce:

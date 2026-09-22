@@ -3180,6 +3180,75 @@ class TestShopStockScalesWithDepthLikeDungeonLoot(unittest.TestCase):
                 self.assertGreaterEqual(it.enchant, 0)
 
 
+class TestLevellingUpGrantsASpellOfItsOwn(unittest.TestCase):
+    """"The player character automatically gains a spell with each
+    level-up, and can permanently gain another using the corresponding
+    book (found or purchased), until he learns all the spells that he can
+    learn." Sourced to the Wikibooks CotW walkthrough - not something the
+    manual or the executable's string table say outright, but the manual's
+    own leveling section already lists "spells" among what a level
+    increase adds to, alongside hit points, mana and fighting skills,
+    which is consistent with it rather than contradicting it. A level that
+    unlocks at least one spell the character is smart enough for and does
+    not already know now grants one for free, independent of and on top
+    of - never instead of - reading a tome.
+    """
+
+    def test_a_level_up_can_grant_a_free_spell(self):
+        from stormhold.game.world import World
+        from stormhold.common.constants import xp_for_level
+        world = World(seed=7)
+        p = world.add_player("Leveler")
+        p.stats["intelligence"] = 20
+        before = set(p.spells)
+        p.xp = xp_for_level(5)
+        for lvl in p.add_xp(0):
+            world.grant_level_spell(p)
+        self.assertGreater(len(p.spells), len(before))
+
+    def test_a_level_up_never_grants_a_spell_the_character_is_not_smart_enough_for(self):
+        from stormhold.game.world import World
+        world = World(seed=7)
+        p = world.add_player("Dim")
+        before = set(p.spells)
+        p.stats["intelligence"] = 3
+        p.level = 30
+        world.grant_level_spell(p)
+        self.assertEqual(p.spells, before)
+
+    def test_a_level_up_never_grants_a_spell_already_known(self):
+        from stormhold.game.world import World
+        from stormhold.game.spells import SPELLS
+        world = World(seed=7)
+        p = world.add_player("Bookish")
+        p.stats["intelligence"] = 20
+        p.level = 30
+        p.spells = set(SPELLS.keys())
+        world.grant_level_spell(p)
+        self.assertEqual(p.spells, set(SPELLS.keys()))
+
+    def test_reading_a_tome_still_works_independently_of_levelling(self):
+        """The free level-up spell is on top of tomes, not instead of
+        them - a spell learned from a book earlier does not "use up" the
+        level-up grant, and vice versa."""
+        from stormhold.game.world import World
+        from stormhold.common.constants import xp_for_level
+        from stormhold.game.spells import make_tome
+        world = World(seed=7)
+        p = world.add_player("Both")
+        lvl = world.levels[p.depth]
+        p.stats["intelligence"] = 20
+        tome = make_tome("Mend Wounds")
+        tome.known = True
+        p.inventory = [tome]
+        world.do_player_action(lvl, p, {"a": "use", "id": tome.id})
+        self.assertIn("Mend Wounds", p.spells)
+        p.xp = xp_for_level(5)
+        for lv in p.add_xp(0):
+            world.grant_level_spell(p)
+        self.assertGreater(len(p.spells), 1)
+
+
 class TestDroppingCoinToEscapeAnOverloadedPurse(unittest.TestCase):
     """"Are you sure copper is supposed to weigh? It can't be dropped, so
     there's a condition where one could freeze themselves out of the game
