@@ -2167,7 +2167,7 @@ class World:
                 lost = int(target.copper * DEATH_GOLD_PENALTY)
                 if lost:
                     level.add_ground_item(target.x, target.y, self._gold_item(lost))
-                    target.copper -= lost
+                    target.spend(lost)
             level.remove(target)
 
         target.deaths += 1
@@ -2451,14 +2451,14 @@ class World:
             if p.hp >= p.max_hp:
                 self.msg("You are not hurt.", "info", to=p)
                 return
-            p.copper -= price
+            p.spend(price)
             combat.heal(self, p, int(p.max_hp * healed) if healed < 1 else p.max_hp)
             if healed >= 1.0:
                 p.mana = p.max_mana
             self.sound("heal", p.x, p.y, p.depth)
             self.msg("The sisters lay hands on you.", "good", to=p)
         elif key == "cure_poison":
-            p.copper -= price
+            p.spend(price)
             for bad in ("poisoned", "burning"):
                 p.effects.pop(bad, None)
             self.msg("The sickness is drawn out of you.", "good", to=p)
@@ -2467,7 +2467,7 @@ class World:
             if not cursed:
                 self.msg("Nothing you carry is cursed.", "info", to=p)
                 return
-            p.copper -= price
+            p.spend(price)
             for item in cursed:
                 item.cursed = False
             self.msg("The binding breaks.", "good", to=p)
@@ -2478,7 +2478,7 @@ class World:
             if not ok:
                 self.msg(why, "warn", to=p)
                 return
-            p.copper -= price
+            p.spend(price)
             p.add_item(scroll)
             self.appearances.identify("scroll_teleport")
             self.msg("They cut a rune of return for you.", "good", to=p)
@@ -2486,7 +2486,7 @@ class World:
             if not p.drained_hp:
                 self.msg("Nothing has been taken from you.", "info", to=p)
                 return
-            p.copper -= price
+            p.spend(price)
             back = p.restore_hp_drain()
             self.msg(f"You are made whole again. ({back} hit points restored)",
                      "good", to=p)
@@ -2495,7 +2495,7 @@ class World:
             if not p.drained.get(stat):
                 self.msg(f"Your {stat} is not diminished.", "info", to=p)
                 return
-            p.copper -= price
+            p.spend(price)
             back = p.restore_stat(stat)
             self.msg(f"Your {stat} returns to you. ({back} restored)", "good", to=p)
         else:
@@ -2732,7 +2732,7 @@ class World:
             stock.remove(item)
         else:
             item.qty -= 1
-        p.copper -= price
+        p.spend(price)
         self.appearances.identify(take.key)
         self.msg(f"You buy {with_article(take.name(self.appearances))} "
                  f"for {price} copper.", "loot", to=p)
@@ -2768,7 +2768,7 @@ class World:
             return FREE_COST
         price = self.sell_offer(shop, item)
         p.remove_item(item, item.qty)
-        p.copper += price
+        p.gain_value(price)
         if shop == "junk":
             self.msg(f"Nan takes {item.name(self.appearances)} off your hands "
                      f"for {price} copper. You will not see it again.",
@@ -2803,7 +2803,7 @@ class World:
             if p.copper < price:
                 self.msg(f"Ulric wants {price} copper for that.", "warn", to=p)
                 return FREE_COST
-            p.copper -= price
+            p.spend(price)
             item.known = True
             self.appearances.identify(item.key)
             self.msg(f"Ulric turns it over. It is {item.name(self.appearances)}.", "good", to=p)
@@ -2814,7 +2814,7 @@ class World:
             if p.copper < price:
                 self.msg(f"The offering is {price} copper.", "warn", to=p)
                 return FREE_COST
-            p.copper -= price
+            p.spend(price)
             p.hp = p.max_hp
             p.mana = p.max_mana
             for bad in ("poisoned", "burning", "slowed", "afraid"):
@@ -2831,21 +2831,21 @@ class World:
             if not freed:
                 self.msg("Nothing you carry is cursed.", "info", to=p)
                 return FREE_COST
-            p.copper -= price
+            p.spend(price)
             for w in freed:
                 w.cursed = False
             self.msg("The binding breaks.", "good", to=p)
 
         elif what == "deposit":
             amount = max(0, min(int(action.get("amount", 0)), p.copper))
-            p.copper -= amount
+            p.spend(amount)
             p.bank += amount
             self.msg(f"You deposit {amount} copper. The strongroom holds {p.bank}.", "info", to=p)
 
         elif what == "withdraw":
             amount = max(0, min(int(action.get("amount", 0)), p.bank))
             p.bank -= amount
-            p.copper += amount
+            p.gain_value(amount)
             self.msg(f"You withdraw {amount} copper.", "info", to=p)
 
         self.events.append({"t": "inv", "to": p.id})

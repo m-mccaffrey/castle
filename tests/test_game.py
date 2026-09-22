@@ -1078,6 +1078,51 @@ class TestSpellRules(unittest.TestCase):
         self.assertEqual(p.copper, 50)
         self.assertFalse(p.spend(999), "you cannot spend what you have not got")
 
+    def test_gaining_value_mints_the_fewest_coins_rather_than_flat_copper(self):
+        """"I dropped everything and still can't move because I have
+        copper... This never happened in CotW." Root cause: every source
+        of income - selling, quest rewards, withdrawing from the bank -
+        went through `self.copper += amount`, and `copper` is a property
+        with no state of its own; its setter's own docstring says what
+        that really does - "Set the purse to a plain value" - so every
+        single sale re-minted the WHOLE purse as flat copper pieces,
+        discarding whatever platinum a long trip down had already earned.
+        Weight is coin *count*, not coin value, so that made a purse of
+        real wealth heavier with every sale, for no reason but that the
+        code reached for a coin's worth the wrong way."""
+        p = Player("Earner", {"strength": 10, "dexterity": 10,
+                              "intelligence": 10, "constitution": 10})
+        p.copper = 0
+        p.gain_coins("platinum", 5)      # 5000 copper worth, 5 coins
+        p.gain_value(1000)               # a sale, or a withdrawal
+        self.assertEqual(p.copper, 6000)
+        self.assertEqual(p.coins["platinum"], 6, "the platinum was kept, "
+                         "not melted down into 6000 loose copper pieces")
+        self.assertEqual(p.coin_count, 6)
+
+    def test_repeated_sales_do_not_make_a_fortune_heavier_and_heavier(self):
+        """The scenario that actually froze a character: many sales in a
+        row, each one earning a modest, plausible amount."""
+        p = Player("Trader", {"strength": 10, "dexterity": 10,
+                              "intelligence": 10, "constitution": 10})
+        p.copper = 0
+        for _ in range(50):
+            p.gain_value(8960)            # what an armourer pays for plate
+        self.assertEqual(p.copper, 448000)
+        # However it's minted, this is nowhere near 448,000 individual
+        # coins - the old bug's weight in grams for this exact purse.
+        self.assertLess(p.coin_count, 2000)
+
+    def test_spending_after_a_gain_still_makes_correct_change(self):
+        """gain_value() and spend() have to agree on what is in the purse -
+        earn unevenly, then pay a price that doesn't divide evenly either."""
+        p = Player("RoundTrip", {"strength": 10, "dexterity": 10,
+                                 "intelligence": 10, "constitution": 10})
+        p.copper = 0
+        p.gain_value(1470)
+        self.assertTrue(p.spend(840))
+        self.assertEqual(p.copper, 630)
+
     def test_deep_finds_come_in_better_metal(self):
         import random as _r
         from stormhold.game.items import coin_metal
@@ -2975,6 +3020,16 @@ class TestWhatAShopWillTake(unittest.TestCase):
         self.assertIn("You sell", " ".join(self.offer("weaponsmith", "sabre")))
         self.assertIn("You sell", " ".join(self.offer("armourer", "leather")))
         self.assertIn("You sell", " ".join(self.offer("magic", "potion_heal")))
+
+    def test_a_sale_does_not_melt_down_platinum_already_in_the_purse(self):
+        """"I dropped everything and still can't move because I have
+        copper... This never happened in CotW." A real sale, through the
+        actual "sell" action, not just gain_value() in isolation."""
+        self.p.copper = 0
+        self.p.gain_coins("platinum", 10)     # 10,000 copper worth, 10 coins
+        self.offer("weaponsmith", "sabre")
+        self.assertEqual(self.p.coins["platinum"], 10,
+                         "a sale melted down platinum that was already there")
 
     def test_the_general_store_buys_a_gemstone(self):
         """"No one buys the gemstone." True: a Gemstone (350 base value,

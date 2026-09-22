@@ -9,7 +9,7 @@ Intelligence and bought tomes plays like a mage. Nothing enforces it.
 import random
 
 from ..common.constants import (
-    movement_speed, COPPER_GRAMS, COPPER_CC, COINS,
+    movement_speed, COPPER_GRAMS, COPPER_CC, COINS, coin_purse,
     STATS, START_STAT, CARRY_PER_STRENGTH, encumbrance_for,
     xp_for_level, clamp, SLOTS, RING_SLOTS, TICKS_PER_TURN,
     BODY_BULK_CAPACITY, CARRY_BASE, START_COPPER, BARE_HANDS_WEIGHT, BARE_HANDS_BULK,
@@ -203,6 +203,27 @@ class Player(Actor):
 
     def gain_coins(self, metal, n):
         self.coins[metal] = self.coins.get(metal, 0) + int(n)
+
+    def gain_value(self, amount):
+        """Add worth to the purse as the fewest coins, without melting
+        down what is already there.
+
+        Selling and every other source of income used to go through
+        `self.copper += amount`, which - `copper` being a property with no
+        state of its own - reads the setter's own doc exactly: "Set the
+        purse to a plain value." *Set*, not add: every sale re-minted the
+        whole purse as flat copper pieces, discarding whatever platinum a
+        long trip down had already earned. Since weight is coin *count*,
+        not coin value ("This is what weighs"), that made carrying any
+        real wealth heavier with every single sale - a purse of 30,000
+        copper value in one platinum-and-gold heavy pile of thirty-odd
+        coins goes back to weighing thirty kilos the moment you sell one
+        potion, for no reason but that the code asked for a coin's worth
+        the wrong way. This is the reason a purse could grow heavy enough
+        to freeze a character even with reasonable amounts of money.
+        """
+        for metal, n in coin_purse(int(amount)):
+            self.gain_coins(metal, n)
 
     def spend(self, amount):
         """Pay a price, breaking larger coins into change as needed.
