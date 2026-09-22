@@ -533,6 +533,52 @@ class TestVerbs(unittest.TestCase):
         self.assertIsNone(p.equipment.get("weapon"))
         self.assertIn(sword, level.items_at(p.x, p.y))
 
+    def test_a_full_pack_does_not_stop_taking_something_straight_onto_a_slot(self):
+        """"Pack bulk still prevents adding/removing things from/to other
+        slots like floor, belt, freehand, etc." Real, and the mirror image
+        of the drop bug above: dragging a floor item onto the belt, the
+        free hand, or a body slot used to route through room_for()/
+        add_item() regardless of where the drag actually ended, so a full
+        pack refused a potion onto an empty belt cell just as readily as
+        it refused one bound for the pack itself."""
+        from stormhold.game.items import Item
+        world, p, level = self.descend()
+        p.equip(Item("longsword"), "weapon")
+        while p.room_for(Item("dagger"))[0]:
+            p.inventory.append(Item("dagger"))
+        belt = Item("belt3")
+        p.equipment["waist"] = belt
+
+        potion = Item("potion_heal")
+        level.add_ground_item(p.x, p.y, potion)
+        world.submit(p, {"a": "take", "id": potion.id, "slot": "waist"})
+        self.assertIn(potion, belt.contents)
+        self.assertNotIn(potion, level.items_at(p.x, p.y))
+
+        scroll = Item("scroll_map")
+        level.add_ground_item(p.x, p.y, scroll)
+        world.submit(p, {"a": "take", "id": scroll.id, "slot": "free_hand"})
+        self.assertIs(p.equipment.get("free_hand"), scroll)
+        self.assertNotIn(scroll, level.items_at(p.x, p.y))
+
+    def test_a_full_pack_does_not_stop_buying_something_straight_onto_a_slot(self):
+        """Same bug, in the shop: buying a potion and dropping it straight
+        on the belt is a purchase that never touches the pack either."""
+        from stormhold.game.items import Item
+        world, p, level = self.descend()
+        p.copper = 50000
+        p.equip(Item("longsword"), "weapon")
+        while p.room_for(Item("dagger"))[0]:
+            p.inventory.append(Item("dagger"))
+        belt = Item("belt3")
+        p.equipment["waist"] = belt
+
+        stock = world.stock_for("magic")
+        potion = next(i for i in stock if i.key == "potion_heal")
+        world.submit(p, {"a": "buy", "shop": "magic", "id": potion.id,
+                        "wear": "waist"})
+        self.assertTrue(any(i.key == "potion_heal" for i in belt.contents))
+
     def test_equipping_something_off_the_belt_does_not_leave_it_there_too(self):
         """"Duplication bugs putting things in belts/free hand." equip()
         only ever took an item out of the pack before putting it on -

@@ -1144,25 +1144,44 @@ class World:
             self.events.append({"t": "inv", "to": p.id})
             return p.action_cost(PICKUP_COST) or PICKUP_COST
 
-        ok, why = p.room_for(item)
-        if not ok or not p.add_item(item):
-            self.msg(why if not ok else "Your pack is full.", "warn", to=p)
-            return FREE_COST
-        level.take_ground_item(p.x, p.y, item)
+        # Dragged onto a particular slot: the item goes straight there, not
+        # into the pack and back out. It used to detour through room_for()
+        # and add_item() regardless of where the drag actually ended, so a
+        # full pack refused to take a potion onto an empty belt cell, or a
+        # sword straight onto the weapon slot, even though neither was ever
+        # going to occupy an ounce of pack space.
+        slot = action.get("slot")
+        direct_equip = slot and (
+            item.slot == slot
+            or (item.slot in ("ring_left", "ring_right")
+                and slot in ("ring_left", "ring_right"))
+            or (slot == "free_hand" and item.slot is None))
+        holder = p.equipment.get(slot) if slot and not direct_equip else None
+
+        if direct_equip:
+            ok, why = p.equip(item, slot)
+            if not ok:
+                self.msg(why, "warn", to=p)
+                return FREE_COST
+            level.take_ground_item(p.x, p.y, item)
+        elif holder is not None:
+            refusal = self._stow_refusal(holder, item)
+            if refusal:
+                self.msg(refusal, "warn", to=p)
+                return FREE_COST
+            level.take_ground_item(p.x, p.y, item)
+            holder.contents.append(item)
+            p.recalc()
+        else:
+            ok, why = p.room_for(item)
+            if not ok or not p.add_item(item):
+                self.msg(why if not ok else "Your pack is full.", "warn", to=p)
+                return FREE_COST
+            level.take_ground_item(p.x, p.y, item)
+
         self.msg(f"You pick up {with_article(item.name(self.appearances))}.",
                  "loot", to=p)
         self.sound("pickup", p.x, p.y, level.depth)
-
-        slot = action.get("slot")
-        if slot:
-            if item.slot == slot or (item.slot in ("ring_left", "ring_right")
-                                     and slot in ("ring_left", "ring_right")):
-                self._act_equip(level, p, {"id": item.id, "slot": slot})
-            elif slot == "free_hand" and item.slot is None:
-                self._act_equip(level, p, {"id": item.id, "slot": slot})
-            elif p.equipment.get(slot) is not None:
-                self._act_stow(level, p, {"id": item.id, "slot": slot})
-
         self.events.append({"t": "inv", "to": p.id})
         return p.action_cost(PICKUP_COST) or PICKUP_COST
 
@@ -2126,6 +2145,36 @@ class World:
         self.move_player_to(target, TOWN_DEPTH)
         self.events.append({"t": "inv", "to": target.id})
 
+    def _stow_refusal(self, holder, item):
+        """Why holder will not take item, or None if it will.
+
+        Split out of _act_stow so _act_take can ask the same question
+        before an item ever touches the pack - dragging straight from the
+        floor onto a belt cell needs to know whether the belt will take
+        it, not whether the pack has room, which is a question about a
+        place the item was never going to stop.
+        """
+        if holder is None or holder.contents is None:
+            return "You are not wearing anything that would hold it."
+        if holder.base.get("wands_only") and not item.base.get("charges"):
+            return f"The {holder.name(self.appearances)} is for wands."
+        if holder.base.get("coins_only"):
+            return "That is for coin."
+        slots = holder.base.get("belt_slots")
+        if slots is not None and len(holder.contents) >= slots:
+            return f"The {holder.name(self.appearances)} is full."
+        # One goes on the belt, so weigh one - not the six in your pack.
+        # Weighing the lot meant a stack of potions could never be reached
+        # for at all: the belt refused the whole armful and you drank none
+        # of it.
+        unit = self.unit_of(item)
+        if (sum(i.weight for i in holder.contents) + unit.weight
+                > holder.base.get("capacity", 0)
+                or sum(i.bulk for i in holder.contents) + unit.bulk
+                > holder.base.get("bulk_capacity", 0)):
+            return f"That will not fit in the {holder.name(self.appearances)}."
+        return None
+
     def _act_stow(self, level, p, action):
         """Move something from the pack onto a belt or into the quiver.
 
@@ -2138,33 +2187,9 @@ class World:
             return FREE_COST
         slot = action.get("slot", "waist")
         holder = p.equipment.get(slot)
-        if holder is None or holder.contents is None:
-            self.msg("You are not wearing anything that would hold it.",
-                     "warn", to=p)
-            return FREE_COST
-        if holder.base.get("wands_only") and not item.base.get("charges"):
-            self.msg(f"The {holder.name(self.appearances)} is for wands.",
-                     "warn", to=p)
-            return FREE_COST
-        if holder.base.get("coins_only"):
-            self.msg("That is for coin.", "warn", to=p)
-            return FREE_COST
-        slots = holder.base.get("belt_slots")
-        if slots is not None and len(holder.contents) >= slots:
-            self.msg(f"The {holder.name(self.appearances)} is full.",
-                     "warn", to=p)
-            return FREE_COST
-        # One goes on the belt, so weigh one - not the six in your pack.
-        # Weighing the lot meant a stack of potions could never be reached
-        # for at all: the belt refused the whole armful and you drank none
-        # of it.
-        unit = self.unit_of(item)
-        if (sum(i.weight for i in holder.contents) + unit.weight
-                > holder.base.get("capacity", 0)
-                or sum(i.bulk for i in holder.contents) + unit.bulk
-                > holder.base.get("bulk_capacity", 0)):
-            self.msg(f"That will not fit in the "
-                     f"{holder.name(self.appearances)}.", "warn", to=p)
+        refusal = self._stow_refusal(holder, item)
+        if refusal:
+            self.msg(refusal, "warn", to=p)
             return FREE_COST
 
         moved = p.remove_item(item, 1)
@@ -2637,44 +2662,53 @@ class World:
         if p.copper < price:
             self.msg("You don't have enough money!", "warn", to=p)
             return FREE_COST
+        # Bought straight onto the body: wear it, or stow it on the belt or
+        # quiver the drag ended on. That destination is not the pack, so a
+        # full pack must not be able to refuse a purchase that was never
+        # going into it - only the "no wear/quiver target, goes in the
+        # pack" fallback below actually needs pack room at all.
+        wear = action.get("wear")
+        direct_equip = wear and (
+            take.slot == wear
+            or (take.slot in ("ring_left", "ring_right")
+                and wear in ("ring_left", "ring_right"))
+            or (wear == "free_hand" and take.slot is None))
+        holder = p.equipment.get(wear) if wear and not direct_equip else None
+        stow_refusal = self._stow_refusal(holder, take) if holder else None
+
+        if wear and not direct_equip and holder is None:
+            self.msg(f"You have nothing on your {wear} to put that in, "
+                     f"so it is in your pack.", "info", to=p)
+        elif wear and not direct_equip and stow_refusal:
+            self.msg(stow_refusal, "warn", to=p)
+            return FREE_COST
+
+        if not direct_equip and (holder is None or stow_refusal):
+            ok, why = p.room_for(take)
+            if not ok:
+                self.msg(why, "warn", to=p)
+                return FREE_COST
+
         if take is item:
             stock.remove(item)
         else:
             item.qty -= 1
-        ok, why = p.room_for(take)
-        if not ok:
-            self.msg(why, "warn", to=p)
-            if take is not item:
-                item.qty += 1
-            else:
-                stock.append(item)
-            return FREE_COST
-        if not p.add_item(take):
-            self.msg("Your pack is full.", "warn", to=p)
-            return FREE_COST
         p.copper -= price
         self.appearances.identify(take.key)
         self.msg(f"You buy {with_article(take.name(self.appearances))} "
                  f"for {price} copper.", "loot", to=p)
-        # Bought straight onto the body: wear it, or stow it if the slot it
-        # was dropped on is a belt or a quiver.
-        wear = action.get("wear")
-        if wear:
-            # Hand it to the verbs that already know the rules, rather than
-            # writing a second, slightly different set of them here.
-            if take.slot == wear or (take.slot in ("ring_left", "ring_right")
-                                     and wear in ("ring_left", "ring_right")):
-                self._act_equip(level, p, {"id": take.id, "slot": wear})
-            elif wear == "free_hand" and take.slot is None:
-                # Nothing has to be worn to unlock the free hand - that is
-                # the whole point of it - so this needs no "is something
-                # already there to hold it" check the belt and quiver do.
-                self._act_equip(level, p, {"id": take.id, "slot": wear})
-            elif p.equipment.get(wear) is not None:
-                self._act_stow(level, p, {"id": take.id, "slot": wear})
-            else:
-                self.msg(f"You have nothing on your {wear} to put that in, "
-                         f"so it is in your pack.", "info", to=p)
+
+        if direct_equip:
+            # Hand it to the verb that already knows the rules, rather than
+            # writing a second, slightly different set of them here. It
+            # needs the item to actually be carried first to find it.
+            p.inventory.append(take)
+            self._act_equip(level, p, {"id": take.id, "slot": wear})
+        elif holder is not None and not stow_refusal:
+            holder.contents.append(take)
+            p.recalc()
+        else:
+            p.add_item(take)
         self.sound("buy", p.x, p.y, level.depth)
         self.events.append({"t": "inv", "to": p.id})
         self.events.append({"t": "shop", "to": p.id, "npc": action.get("npc"),
