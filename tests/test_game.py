@@ -3075,3 +3075,93 @@ class TestShopStockTracksHowDeepThePartyHasBeen(unittest.TestCase):
         first = list(world.stock_for("armourer"))
         second = list(world.stock_for("armourer"))
         self.assertEqual([i.id for i in first], [i.id for i in second])
+
+
+class TestDroppingCoinToEscapeAnOverloadedPurse(unittest.TestCase):
+    """"Are you sure copper is supposed to weigh? It can't be dropped, so
+    there's a condition where one could freeze themselves out of the game
+    by carrying too much copper." Coin weight is sourced - "every coin
+    weighs a gram, so a thousand of them weigh a kilo" - and the manual's
+    own money page implies coin can be carried as an ordinary object, not
+    only as the abstract purse total ("[Copper] doesn't include any money
+    you have in your pack"). What was missing was the escape hatch every
+    other carried thing already has: a way to put some of it down.
+    """
+
+    def test_a_too_heavy_purse_leaves_you_unable_to_move(self):
+        from stormhold.game.world import World
+        world = World(seed=5)
+        p = world.add_player("Loaded")
+        p.copper = int(p.capacity * 2.2)
+        self.assertIsNone(p.action_cost(100, moving=True),
+                          "the character was not actually stuck - test needs "
+                          "a bigger purse to prove the point")
+
+    def test_dropping_some_of_it_gets_you_moving_again(self):
+        from stormhold.game.world import World
+        world = World(seed=5)
+        p = world.add_player("Loaded")
+        level = world.levels[p.depth]
+        p.copper = int(p.capacity * 2.2)
+        world.do_player_action(level, p, {"a": "drop_coins",
+                                          "amount": int(p.capacity * 1.5)})
+        self.assertIsNotNone(p.action_cost(100, moving=True))
+
+    def test_dropping_coin_puts_an_exact_pile_on_the_ground(self):
+        from stormhold.game.world import World
+        world = World(seed=5)
+        p = world.add_player("Payer")
+        level = world.levels[p.depth]
+        p.copper = 1000
+        world.events.clear()
+        world.do_player_action(level, p, {"a": "drop_coins", "amount": 400})
+        self.assertEqual(p.copper, 600)
+        pile = level.items_at(p.x, p.y)
+        self.assertEqual(len(pile), 1)
+        self.assertEqual(pile[0].gold_amount, 400)
+        self.assertTrue(any("You drop 400 copper" in e["text"]
+                            for e in world.events if e["t"] == "msg"))
+
+    def test_the_dropped_pile_can_be_picked_back_up_for_the_same_amount(self):
+        from stormhold.game.world import World
+        world = World(seed=5)
+        p = world.add_player("RoundTrip")
+        level = world.levels[p.depth]
+        p.copper = 1000
+        world.do_player_action(level, p, {"a": "drop_coins", "amount": 400})
+        world.do_player_action(level, p, {"a": "pickup"})
+        self.assertEqual(p.copper, 1000)
+
+    def test_you_cannot_drop_more_than_you_have(self):
+        from stormhold.game.world import World
+        world = World(seed=5)
+        p = world.add_player("Careful")
+        level = world.levels[p.depth]
+        p.copper = 50
+        world.events.clear()
+        world.do_player_action(level, p, {"a": "drop_coins", "amount": 500})
+        self.assertEqual(p.copper, 50)
+        self.assertEqual(level.items_at(p.x, p.y), [])
+
+    def test_zero_or_nonsense_is_refused_quietly(self):
+        from stormhold.game.world import World
+        world = World(seed=5)
+        p = world.add_player("Vague")
+        level = world.levels[p.depth]
+        p.copper = 500
+        world.do_player_action(level, p, {"a": "drop_coins", "amount": 0})
+        self.assertEqual(p.copper, 500)
+        self.assertEqual(level.items_at(p.x, p.y), [])
+
+    def test_dropping_coin_never_needs_room_to_move(self):
+        """The whole point: this has to work precisely when the character
+        is too overloaded to take a normal step."""
+        from stormhold.game.world import World
+        world = World(seed=5)
+        p = world.add_player("Stuck")
+        level = world.levels[p.depth]
+        p.copper = int(p.capacity * 3)
+        self.assertIsNone(p.action_cost(100, moving=True))
+        cost = world.do_player_action(level, p, {"a": "drop_coins",
+                                                  "amount": int(p.capacity)})
+        self.assertIsNotNone(cost)

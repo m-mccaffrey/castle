@@ -1232,6 +1232,45 @@ class World:
         self.events.append({"t": "inv", "to": p.id})
         return p.action_cost(DROP_COST) or DROP_COST
 
+    def _act_drop_coins(self, level, p, action):
+        """Put some of the purse back on the ground as a pile of coin.
+
+        Every coin in the purse weighs what a real coin weighs - "a
+        thousand of them weigh a kilo" - and past the game's own hard
+        carry limit a character simply cannot move at all. Nothing else
+        in the game lets a purse's weight go back down except spending it
+        or banking it, both of which need a shop that is not where an
+        overloaded character necessarily is; this is the same Drop
+        everything else on the body already has, for the one thing that
+        was never covered by it. The manual's own money page backs the
+        idea that coin is a carried object like any other: the Copper
+        figure on the status line "doesn't include any money you have in
+        your pack" - which only makes sense if money can be carried as a
+        pack object, distinct from the purse total, the same as anything
+        else that can be dropped.
+        """
+        amount = int(action.get("amount", 0))
+        if amount <= 0:
+            self.msg("Choose how much copper to drop.", "warn", to=p)
+            return FREE_COST
+        if amount > p.copper:
+            self.msg("You don't have that much.", "warn", to=p)
+            return FREE_COST
+        if not p.spend(amount):
+            return FREE_COST
+        # Dropped exactly as copper, whatever mix of coin it actually came
+        # out of - the pile at your feet is worth what you said, gram for
+        # gram, not rounded to the nearest platinum piece the way a
+        # monster's random drop is.
+        it = Item("coins")
+        it.gold_amount = amount
+        it.metal = "copper"
+        it.base = dict(it.base, name="copper pieces")
+        level.add_ground_item(p.x, p.y, it)
+        self.msg(f"You drop {amount} copper.", "info", to=p)
+        self.events.append({"t": "inv", "to": p.id})
+        return p.action_cost(DROP_COST) or DROP_COST
+
     def _act_equip(self, level, p, action):
         item = p.find_item(int(action.get("id", 0)))
         if item is None:

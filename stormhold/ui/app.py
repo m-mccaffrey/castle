@@ -1871,8 +1871,15 @@ class PackScene(OverlayScene):
         self.naming.handle(event)
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_RETURN:
-                self.app.act({"a": "rename", "id": self.naming_id,
-                              "name": self.naming.value})
+                if self.naming_id == "coins":
+                    try:
+                        amount = int(self.naming.value.strip() or 0)
+                    except ValueError:
+                        amount = 0
+                    self.app.act({"a": "drop_coins", "amount": amount})
+                else:
+                    self.app.act({"a": "rename", "id": self.naming_id,
+                                  "name": self.naming.value})
                 self.naming = None
             elif event.key == pygame.K_ESCAPE:
                 self.naming = None
@@ -1888,6 +1895,13 @@ class PackScene(OverlayScene):
             self.naming_id = item["id"]
             self.naming = W.TextField((0, 0, 260, 26),
                                       "" if not item.get("custom") else item["name"], 24)
+            self.naming.focused = True
+        elif action == "dropcoins":
+            # A purse this heavy is the one weight nothing else lets you
+            # shed in place - not a sale, not a bank deposit, both of which
+            # need a shop, just Drop, for coin.
+            self.naming_id = "coins"
+            self.naming = W.TextField((0, 0, 180, 26), "", 8)
             self.naming.focused = True
         elif item and action == "use":
             if self.selected_from == "floor":
@@ -2438,11 +2452,11 @@ class PackScene(OverlayScene):
                colour=(70, 70, 70) if item else (120, 120, 120))
 
         by = client.bottom - 28
-        widths = (88, 96, 76, 64, 64)
-        labels = ("Sort Pack", "Name Object", label, "Drop", "Close")
-        actions = ("sort", "name", "use", "drop", "close")
+        widths = (88, 96, 76, 64, 66, 64)
+        labels = ("Sort Pack", "Name Object", label, "Drop", "Drop Coin", "Close")
+        actions = ("sort", "name", "use", "drop", "dropcoins", "close")
         enabled = (True, bool(item) and not from_floor, bool(item),
-                  bool(item) and not from_floor, True)
+                  bool(item) and not from_floor, True, True)
         self.buttons = []
         x = client.x
         for w, lb, ac, en in zip(widths, labels, actions, enabled):
@@ -2454,7 +2468,11 @@ class PackScene(OverlayScene):
     def draw_naming(self, surf, client):
         box = pygame.Rect(client.centerx - 170, client.centery - 50, 340, 100)
         W.panel(surf, box, raised=True)
-        W.text(surf, "Call it what you like:", (box.x + 12, box.y + 12), 13, bold=True)
+        if self.naming_id == "coins":
+            prompt = "Copper to drop:"
+        else:
+            prompt = "Call it what you like:"
+        W.text(surf, prompt, (box.x + 12, box.y + 12), 13, bold=True)
         self.naming.rect = pygame.Rect(box.x + 12, box.y + 36, box.width - 24, 26)
         self.naming.draw(surf)
         W.text(surf, "Enter to keep it, Esc to forget it.",

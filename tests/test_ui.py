@@ -1107,6 +1107,45 @@ class TestRightClickPopups(unittest.TestCase):
         self.assertIn("Bulk", " ".join(lines))
 
 
+class TestDropCoinEscapesAnOverloadedPurse(unittest.TestCase):
+    """"Are you sure copper is supposed to weigh? It can't be dropped..."
+    The Person panel's Drop Coin button, and the amount prompt behind it.
+    """
+
+    def test_the_button_opens_an_amount_prompt(self):
+        app = make_app()
+        scene = PackScene(app)
+        scene.on_action("dropcoins")
+        self.assertIsNotNone(scene.naming)
+        self.assertEqual(scene.naming_id, "coins")
+
+    def test_entering_an_amount_sends_drop_coins(self):
+        import stormhold.net.protocol as P
+        app = make_app()
+        scene = PackScene(app)
+        scene.on_action("dropcoins")
+        scene.naming.value = "250"
+        sent = []
+        app.act = lambda action: sent.append(action)
+        scene.handle_naming(pygame.event.Event(pygame.KEYDOWN,
+                                                key=pygame.K_RETURN, unicode="",
+                                                mod=0))
+        self.assertEqual(sent, [{"a": "drop_coins", "amount": 250}])
+        self.assertIsNone(scene.naming)
+
+    def test_garbage_input_is_sent_as_zero_not_a_crash(self):
+        app = make_app()
+        scene = PackScene(app)
+        scene.on_action("dropcoins")
+        scene.naming.value = "not a number"
+        sent = []
+        app.act = lambda action: sent.append(action)
+        scene.handle_naming(pygame.event.Event(pygame.KEYDOWN,
+                                                key=pygame.K_RETURN, unicode="",
+                                                mod=0))
+        self.assertEqual(sent, [{"a": "drop_coins", "amount": 0}])
+
+
 class TestDoubleClickTakesTheStairs(unittest.TestCase):
     """"Double-click yourself to take the stairs."""
 

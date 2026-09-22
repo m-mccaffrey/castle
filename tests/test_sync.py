@@ -88,6 +88,8 @@ CASES = [
     ("withdraw", lambda w, p, l: setattr(p, "bank", 500),
      lambda w, p, l: {"a": "service", "what": "withdraw", "amount": 100,
                       "shop": "bank"}),
+    ("drop coins", lambda w, p, l: setattr(p, "copper", 500),
+     lambda w, p, l: {"a": "drop_coins", "amount": 100}),
 ]
 
 
@@ -131,9 +133,9 @@ class TestWhatYouCarryAndWhatYouSeeAgree(unittest.TestCase):
             "open", "close", "rest", "sleep", "attack", "cast", "shoot",
             "callme", "fountain", "throne",
         }
-        covered = {"pickup", "take", "drop", "equip", "unequip", "freehand",
-                   "stow", "unstow", "use", "sort", "rename", "buy", "sell",
-                   "service"}
+        covered = {"pickup", "take", "drop", "drop_coins", "equip", "unequip",
+                   "freehand", "stow", "unstow", "use", "sort", "rename",
+                   "buy", "sell", "service"}
         missing = verbs - harmless - covered
         self.assertFalse(
             missing,
