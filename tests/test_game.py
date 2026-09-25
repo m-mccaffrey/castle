@@ -3180,6 +3180,54 @@ class TestShopStockScalesWithDepthLikeDungeonLoot(unittest.TestCase):
                 self.assertGreaterEqual(it.enchant, 0)
 
 
+class TestTheFirstFightIsNotADeathSentence(unittest.TestCase):
+    """"There is no diagonal for keyboards without a number pad" and
+    "Almost impossible not to spend several deaths on the first fight."
+    Neither cave_rat's pack size nor its damage range is sourced - the
+    bestiary's "when found in numbers can be much more deadly" gives no
+    figures - so both were ours to set, and they were set too high: a
+    fresh level-1 character with nothing but the starting dagger and no
+    armour, meeting the pack size the old numbers allowed (2 to 5 at once,
+    dealing 1-3 each), died several times over in a single encounter far
+    more often than a first fight should. Simulated directly over the real
+    combat engine (attack_roll/apply_damage, not a description of them) so
+    this stays true if either number moves again later.
+    """
+
+    def _deaths_in_one_encounter(self, pack_size, trials=150):
+        from stormhold.game.world import World
+        from stormhold.game.actors import Monster
+        from stormhold.game import combat
+        total = 0
+        for seed in range(trials):
+            world = World(seed=seed)
+            p = world.add_player(
+                "Fresh", stats={"strength": 12, "dexterity": 12,
+                                "intelligence": 12, "constitution": 12})
+            p.level = 1
+            before = p.deaths
+            rats = [Monster("cave_rat", p.x, p.y, 1, world.rng)
+                    for _ in range(pack_size)]
+            turn = 0
+            while any(not r.dead for r in rats) and turn < 60:
+                turn += 1
+                target = next((r for r in rats if not r.dead), None)
+                if target:
+                    combat.melee(world, p, target)
+                for r in rats:
+                    if not r.dead:
+                        combat.melee(world, r, p)
+            total += p.deaths - before
+        return total / trials
+
+    def test_the_worst_case_pack_no_longer_kills_a_fresh_character_repeatedly(self):
+        from stormhold.game.monsters import MONSTERS
+        worst = MONSTERS["cave_rat"]["pack"][1]
+        self.assertLessEqual(self._deaths_in_one_encounter(worst), 0.75,
+                             "the largest cave rat pack a fresh character "
+                             "can meet still kills them repeatedly")
+
+
 class TestLevellingUpGrantsASpellOfItsOwn(unittest.TestCase):
     """"The player character automatically gains a spell with each
     level-up, and can permanently gain another using the corresponding

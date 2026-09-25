@@ -15,7 +15,20 @@ back away and think.
 #           element and half again from the opposite one.
 MONSTERS = {
     # key: (name, sprite, min_d, max_d, freq, hp, ac, hit, dmg, speed, xp, ai, extras)
-    "cave_rat":       dict(name="Cave Rat",        sprite="cave_rat",        min_d=1,  max_d=5,  freq=10, hp=7,   ac=2,  hit=1,  dmg=(1, 3), speed=110, xp=4,   ai="skittish", pack=(2, 5)),
+    # A fresh, unarmoured level-1 character with nothing but the starting
+    # dagger died to this pack (2, 5) at dmg (1, 3) far more than a first
+    # fight should: simulated over the real combat engine, an encounter
+    # with the full pack of 5 killed such a character 5.6 times on average
+    # (dying here means the temple, the pack dropped and a chunk of xp and
+    # gold lost, not game over, but "almost impossible not to spend
+    # several deaths on the first fight" is exactly what that number
+    # predicts). Neither the pack size nor the damage range is sourced -
+    # "when found in numbers can be much more deadly" gives no figures -
+    # so both are ours to tune: halving the worst case to (1, 3) and the
+    # top of the damage roll to 2 brings the same simulation's worst case
+    # down to under half a death per encounter, with the typical one- or
+    # two-rat meeting close to none.
+    "cave_rat":       dict(name="Cave Rat",        sprite="cave_rat",        min_d=1,  max_d=5,  freq=10, hp=7,   ac=2,  hit=1,  dmg=(1, 2), speed=110, xp=4,   ai="skittish", pack=(1, 3)),
     "cave_bat":       dict(name="Cave Bat",         sprite="cave_bat",        min_d=1,  max_d=7,  freq=9,  hp=9,   ac=5,  hit=2,  dmg=(1, 4), speed=70,  xp=7,   ai="erratic", dodge=4),
     "kobold":         dict(name="Kobold",           sprite="kobold",          min_d=1,  max_d=7,  freq=10, hp=13,  ac=4,  hit=2,  dmg=(1, 5), speed=100, xp=9,   ai="melee"),
     "cellar_spider":  dict(name="Cellar Spider",    sprite="cellar_spider",   min_d=2,  max_d=9,  freq=9,  hp=17,  ac=5,  hit=4,  dmg=(1, 5), speed=90,  xp=15,  ai="melee", poison=3, fearless=True),
